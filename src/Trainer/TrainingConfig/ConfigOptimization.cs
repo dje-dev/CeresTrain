@@ -1,0 +1,161 @@
+﻿#region License notice
+
+/*
+  This file is part of the CeresTrain project at https://github.com/dje-dev/cerestrain.
+  Copyright (C) 2023- by David Elliott and the CeresTrain Authors.
+
+  Ceres is free software under the terms of the GNU General Public License v3.0.
+  You should have received a copy of the GNU General Public License
+  along with CeresTrain. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#endregion
+
+#region Using directives
+
+using System.Text.Json.Serialization;
+
+#endregion
+
+namespace CeresTrain.Trainer
+{
+  public enum OptimizerType
+  {
+    /// <summary>
+    /// Stochastic gradient descent optimizer.
+    /// </summary>
+    SGD,
+
+    /// <summary>
+    ///  Adam optimizer.
+    /// </summary>
+    AdamW,
+
+    /// <summary>
+    /// Nadam optimizer.
+    /// </summary>
+    NadamW,
+
+    /// <summary>
+    /// Lion optimizer.
+    /// </summary>
+    LION
+  }
+
+
+  /// <summary>
+  /// Parameters related to optimization.
+  /// </summary>
+  public readonly record struct ConfigOptimization
+  {
+    /// <summary>
+    /// Constructor.
+    /// </summary>
+    /// <param name="numTrainingPositions"></param>
+    public ConfigOptimization(long numTrainingPositions) : this()
+    {
+      NumTrainingPositions = numTrainingPositions;
+    }
+
+    /// <summary>
+    /// Default constructor for deserialization.
+    /// </summary>
+    [JsonConstructorAttribute]
+    public ConfigOptimization()
+    {
+    }
+
+    /// <summary>
+    /// Number of training positions to use before halting training.
+    /// </summary>
+    public readonly long NumTrainingPositions { get; init; } = int.MaxValue;
+
+    /// <summary>
+    /// Batch size used each forward pass.
+    /// </summary>
+    public readonly int BatchSizeForwardPass { get; init; } = 2048;
+
+    /// <summary>
+    /// Batch size used for each backward pass (possibly larger than BatchSizeForwardPass if accumulating gradients).
+    /// </summary>
+    public readonly int BatchSizeBackwardPass { get; init; } = 2048;
+
+    /// <summary>
+    /// Type of optimizer.
+    /// </summary>
+    public readonly OptimizerType Optimizer { get; init; } = OptimizerType.AdamW;
+
+    /// <summary>
+    /// Optional name of file containing the starting checkpoint from which training will be resumed.
+    /// </summary>
+    public readonly string StartingCheckpointFN { get; init; }
+
+
+    /// <summary>
+    /// If StartingCheckpointFN is not null, this is the number of positions which were trained as of the end of that checkpoint file.
+    /// </summary>
+    public readonly long StartingCheckpointLastPosNum { get; init; }
+    
+    /// <summary>
+    /// String to be used for model argument of the PyTorch compile method (or null for no compile).
+    /// Valid values: "none", "max-autotune", "reduce-overhead", "default".
+    /// </summary>
+    public readonly string PyTorchCompileMode { get; init; } = "reduce-overhead";
+
+    /// <summary>
+    /// Weight decay coefficient for the optimizer.
+    /// </summary>
+    public readonly float WeightDecay { get; init; } = 0.01f;
+
+    /// <summary>
+    /// Maximum learning rate to be used with the optimizer.
+    /// </summary>
+    public readonly float LearningRateBase { get; init; } = 2E-4f;
+
+    /// <summary>
+    /// Fraction complete (between 0 and 1) at which
+    /// scaling down of the LearningRateBase begins 
+    /// (linearly from LearningRateBase to a fixed minimum value of 0.10).
+    /// </summary>
+    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.5f;
+
+    /// <summary>
+    /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or Nadam.
+    /// </summary>
+    public readonly float Beta1 { get; init; } = 0.90f;
+
+    /// <summary>
+    /// Beta 2 coefficient used with optimizers such as Adam, AdamW, or Nadam.
+    /// </summary>
+    public readonly float Beta2 { get; init; } = 0.98f;
+
+    /// <summary>
+    /// Value at which gradients are clipped on each optimizer step (clipping is disabled if this value is 0.0).
+    /// </summary>
+    public readonly float GradientClipLevel { get; init; } = 2.0f;
+
+    #region Loss multipliers
+
+    /// <summary>
+    /// Scaling multiplier to be applied to value loss term.
+    /// </summary>
+    public readonly float LossValueMultiplier { get; init; } = 1.0f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to policy loss term.
+    /// </summary>
+    public readonly float LossPolicyMultiplier { get; init; } = 1.0f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to MLH loss term.
+    /// </summary>
+    public readonly float LossMLHMultiplier { get; init; } = 0.0f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to UNC loss term.
+    /// </summary>
+    public readonly float LossUNCMultiplier { get; init; } = 0.0f;
+    
+    #endregion
+  }
+}
