@@ -155,7 +155,12 @@ namespace CeresTrain.Trainer
     /// Scaling multiplier to be applied to UNC loss term.
     /// </summary>
     public readonly float LossUNCMultiplier { get; init; } = 0.0f;
-    
+
     #endregion
+
+    /// <summary>
+    /// Reserved value used for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
+    /// </summary>
+    public readonly float TestValue { get; init; } = 0;
   }
 }

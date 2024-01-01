@@ -70,6 +70,7 @@ class Configuration:
     self.Exec_TrackFinalLayerIntrinsicDimensionality = config_exec.get('TrackFinalLayerIntrinsicDimensionality', False)
     self.Exec_MonitorActivationStats = config_exec.get('MonitorActivationStats', False)
     self.Exec_TestFlag = config_exec.get('TestFlag', False)
+    self.Exec_TestValue = config_exec.get('TestValue', 0)
 
     # Initialize class members from config_opt
     self.Opt_NumTrainingPositions = config_opt.get('NumTrainingPositions', 10_000_000)
@@ -89,6 +90,7 @@ class Configuration:
     self.Opt_LossPolicyMultiplier = config_opt.get('LossPolicyMultiplier', 1)
     self.Opt_LossMLHMultiplier = config_opt.get('LossMLHMultiplier', 0)
     self.Opt_LossUNCMultiplier = config_opt.get('LossUNCMultiplier', 0)
+    self.Opt_TestValue = config_opt.get('TestValue', 0)
 
     # Initialize class members from config_net_def
     self.NetDef_ModelDim = config_net_def.get('ModelDim', 256)
@@ -104,6 +106,7 @@ class Configuration:
     self.NetDef_SmolgenDimPerSquare = config_net_def.get('SmolgenDimPerSquare', 8)
     self.NetDef_SmolgenDim = config_net_def.get('SmolgenDim', 64)
     self.NetDef_HeadWidthMultiplier = config_net_def.get('HeadWidthMultiplier', 4)
+    self.NetDef_TestValue = config_net_def.get('TestValue', 0)
 
     # SoftMoEConfig is a nested structure, so it requires special handling
     soft_moe_config = config_net_def.get('SoftMoEConfig', {})

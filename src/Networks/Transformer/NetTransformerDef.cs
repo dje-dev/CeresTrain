@@ -221,7 +221,6 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly SoftMoEParams SoftMoEConfig { get; init; } = new SoftMoEParams();
 
-
     #region Helper methods
 
     /// <summary>
@@ -255,5 +254,11 @@ namespace CeresTrain.Networks.Transformer
     }
 
     #endregion
+
+    /// <summary>
+    /// Reserved value used for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
+    /// </summary>
+    public readonly float TestValue { get; init; } = 0;
+
   }
 }

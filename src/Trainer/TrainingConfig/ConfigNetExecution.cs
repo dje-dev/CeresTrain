@@ -175,8 +175,14 @@ namespace CeresTrain.Trainer
     public readonly bool MonitorActivationStats { get; init; } = false;
 
     /// <summary>
-    /// Flag useful for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
+    /// Reserved value for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
     /// </summary>
     public readonly bool TestFlag { get; init; } = false;
+
+    /// <summary>
+    /// Reserved value used for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
+    /// </summary>
+    public readonly float TestValue { get; init; } = 0;
+
   }
 }
