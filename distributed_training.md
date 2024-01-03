@@ -7,9 +7,12 @@ CeresTrain will coordinate with the host over SSH. All status lines emitted by t
 Note that it is required that SSH connectivity have already been configured with the server including SSL keys to enable ssh remote login without requiring an explicit password.
 
 First a host configuration file must be created on the local computer. It should have the name "CeresTrainHosts.json" and be located in the CeresTrain data directory. There are four required entries. In addition to hostname and username, there must be entries for:
-* CeresTrainPyDir which indicates the host directory containing the CeresTrain python files. These files can be downloaded to the remote host by cloning the CeresTrain project to that machine, whereafter they will be found in the "CeresTrain\src\CeresTrainPy" directory. 
+* *CeresTrainPyDir** which indicates the host directory containing the CeresTrain python files. These files can be downloaded to the remote host by cloning the CeresTrain project to that machine, whereafter they will be found in the "CeresTrain\src\CeresTrainPy" directory. 
 
-* PathToOutputFromHost which indicates a path to which the artifacts of the training process should be sent (checkpoint files and ONNX conversions thereof). Typically a path the local CeresTrain output directory is used. Here is an example CeresTrainHosts.json file specifying two hosts (one WSL and one a true remote Linux server):
+* *PathToOutputFromHost* which indicates a path to which the artifacts of the training process should be sent (checkpoint files and ONNX conversions thereof). Typically a path the local CeresTrain output directory is used. Here is an example CeresTrainHosts.json file specifying two hosts (one WSL and one a true remote Linux server):
+
+* *DockerLaunchCommand* (optional) which indicates a command to be used to launch the docker container on the remote host. This is only required if the remote host is a Windows machine running Docker. The command should include the docker launch command if Exec.RunInDocker flag is set true in configuration.
+```
 ```
 [
   {
@@ -23,12 +26,14 @@ First a host configuration file must be created on the local computer. It should
     "UserName": "user1",
     "CeresTrainPyDir": "~/dev/CeresTrainPy",
     "PathToOutputFromHost": "/mnt/deve/cout",
+    "DockerLaunchCommand": "docker exec -it upbeat_fermi",
   }
 ]
 ``` 
 
 Note that the Python modules which execute on the remote host have a number of Python package dependencies. It will likely be necessary to install some or all of these using pip. For example:
 ```
+pip install zstandard
 pip install torch torchvision torchaudio
 pip install lightning
 pip install einops
@@ -37,9 +42,10 @@ pip install onnx
 pip install onnxruntime-gpu
 pip install onnxconverter
 pip install onnxconverter-common
-pip install onnxscripot
+pip install onnxscript
+pip install onnxmltools
 pip install torchsummary
-pip install zstandard
+pip install lightning
 ```
 
 A data preprocessing step is also required. Unlike local inprocess C# training, it is not feasible  to generate training data "on the fly" because the slow speed of the target language (Python). Therefore it is necessary to use the "gen_tpg" command to pregenerate training data files (in a CeresTrain format called TPG) for use by the training session. For example:
