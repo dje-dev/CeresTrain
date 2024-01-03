@@ -131,6 +131,11 @@ namespace CeresTrain.Trainer
     public readonly ScalarType DataType { get; init; } = ScalarType.BFloat16;
 
     /// <summary>
+    /// If FP8 (via Transformer Engine library) should be used for Linear/LayerNorm layers during training.
+    /// </summary>
+    public readonly bool UseFP8 { get; init; } = false;
+
+    /// <summary>
     /// If training session should be run under specified host docker launch command.
     /// </summary>
     public readonly bool RunInDocker { get; init; } = false;

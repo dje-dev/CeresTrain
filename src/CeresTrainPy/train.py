@@ -125,7 +125,8 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     #model.load_state_dict(saved["model"])
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
-    sample_inputs = torch.rand(256, NUM_TOKENS, 135 * (64 // NUM_TOKENS)).to(torch.float32).to(m.device)
+    convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
+    sample_inputs = torch.rand(256, NUM_TOKENS, 135 * (64 // NUM_TOKENS)).to(convert_type).to(m.device)
     if True:
       m_save = torch.jit.trace(m, sample_inputs)
     else:
@@ -161,7 +162,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                                   'unc' : {0 : 'batch_size'}})
         print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
 
-        if True:
+        if False:
           from onnxmltools.utils.float16_converter import convert_float_to_float16
           from onnxmltools.utils import load_model, save_model
           onnx_model = load_model(ONNX_SAVE_PATH)
@@ -181,8 +182,18 @@ def Train():
 
   print("**** STARTING ", NAME)
 
-  fabric = Fabric(precision="bf16-mixed", accelerator=accelerator, devices=devices,
-                  loggers=TensorBoardLogger("./logs", name=NAME))  
+
+  if config.Exec_UseFP8:
+#    from lightning.fabric.plugins import TransformerEnginePrecision
+#    recipe = {"fp8_format": "HYBRID", "amax_history_len": 16, "amax_compute_algo": "max"}
+#    precision = TransformerEnginePrecision(dtype=torch.bfloat16, recipe=recipe, replace_layers=False)
+#    fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
+#                    loggers=TensorBoardLogger("./logs", name=NAME))  
+    fabric = Fabric(precision="transformer-engine",accelerator=accelerator, devices=devices,
+                    loggers=TensorBoardLogger("./logs", name=NAME))  
+  else:
+    fabric = Fabric(precision="bf16-mixed", accelerator=accelerator, devices=devices,
+                    loggers=TensorBoardLogger("./logs", name=NAME))  
 
 
   # NOTE: these very small values for MLH and UNC are best because

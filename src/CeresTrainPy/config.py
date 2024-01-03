@@ -60,6 +60,7 @@ class Configuration:
     self.Exec_DeviceType = config_exec.get('DeviceType', 'CUDA')
     self.Exec_DeviceIDs = config_exec.get('DeviceIDs', [0])
     self.Exec_DataType = config_exec.get('DataType', 'BFloat16')
+    self.Exec_UseFP8 = config_exec.get('UseFP8', False)
     self.Exec_DropoutRate = config_exec.get('DropoutRate', 0)
     self.Exec_DropoutDuringInference = config_exec.get('DropoutDuringInference', False)
     self.Exec_EngineType = config_exec.get('EngineType', 0)

@@ -209,7 +209,7 @@ namespace CeresTrain.TrainCommands
 
       if (dockerLaunchCommand != null)
       {
-        command = $"{dockerLaunchCommand} -c bash \"{command}\"";
+        command = $"{dockerLaunchCommand} bash -c \"{command}\"";
       } 
 
       lock (table)
