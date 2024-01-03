@@ -49,6 +49,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Adds/updates a new line to the table.
     /// </summary>
+    /// <param name="configID"></param>
     /// <param name="numRowsAdded"></param>
     /// <param name="endRow"></param>
     /// <param name="posPerSecond"></param>
@@ -61,7 +62,7 @@ namespace CeresTrain.Trainer
     /// <param name="policyLoss"></param>
     /// <param name="policyAcc"></param>
     /// <param name="curLR"></param>
-    public abstract void UpdateInfo(int numRowsAdded, bool endRow, float posPerSecond, 
+    public abstract void UpdateInfo(string configID, int numRowsAdded, bool endRow, float posPerSecond, 
                                     DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss, 
                                     float valueAcc, float policyLoss, float policyAcc, float curLR);
 

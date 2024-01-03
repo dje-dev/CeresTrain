@@ -31,7 +31,7 @@ namespace CeresTrain.Trainer
 
     float thisLossAdjRunning;
 
-    private void DumpTrainingStatsToConsole(Tensor value, Tensor policy, Tensor mlh, Tensor unc, ref long numRead)
+    private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, Tensor mlh, Tensor unc, ref long numRead)
     {
       float[] predictionsMLHAll = null;
       float[] predictionsUNCAll = null;
@@ -121,7 +121,7 @@ namespace CeresTrain.Trainer
         ? $"[{positionsProcessed:N0} / {OptimizationBatchSizeForward}f / {OptimizationBatchSizeBackward}b] "
         : $"[{positionsProcessed:N0} / {OptimizationBatchSizeForward}] ";
 
-      consoleStatusTable.UpdateInfo(DateTime.Now, (float)elapsedSec, numRead, thisLossAdjRunning,
+      consoleStatusTable.UpdateInfo(DateTime.Now, configID, (float)elapsedSec, numRead, thisLossAdjRunning,
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, (float)curLR);
 
       // Save network if best seen so far (on total loss) unless very early in training.

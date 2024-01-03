@@ -22,6 +22,7 @@ using Ceres.Chess;
 
 using CeresTrain.Examples;
 using CeresTrain.UserSettings;
+using CeresTrain.Trainer;
 
 #endregion
 
@@ -160,7 +161,7 @@ namespace CeresTrain.TrainCommands
 
       trainCommand.SetHandler((configID, piecesStr, numPos, tpgDir, hostName, devices) =>
       {
-        CeresTrainCommands.ProcessTrainCommand(configID, piecesStr, numPos, hostName, tpgDir, devices);
+        CeresTrainCommands.ProcessTrainCommand(configID, piecesStr, numPos, hostName, tpgDir, devices, null);
       }, configOption, piecesOption, numPosOption, tpgDirOption, hostOption, devicesOption);
 
 

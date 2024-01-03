@@ -35,14 +35,15 @@ namespace CeresTrain.TrainCommands
   /// <param name="HostName">name of machine on which to execute, or "inprocess" for local C# execution, or "WSL" for local WSL</param>
   /// <param name="UserName">name of user account on host</param>
   /// <param name="CeresTrainPyDir">directory containing CeresTrainPy Python code for training</param>
-  /// <param name="HostTPGDir">path to directory on host containing training data files in TPG format</param>
   /// <param name="PathToOutputFromHost">path to director to which output files should be written</param>
   /// <param name="OverridePyTorchCompileMode">optional override mode to use for the PyTorch compile (or null for no compile)</param>
+  /// <param name="DockerLaunchCommand">optional launch command for Docker is to be used</param>
   public readonly record struct CeresTrainHostConfig(string HostName, // case sensitive
                                                      string UserName,
                                                      string CeresTrainPyDir,
                                                      string PathToOutputFromHost,
-                                                     string OverridePyTorchCompileMode = null)
+                                                     string OverridePyTorchCompileMode = null,
+                                                     string DockerLaunchCommand = null)
   {
 
     /// <summary>

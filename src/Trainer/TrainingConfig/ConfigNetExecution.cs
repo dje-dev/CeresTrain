@@ -131,6 +131,11 @@ namespace CeresTrain.Trainer
     public readonly ScalarType DataType { get; init; } = ScalarType.BFloat16;
 
     /// <summary>
+    /// If training session should be run under specified host docker launch command.
+    /// </summary>
+    public readonly bool RunInDocker { get; init; } = false;
+
+    /// <summary>
     /// If dropout is used, this is the dropout probability as a fraction (e.g. 0.1 for 10% dropped out).
     /// </summary>
     public readonly float DropoutRate { get; init; }

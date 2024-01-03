@@ -130,7 +130,9 @@ namespace CeresTrain.Examples
       TrainingHelpers.AdjustAndLoadConfig(configName, piecesStr, null, numPos, null, null);
 
       // Construct a trainer object using this configuration.
-      CeresTrainCommandTrain boardTrain = new(trainingConfig, $"Training {piecesStr} with {numPos} positions");
+      string description = $"Training {piecesStr} with {numPos} positions";
+      TrainingStatusTable statusTable = new TrainingStatusTable(trainingConfig.ExecConfig.ID, description, trainingConfig.OptConfig.NumTrainingPositions, false);
+      CeresTrainCommandTrain boardTrain = new(trainingConfig, description, statusTable);
 
       // Run training session.
       TrainingResultSummary result = boardTrain.DoTrain("EndgameTrainingExample");

@@ -27,7 +27,7 @@ namespace CeresTrain.Trainer
   /// </summary>
   public partial class TrainingStatusTable
   {
-    public readonly record struct TrainingStatusRecord(DateTime Time, float ElapsedSecs,
+    public readonly record struct TrainingStatusRecord(string configID, DateTime Time, float ElapsedSecs,
                                                      float PosPerSecond, long NumPositions,
                                                      float TotalLoss,
                                                      float ValueLoss, float ValueAcc,
@@ -43,8 +43,12 @@ namespace CeresTrain.Trainer
     /// </summary>
     public readonly List<TrainingStatusRecord> TrainingStatusRecords = new();
 
+
     TrainingStatusTableImplementor implementor;
 
+    public readonly string ID;
+
+    public readonly bool MultiTrainingMode;
 
     /// <summary>
     /// Constructor.
@@ -52,13 +56,28 @@ namespace CeresTrain.Trainer
     /// <param name="id"></param>
     /// <param name="title"></param>
     /// <param name="maxPositions"></param>
-    public TrainingStatusTable(string id, string title, long maxPositions)
+    /// <param name="multitrainingMode">if multiple threads will concurrently use this same table</param>
+    public TrainingStatusTable(string id, string title, long maxPositions, bool multiTrainingMode)
     {
-      // Linqpad needs a custom table implementor because the AnsiConsole
+      ID = id;
+      MultiTrainingMode = multiTrainingMode;
+
+      // LINQPad needs a custom table implementor because the AnsiConsole
       // assumed by SpectreConsole is not available.
       bool runningUnderLinqPad = Assembly.GetEntryAssembly().ToString().ToUpper().StartsWith("LINQPAD");
-      implementor = runningUnderLinqPad ? new LINQPadStatusTableImplementor(maxPositions)
-                                        : new SpectreStatusTableImplementor(title, maxPositions);
+      if (multiTrainingMode)
+      {
+        implementor = new BatchTrainingStatusTable(maxPositions);
+      }
+      else if (runningUnderLinqPad)
+
+      {
+        implementor = new LINQPadStatusTableImplementor(maxPositions);
+      }
+      else
+      {
+        implementor = new SpectreStatusTableImplementor(title, maxPositions);
+      }
 
       implementor.SetTitle(title);
     }
@@ -78,6 +97,7 @@ namespace CeresTrain.Trainer
     /// Posts an update to the table with new training statistics.
     /// </summary>
     /// <param name="time"></param>
+    /// <param name="configID"></param>
     /// <param name="elapsedSecs"></param>
     /// <param name="numPositions"></param>
     /// <param name="totalLoss"></param>
@@ -86,44 +106,47 @@ namespace CeresTrain.Trainer
     /// <param name="policyLoss"></param>
     /// <param name="policyAcc"></param>
     /// <param name="curLR"></param>
-    public void UpdateInfo(DateTime time, float elapsedSecs, long numPositions,
+    public void UpdateInfo(DateTime time, string configID, float elapsedSecs, long numPositions,
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc, float curLR)
     {
-      float timeSinceStart = (float)(DateTime.Now - timeStart).TotalSeconds;
-      float timeSinceNewRow = (float)(DateTime.Now - lastRowAdded).TotalSeconds;
-      float posPerSecond = (numPositions - lastRowNumPositions) / timeSinceNewRow;
-
-      currentRecord = new TrainingStatusRecord(time, elapsedSecs, posPerSecond, numPositions,
-                                         totalLoss, valueLoss, valueAcc,
-                                         policyLoss, policyAcc, curLR);
-
-      int curRowNum = numRowsAdded - 1;
-
-      if (numRowsAdded > 0)
+      lock (this)
       {
-        implementor.UpdateInfo(numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
-                               valueLoss, valueAcc, policyLoss, policyAcc, curLR);
-      }
 
-      if (numRowsAdded == 0 || timeSinceNewRow > intervalBetweenRows)
-      {
-        // During first hour add new rows more often.
-        if (intervalBetweenRows == INTERVAL_NEW_ROW_FIRST_HOUR && timeSinceStart > 3600)
+        float timeSinceStart = (float)(DateTime.Now - timeStart).TotalSeconds;
+        float timeSinceNewRow = (float)(DateTime.Now - lastRowAdded).TotalSeconds;
+        float posPerSecond = (numPositions - lastRowNumPositions) / timeSinceNewRow;
+
+        currentRecord = new TrainingStatusRecord(configID, time, elapsedSecs, posPerSecond, numPositions,
+                                                 totalLoss, valueLoss, valueAcc,
+                                                 policyLoss, policyAcc, curLR);
+
+        int curRowNum = numRowsAdded - 1;
+
+        if (numRowsAdded > 0)
         {
-          intervalBetweenRows = INTERVAL_NEW_ROW_LATER_HOURS;
+          implementor.UpdateInfo(configID, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
+                                 valueLoss, valueAcc, policyLoss, policyAcc, curLR);
         }
 
-        implementor.UpdateInfo(numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
-                               valueLoss, valueAcc, policyLoss, policyAcc, curLR);
-        TrainingStatusRecords.Add(currentRecord);
+        if (numRowsAdded == 0 || timeSinceNewRow > intervalBetweenRows)
+        {
+          // During first hour add new rows more often.
+          if (intervalBetweenRows == INTERVAL_NEW_ROW_FIRST_HOUR && timeSinceStart > 3600)
+          {
+            intervalBetweenRows = INTERVAL_NEW_ROW_LATER_HOURS;
+          }
 
-        lastTotalLoss = totalLoss;
-        lastRowAdded = DateTime.Now;
-        lastRowNumPositions = numPositions;
-        numRowsAdded++;
+          implementor.UpdateInfo(configID, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
+                                 valueLoss, valueAcc, policyLoss, policyAcc, curLR);
+          TrainingStatusRecords.Add(currentRecord);
+
+          lastTotalLoss = totalLoss;
+          lastRowAdded = DateTime.Now;
+          lastRowNumPositions = numPositions;
+          numRowsAdded++;
+        }
       }
-
     }
 
 

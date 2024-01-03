@@ -43,16 +43,16 @@ namespace CeresTrain.TrainCommands
     /// <param name="piecesStr"></param>
     /// <param name="config"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunLocalCSharp(string configID, string piecesStr, in ConfigTraining config)
+    public static TrainingResultSummary RunLocalCSharp(string configID, string piecesStr, in ConfigTraining config, TrainingStatusTable statusTable)
     {
       DateTime startTime = DateTime.Now;
       string hostName = Environment.MachineName;
       string configPath = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs", configID);
 
-      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, null, configID, in config, configPath);
+      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, null, configID, in config, configPath, statusTable);
 
       string trainingDescription = $"Local train of config {configID} on {piecesStr} for {config.OptConfig.NumTrainingPositions} pos on device {string.Join(",", config.ExecConfig.DeviceIDs)}";
-      CeresTrainCommandTrain boardTrain = new(config, trainingDescription);
+      CeresTrainCommandTrain boardTrain = new(config, trainingDescription, consoleStatusTable);
       TrainingResultSummary trainResult = boardTrain.DoTrain(trainingDescription);
       trainResult = trainResult with { TrainingLogFileName = logger.LiveLogFileName };
 
@@ -75,11 +75,12 @@ namespace CeresTrain.TrainCommands
     /// <param name="hostPathToOutput"></param>
     /// <param name="config"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunRemoteWSL(string ceresTrainPyDir, string configID, string hostPathToOutput, in ConfigTraining config)
+    public static TrainingResultSummary RunRemoteWSL(string ceresTrainPyDir, string configID, string hostPathToOutput,
+                                                     in ConfigTraining config, TrainingStatusTable trainingStatusTable)
     {
       string configFullPath = $"{hostPathToOutput}/configs/{configID}";
 
-      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue("wsl", ceresTrainPyDir, configID, in config, configFullPath);
+      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue("wsl", ceresTrainPyDir, configID, in config, configFullPath, trainingStatusTable);
       DateTime startTime = DateTime.Now;
 
       string netOutputPath = $"{hostPathToOutput}/nets";
@@ -94,8 +95,11 @@ namespace CeresTrain.TrainCommands
         CreateNoWindow = true
       };
 
-      Console.WriteLine();
-      ConsoleUtils.WriteLineColored(ConsoleColor.Blue, "Launching on WSL (localhost): " + startInfo.Arguments);
+      lock (trainingStatusTable)
+      {
+        Console.WriteLine();
+        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, "Launching on WSL (localhost): " + startInfo.Arguments);
+      }
 
       using Process process = new Process { StartInfo = startInfo };
       process.Start();
@@ -110,7 +114,7 @@ namespace CeresTrain.TrainCommands
           string line = process.StandardOutput.ReadLine();
           logger.AddLine(line);
 
-          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, ref startTime, ref numTrainLinesSeen, line);
+          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, configID, ref startTime, ref numTrainLinesSeen, line);
 
           if (line.Contains(END_TRAINING_PHRASE))
           {
@@ -141,24 +145,38 @@ namespace CeresTrain.TrainCommands
     /// <param name="hostName"></param>
     /// <param name="userName"></param>
     /// <param name="hostWorkingDir"></param>
-    /// <param name="configID"></param>
+    /// <param name="configBasePath"></param>
     /// <param name="configPath"></param>
     /// <param name="config"></param>
     /// <param name="saveNetDirectory"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configID,
-                                                     string configPath, in ConfigTraining config, string saveNetDirectory)
+    public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configBasePath,
+                                                     string configPath, in ConfigTraining config, string saveNetDirectory,
+                                                     string dockerLaunchCommand,
+                                                     TrainingStatusTable trainingStatusTable)
     {
-      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, hostWorkingDir, configID, in config, configPath);
+      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, hostWorkingDir, configBasePath, in config, configPath, trainingStatusTable);
 
       DateTime startTime = DateTime.Now;
 
+      if (config.ExecConfig.RunInDocker)
+      {
+        if (dockerLaunchCommand == null)
+        {
+          throw new Exception("Docker requestd but host configuration is missing required launch command.");
+        }
+      }
+      else
+      {
+        dockerLaunchCommand = null;
+      }
+
       consoleStatusTable.RunTraining(() =>
       {
-        DoGoRemote(consoleStatusTable, logger, hostName, userName, hostWorkingDir, configPath, saveNetDirectory);
+        DoGoRemote(consoleStatusTable, logger, hostName, userName, dockerLaunchCommand, hostWorkingDir, configPath, saveNetDirectory);
       });
 
-      return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configID, startTime, logger, consoleStatusTable);
+      return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configBasePath, startTime, logger, consoleStatusTable);
     }
 
 
@@ -168,35 +186,53 @@ namespace CeresTrain.TrainCommands
     const string END_TRAINING_PHRASE = "INFO: EXIT_STATUS";
 
     static void DoGoRemote(TrainingStatusTable table, FileLogger logger,
-                          string hostName, string userName, string baseDir,
-                          string configID, string saveNetDirectory)
+                           string hostName, string userName, 
+                           string dockerLaunchCommand, string baseDir,
+                           string configBasePath, string saveNetDirectory)
     {
       using SSHClient sshClientx = new SSHClient(hostName, userName);
       sshClientx.CheckSSHClientConnected();
 
       SshClient sshClient = sshClientx.SSHExecClient;
       sshClient.Connect();
-      Console.WriteLine();
-      Console.WriteLine("Connected to " + hostName);
+
+      lock (table)
+      {
+        Console.WriteLine();
+        Console.WriteLine("Connected to " + hostName);
+      }
 
       int numTrainLinesSeen = 0;
       DateTime startTime = default;
 
-      string command = $"cd {baseDir} && python3 train.py {configID} {saveNetDirectory}";
+      string command = $"cd {baseDir} && python3 train.py {configBasePath} {saveNetDirectory}";
 
-      Console.WriteLine();
-      ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"Launching on {hostName} as {userName} via SSH: " + command);
+      if (dockerLaunchCommand != null)
+      {
+        command = $"{dockerLaunchCommand} -c bash \"{command}\"";
+      } 
+
+      lock (table)
+      {
+        Console.WriteLine();
+        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"Launching on {hostName} as {userName} via SSH: {command}");
+      }
 
       using (ShellStream shellStream = sshClient.CreateShellStream("CeresTrainPy_remote_" + Environment.MachineName, 80, 24, 800, 600, 1024))
       {
-        // Writing command to the shell stream and executing it
-        shellStream.WriteLine(command);
+        lock (table)
+        {
 
-        // Final command to exit the shell.
-        shellStream.WriteLine("exit");
+          // Writing command to the shell stream and executing it
+          shellStream.WriteLine(command);
 
-        Console.WriteLine("Beginning initialization/execution of train.py...");
-        Console.WriteLine();
+          // Final command to exit the shell.
+          shellStream.WriteLine("exit");
+
+          Console.WriteLine($"Beginning initialization/execution of train.py on for {configBasePath}...");
+          Console.WriteLine();
+        }
+
         int numLinesRead = 0;
         while (true)
         {
@@ -208,15 +244,17 @@ namespace CeresTrain.TrainCommands
           }
           catch (Exception)
           {
-            if (numLinesRead == 0)
+            lock (table)
             {
-              ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"Immediate error/disconnected received from host {hostName} with command {command}");
-              Environment.Exit(3);
-            }
-            else
-            {
-              ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"After {numLinesRead} lines received from host {hostName}, error/disconnected received. See log file at {logger.LiveLogFileName}");
-              Environment.Exit(3);
+
+              if (numLinesRead == 0)
+              {
+                ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"Immediate error/disconnect received from host {hostName} with command {command} for {configBasePath}");
+              }
+              else
+              {
+                ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"After {numLinesRead} lines received from host {hostName} for {configBasePath}, error/disconnected received. See log file at {logger.LiveLogFileName}");
+              }
             }
           }
 
@@ -228,7 +266,8 @@ namespace CeresTrain.TrainCommands
           else
           {
             logger.AddLine(line);
-            CeresTrainCommandUtils.UpdateTableWithLine(table, ref startTime, ref numTrainLinesSeen, line);
+            string configID = new FileInfo(configBasePath).Name;
+            CeresTrainCommandUtils.UpdateTableWithLine(table, configID, ref startTime, ref numTrainLinesSeen, line);
 
             if (line.StartsWith(END_TRAINING_PHRASE))
             {

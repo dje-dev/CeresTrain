@@ -15,7 +15,7 @@
 
 using System;
 using System.Collections.Generic;
-
+using System.Threading.Tasks;
 using CeresTrain.Trainer;
 using CeresTrain.UserSettings;
 
@@ -39,10 +39,67 @@ namespace CeresTrain.TrainCommands
     /// <param name="numPositions"></param>
     /// <param name="variantModifiers"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] TestBatch(in ConfigTraining baseConfig, string piecesString,
-                                                    in CeresTrainHostConfig hostConfig,
-                                                    string tpgDir, int[] deviceIDs, long numPositions,
-                                                    params (string variantID, Func<ConfigTraining, ConfigTraining> modifier)[] variantModifiers)
+    public static TrainingResultSummary[] TestBatchParallel(string piecesString, long numPositions,
+                                                            params (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig, Func<ConfigTraining, ConfigTraining> modifier)[] variants)
+    {
+      CeresTrainInitialization.InitializeCeresTrainEnvironment();
+
+      TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", numPositions, true);
+
+      List<TrainingResultSummary> results = new();
+
+      object lockObj = new();
+
+      string configsDir = CeresTrainUserSettingsManager.Settings.OutputsDir + "/configs";
+      Parallel.ForEach(variants, variant =>
+      {
+        string fullConfigID = variant.baseConfig.ExecConfig.ID + "_" + variant.variantID;
+        ConfigTraining config = variant.baseConfig;
+        config = variant.modifier(config);
+        CeresTrainCommands.ProcessInitCommand(in config, fullConfigID);
+
+        lock (lockObj)
+        {
+          Console.WriteLine();
+          Console.WriteLine("Writing config " + fullConfigID);
+          Console.WriteLine();
+          Console.WriteLine("Launch " + fullConfigID + " on " + variant.hostConfig.HostName + " ...");
+        }
+
+        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions, variant.hostConfig.HostName, variant.tpgDir, variant.deviceIDs, sharedStatusTable);
+
+        lock (lockObj)
+        {
+          results.Add(result);
+          Console.WriteLine("Done execution " + fullConfigID);
+          Console.WriteLine(result.WriteJSON(configsDir, fullConfigID));
+        } 
+      });
+
+      Console.WriteLine();
+      foreach (TrainingResultSummary result in results)
+      {
+        Console.WriteLine(result.ConfigID + " " + result.LossSummary.ValueAccuracy + " " + result.LossSummary.PolicyLoss + " " + result.LossSummary.PolicyAccuracy);
+      }
+
+      return results.ToArray();
+    }
+
+
+    /// <summary>
+    /// Runs a series of training configurations on specified host/device.
+    /// </summary>
+    /// <param name="baseConfig"></param>
+    /// <param name="piecesString"></param>
+    /// <param name="hostConfig"></param>
+    /// <param name="deviceIDs"></param>
+    /// <param name="numPositions"></param>
+    /// <param name="variantModifiers"></param>
+    /// <returns></returns>
+    public static TrainingResultSummary[] TestBatchSerial(in ConfigTraining baseConfig, string piecesString,
+                                                          in CeresTrainHostConfig hostConfig,
+                                                          string tpgDir, int[] deviceIDs, long numPositions,
+                                                          params (string variantID, Func<ConfigTraining, ConfigTraining> modifier)[] variantModifiers)
     {
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
@@ -62,7 +119,8 @@ namespace CeresTrain.TrainCommands
 
         Console.WriteLine();
         Console.WriteLine("Launch " + fullConfigID + " on " + hostConfig.HostName + " ...");
-        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions, hostConfig.HostName, tpgDir, deviceIDs);
+        TrainingStatusTable sharedStatusTable = new TrainingStatusTable(fullConfigID, fullConfigID, numPositions, true);
+        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions, hostConfig.HostName, tpgDir, deviceIDs, sharedStatusTable);
         results.Add(result);
         Console.WriteLine("Done execution " + fullConfigID);
         Console.WriteLine(result.WriteJSON(configsDir, fullConfigID));

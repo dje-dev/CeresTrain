@@ -29,7 +29,7 @@ using static TorchSharp.torch;
 
 namespace CeresTrain.TrainCommands
 {
-  internal static class CeresTrainInitialization
+  public static class CeresTrainInitialization
   {
     /// <summary>
     /// Verifies that the system prerequisites for running the example code are met.

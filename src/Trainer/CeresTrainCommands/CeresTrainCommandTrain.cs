@@ -99,9 +99,9 @@ namespace CeresTrain.Trainer
 
     int numBatchesProcessed;
 
-    public CeresTrainCommandTrain(in ConfigTraining config, string description) : base(in config)
+    public CeresTrainCommandTrain(in ConfigTraining config, string description, TrainingStatusTable statusTable) : base(in config)
     {
-      consoleStatusTable = new TrainingStatusTable(config.ExecConfig.ID, description, config.OptConfig.NumTrainingPositions);
+      consoleStatusTable = statusTable;
     }
 
 
@@ -265,7 +265,7 @@ namespace CeresTrain.Trainer
           if (numRead > MaxPositions)
           {
             // End training.Dump stats one last time and save final network.
-            DumpTrainingStatsToConsole(value, policy, mlh, unc, ref numRead);
+            DumpTrainingStatsToConsole("LOCAL", value, policy, mlh, unc, ref numRead);
             SaveNetwork(model, optimizer, false);
 
             break;
@@ -273,7 +273,7 @@ namespace CeresTrain.Trainer
 
           if (dumpStatsThisBatch)
           {
-            DumpTrainingStatsToConsole(value, policy, mlh, unc, ref numRead);
+            DumpTrainingStatsToConsole("LOCAL", value, policy, mlh, unc, ref numRead);
           }
 
           batchId++;
@@ -553,7 +553,7 @@ namespace CeresTrain.Trainer
       {
         scheduler.step();
 
-        consoleStatusTable = new(TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions);
+        consoleStatusTable = new (TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions, false);
 
         consoleStatusTable.RunTraining(
           () => Train(TrainingConfig.ExecConfig.ID, model, optimizer, valueLoss,

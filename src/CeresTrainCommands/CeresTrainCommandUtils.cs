@@ -14,7 +14,9 @@
 #region Using directives
 
 using System;
+using System.Collections;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 using Ceres.Base.Misc;
@@ -61,7 +63,8 @@ namespace CeresTrain.TrainCommands
     /// <param name="configPath"></param>
     /// <returns></returns>
     internal static (FileLogger, TrainingStatusTable) DoTrainingPrologue(string trainingHost, string ceresTrainPyDir,
-                                                                         string configID, in ConfigTraining config, string configPath)
+                                                                         string configID, in ConfigTraining config, string configPath,
+                                                                         TrainingStatusTable trainingStatusTable)
     {
       ConfigSerializationJSON.DumpJSONToConsole(configID);
       Console.WriteLine();
@@ -71,14 +74,21 @@ namespace CeresTrain.TrainCommands
 
       FileLogger logger = CreateLogger(configID, configPath);
 
-      Console.WriteLine();
-      ConsoleUtils.WriteLineColored(ConsoleColor.Cyan, $"Ceres Training on {trainingHost} of {config.NetDefConfig} net ");
-      ConsoleUtils.WriteLineColored(ConsoleColor.Cyan, $"Config: {configPath} for {config.OptConfig.NumTrainingPositions:N0} positions"
-                                                    + (ceresTrainPyDir == null ? "" : $"(in directory {ceresTrainPyDir})"));
+      if (trainingStatusTable == null)
+      {
+        string infoStr = config.TrainingDescriptionStr(trainingHost, ceresTrainPyDir);
+        trainingStatusTable = new TrainingStatusTable(configPath, infoStr, config.OptConfig.NumTrainingPositions, false);
+      }
 
-      string infoStr = config.TrainingDescriptionStr(trainingHost, ceresTrainPyDir);
-      TrainingStatusTable consoleStatusTable = new TrainingStatusTable(configPath, infoStr, config.OptConfig.NumTrainingPositions);
-      return (logger, consoleStatusTable);
+      lock (trainingStatusTable)
+      {
+        Console.WriteLine();
+        ConsoleUtils.WriteLineColored(ConsoleColor.Cyan, $"Ceres Training on {trainingHost} of {config.NetDefConfig} net ");
+        ConsoleUtils.WriteLineColored(ConsoleColor.Cyan, $"Config: {configPath} for {config.OptConfig.NumTrainingPositions:N0} positions"
+                                                      + (ceresTrainPyDir == null ? "" : $"(in directory {ceresTrainPyDir})"));
+      }
+
+      return (logger, trainingStatusTable);
     }
 
 
@@ -137,19 +147,20 @@ namespace CeresTrain.TrainCommands
       string savedTSFilename = tsFileName == null ? null : Path.Combine(netsDir, tsFileName);
 
       TrainingLossSummary lossSummary = default;
-      if (consoleStatusTable.TrainingStatusRecords.Count > 0)
+      TrainingStatusTable.TrainingStatusRecord[] records = consoleStatusTable.TrainingStatusRecords.Where(s => s.configID == configID).ToArray();
+      if (records .Length > 0)
       {
         lossSummary = new()
         {
-          PolicyAccuracy = consoleStatusTable.TrainingStatusRecords[^1].PolicyAcc,
-          ValueAccuracy = consoleStatusTable.TrainingStatusRecords[^1].ValueAcc,
-          TotalLoss = consoleStatusTable.TrainingStatusRecords[^1].TotalLoss,
-          ValueLoss = consoleStatusTable.TrainingStatusRecords[^1].ValueLoss,
-          PolicyLoss = consoleStatusTable.TrainingStatusRecords[^1].PolicyLoss
+          PolicyAccuracy = records[^1].PolicyAcc,
+          ValueAccuracy = records[^1].ValueAcc,
+          TotalLoss = records[^1].TotalLoss,
+          ValueLoss = records[^1].ValueLoss,
+          PolicyLoss = records[^1].PolicyLoss
         };
       }
 
-      TrainingStatusTable.TrainingStatusRecord last = consoleStatusTable.TrainingStatusRecords.Count > 0 ? consoleStatusTable.TrainingStatusRecords[^1] : default;
+      TrainingStatusTable.TrainingStatusRecord last = records.Length > 0 ? records[^1] : default;
       TrainingResultSummary result = new TrainingResultSummary(Environment.MachineName, trainingHost, configID, DateTime.Now, exitStatus,
                                                                numParameters, DateTime.Now - startTime, last.NumPositions,
                                                                lossSummary, logger.LiveLogFileName, savedTSFilename, null);
@@ -165,7 +176,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="startTime"></param>
     /// <param name="numTrainLinesSeen"></param>
     /// <param name="line"></param>
-    internal static void UpdateTableWithLine(TrainingStatusTable table, ref DateTime startTime, ref int numTrainLinesSeen, string line)
+    internal static void UpdateTableWithLine(TrainingStatusTable table, string configID, ref DateTime startTime, ref int numTrainLinesSeen, string line)
     {
       if (line.StartsWith("TRAIN:"))
       {
@@ -181,7 +192,7 @@ namespace CeresTrain.TrainCommands
         }
 
         float elapsedSeconds = (float)(DateTime.Now - startTime).TotalSeconds;
-        table.UpdateInfo(DateTime.Now, elapsedSeconds, trainingData.NumPos, trainingData.TotalLoss,
+        table.UpdateInfo(DateTime.Now, configID, elapsedSeconds, trainingData.NumPos, trainingData.TotalLoss,
                          trainingData.LastValueLoss, 0.01f * trainingData.LastValueAcc,
                          trainingData.LastPolicyLoss, 0.01f * trainingData.LastPolicyAcc,
                         //                     trainingData.LastMlhLoss, trainingData.LastUncLoss, 
