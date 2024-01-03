@@ -13,10 +13,10 @@
 
 #region Using directives
 
-using ManagedCuda.BasicTypes;
-using Spectre.Console;
 using System;
 using System.Collections.Generic;
+
+using Spectre.Console;
 
 #endregion
 
@@ -70,11 +70,24 @@ namespace CeresTrain.Trainer
     DateTime lastTime;
     DateTime startTime;
 
+    Dictionary<string, (DateTime, long)> priorLastRows = new();
+
     public override void UpdateInfo(string configID, int numRowsAdded, bool endRow, float posPerSecond, DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc, float curLR)
     {
 
       lock(lockObj)
       {
+        // Compute posPerSecond which is specific for this config.
+        (DateTime, long) thisPriorLast;
+        posPerSecond = 0;
+        if (priorLastRows.TryGetValue(configID, out thisPriorLast))
+        {
+          float elapsedTime = (float)(DateTime.Now - thisPriorLast.Item1).TotalSeconds;
+          long elapsedRows = numPositions - thisPriorLast.Item2;
+          posPerSecond = elapsedRows / elapsedTime;
+        }
+        priorLastRows[configID] = (DateTime.Now, numPositions);
+
         Lasts[configID] = [configID, 
                            numPositions.ToString(),
                            MathF.Round(posPerSecond, 0).ToString(), MathF.Round(totalLoss, 3).ToString(),
@@ -90,14 +103,13 @@ namespace CeresTrain.Trainer
           {
             table.RemoveRow(0);
           }
-          foreach (var x in Lasts)
+          foreach (KeyValuePair<string, string[]> configs in Lasts)
           {
             List<string> columns = new();
             columns.Add(DateTime.Now.ToString("HH\\:mm\\:ss"));          
             columns.Add(Math.Round(tableElapsedSecs, 0).ToString());
-            columns.AddRange(x.Value);
+            columns.AddRange(configs.Value);
             table.AddRow(columns.ToArray());
-
           }
           AnsiConsole.Write(table);
           lastTime = DateTime.Now;
