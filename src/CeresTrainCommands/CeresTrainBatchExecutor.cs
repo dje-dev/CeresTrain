@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using CeresTrain.Trainer;
 using CeresTrain.UserSettings;
@@ -42,6 +43,13 @@ namespace CeresTrain.TrainCommands
     public static TrainingResultSummary[] TestBatchParallel(string piecesString, long numPositions,
                                                             params (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig, Func<ConfigTraining, ConfigTraining> modifier)[] variants)
     {
+      // Throw exception if any of the variants have the same ID
+      string[] variantsArray = variants.Select(v => v.variantID).ToArray();
+      if (variantsArray.Distinct().Count() != variantsArray.Length)
+      {
+        throw new Exception("Duplicate variant IDs in variants array");
+      }
+
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
       TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", numPositions, true);
@@ -101,6 +109,13 @@ namespace CeresTrain.TrainCommands
                                                           string tpgDir, int[] deviceIDs, long numPositions,
                                                           params (string variantID, Func<ConfigTraining, ConfigTraining> modifier)[] variantModifiers)
     {
+      // Throw exception if any of the variants have the same ID
+      string[] variantsArray = variantModifiers.Select(v => v.variantID).ToArray();
+      if (variantsArray.Distinct().Count() != variantsArray.Length)
+      {
+        throw new Exception("Duplicate variant IDs in variants array");
+      }
+
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
       List<TrainingResultSummary> results = new();
