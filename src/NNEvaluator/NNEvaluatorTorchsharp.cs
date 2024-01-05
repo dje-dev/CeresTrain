@@ -71,12 +71,12 @@ namespace CeresTrain.NNEvaluators
     /// <param name="lastMovePliesEnabled"></param>
     public NNEvaluatorTorchsharp(ICeresNeuralNetDef ceresTransformerNetDef,
                                  ConfigNetExecution configNetExec,
-                                 bool includeHistory,
                                  bool lastMovePliesEnabled = false)
       : this(new ModuleNNEvaluatorFromTorchScript(ceresTransformerNetDef, configNetExec),
                                                   configNetExec.Device, configNetExec.DataType,
-                                                  includeHistory, lastMovePliesEnabled)
+                                                  configNetExec.UseHistory, lastMovePliesEnabled)
     {
+      IncludeHistory = configNetExec.UseHistory;
     }
 
 

@@ -144,7 +144,7 @@ namespace CeresTrain.Examples
     public static NNEvaluatorTorchsharp GetNNEvaluator(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
                                                        string netFN, bool useBestValueRepetitionHeuristic)
     {
-      NNEvaluatorTorchsharp evaluator = new(netDef, execConfig with { SaveNetwork1FileName = netFN }, false);
+      NNEvaluatorTorchsharp evaluator = new(netDef, execConfig with { SaveNetwork1FileName = netFN });
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -167,13 +167,15 @@ namespace CeresTrain.Examples
                                                       SearchLimit searchLimit, int numGamePairs = 50, bool verbose = false, 
                                                       bool opponentTablebasesEnabled = false)
     {
+      bool useHistory = execConfig.UseHistory;
+
       EnginePlayerDef player1;
       EnginePlayerDef player2;
 
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec);
+        InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, useHistory);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
       }
@@ -429,7 +431,7 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions, 
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
+      InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory);
       Ceres.Program.LaunchUCI(["network=CUSTOM1"], (ParamsSearch search) => { search.EnableTablebases = false; });
     }
 
@@ -471,10 +473,14 @@ namespace CeresTrain.Examples
     /// <param name="ceresDeviceSpec"></param>
     public static void InstallCustomEvaluator(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig, 
                                               string netFN, PositionGenerator posGenerator,
-                                              string lc0NetToUseForUncoveredPositions, string ceresDeviceSpec)
+                                              string lc0NetToUseForUncoveredPositions, string ceresDeviceSpec,
+                                              bool useHistory)
     {
+      ArgumentNullException.ThrowIfNullOrEmpty(netFN);
+
+      bool useBestValueRepetitionHeuristic = !useHistory;
       // Create evaluator for the specified trained neural network and also a fallback LC0 network.
-      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig,  netFN, true);
+      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
       if (lc0NetToUseForUncoveredPositions != null)
       {
         NNEvaluator evaluatorLC0 = NNEvaluator.FromSpecification(lc0NetToUseForUncoveredPositions, ceresDeviceSpec);

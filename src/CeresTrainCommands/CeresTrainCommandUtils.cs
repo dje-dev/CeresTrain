@@ -31,7 +31,7 @@ namespace CeresTrain.TrainCommands
   /// <summary>
   /// Miscellaneous static utility methods for CeresTrain commands.
   /// </summary>
-  internal static class CeresTrainCommandUtils
+  public static class CeresTrainCommandUtils
   {
     /// <summary>
     /// Creates and initializes a logger for the training process.
@@ -206,7 +206,7 @@ namespace CeresTrain.TrainCommands
     /// </summary>
     /// <param name="config"></param>
     /// <returns></returns>
-    internal static TrainingResultSummary? ReadResultsForConfig(string config)
+    public static TrainingResultSummary? ReadResultsForConfig(string config)
     {
       string resultsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "results");
       string resultsFileName = Path.Combine(resultsDir, config + "_results.json");
@@ -236,7 +236,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="config"></param>
     /// <param name="configsDir"></param>
     /// <returns></returns>
-    internal static bool CheckConfigFound(string config, string configsDir)
+    public static bool CheckConfigFound(string config, string configsDir)
     {
       if (config == null)
       {

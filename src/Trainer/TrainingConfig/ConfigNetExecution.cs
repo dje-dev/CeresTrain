@@ -136,6 +136,11 @@ namespace CeresTrain.Trainer
     public readonly bool UseFP8 { get; init; } = false;
 
     /// <summary>
+    /// If true, include history in the training data.
+    /// </summary>
+    public bool UseHistory { get; init; } = false;
+
+    /// <summary>
     /// If training session should be run under specified host docker launch command.
     /// </summary>
     public readonly bool RunInDocker { get; init; } = false;
