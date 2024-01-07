@@ -111,7 +111,7 @@ class Configuration:
 
     # SoftMoEConfig is a nested structure, so it requires special handling
     soft_moe_config = config_net_def.get('SoftMoEConfig', {})
-    self.NetDef_SoftMoE_MoEMode = soft_moe_config.get('MoEMode', 0)
+    self.NetDef_SoftMoE_MoEMode = soft_moe_config.get('MoEMode', 'None')
     self.NetDef_SoftMoE_OnlyForAlternatingLayers = soft_moe_config.get('OnlyForAlternatingLayers', True)
     self.NetDef_SoftMoE_NumExperts = soft_moe_config.get('NumExperts', 0)
     self.NetDef_SoftMoE_NumSlotsPerExpert = soft_moe_config.get('NumSlotsPerExpert', 0)

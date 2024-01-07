@@ -26,7 +26,7 @@ class EncoderLayer(torch.nn.Module):
   def __init__(self, num_layers: int, hidden_size: int, ffn_hidden_size: int, 
                 num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps: int = 1e-5, 
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, smolgenPrepLayer = None,
-                attention_multiplier : int = 1, smoe_num_experts : int = 0,
+                attention_multiplier : int = 1, smoe_mode : str = 'None', smoe_num_experts : int = 0,
                 alpha : float = 1, layerNum : int = 0, dropout_rate:float = 0):
     super().__init__()
 
@@ -52,6 +52,7 @@ class EncoderLayer(torch.nn.Module):
     SMOE_USE_NORMALIZATION = False
     SMOE_ONLY_SECOND_LAYER = True
     SMOE_USE_BIAS = True
+    self.smoe_mode = smoe_mode
     
     if (smoe_num_experts > 0 and layerNum % 2 == 1):
       self.moe = SoftMoEBatchedDual(dim=hidden_size, ffn_dim=ffn_hidden_size,
@@ -70,10 +71,15 @@ class EncoderLayer(torch.nn.Module):
     if (self.dropout_rate > 0):
       attn_output = self.dropout_attn(attn_output)
 
-    out1 = self.ln1(x * self.alpha + attn_output)        
+    out1 = self.ln1(x * self.alpha + attn_output)
     (mlp_before_linear2, mlp_output) = self.mlp(out1) 
     if self.moe:
+      if self.smoe_mode == 'AddLinearSecondLayer':
         mlp_output += self.moe(mlp_before_linear2)
+      elif self.smoe_mode == 'ReplaceLinearSecondLayer':
+        mlp_output = self.moe(mlp_before_linear2)
+      else:
+        assert False, f"Invalid smoe_mode {self.smoe_mode}"
 
     if self.dropout_rate > 0:
       mlp_output = self.dropout_mlp(mlp_output)

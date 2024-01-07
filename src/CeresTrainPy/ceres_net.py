@@ -143,7 +143,7 @@ class CeresNet(pl.LightningModule):
     ATTENTION_MULTIPLIER = config.NetDef_AttentionMultiplier
 
     if config.NetDef_SoftMoE_NumExperts > 0:
-      assert config.NetDef_SoftMoE_MoEMode == "AddLinearSecondLayer", 'implementation restriction: only AddLinearSecondLayer currently supported'
+      assert config.NetDef_SoftMoE_MoEMode in ("None", "AddLinearSecondLayer", "ReplaceLinearSecondLayer"), 'implementation restriction: only AddLinearSecondLayer currently supported'
       assert config.NetDef_SoftMoE_NumSlotsPerExpert == 1
       assert config.NetDef_SoftMoE_UseBias == True
       assert config.NetDef_SoftMoE_UseNormalization == False
@@ -160,6 +160,7 @@ class CeresNet(pl.LightningModule):
                                                                 ffn_activation_type = config.NetDef_FFNActivationType, 
                                                                 norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
                                                                 attention_multiplier = ATTENTION_MULTIPLIER,
+                                                                smoe_mode = config.NetDef_SoftMoE_MoEMode,
                                                                 smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
                                                                 smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
                                                                 smolgen_intermediate_dim = SMOLGEN_INTERMEDIATE_DIM, 
