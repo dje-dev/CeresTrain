@@ -39,8 +39,13 @@ namespace CeresTrain.NNIntrospection
     public int NumAdded => averageExpertWeights.Count;
     
     List<(Position, float[], float[])> averageExpertWeights = new();
+
     float[,] sumWeightsPerSquarePerExpertCombine;
     float[,] sumWeightsPerExpertPerSquareDispatch;
+
+    float[,] sumWeightsPerPiecePerExpertCombine;
+    float[,] sumWeightsPerExpertPerPieceDispatch;
+    float[] sumPieceCounts;
 
 
     /// <summary>
@@ -61,6 +66,9 @@ namespace CeresTrain.NNIntrospection
       averageExpertWeights.Clear();
       Array.Clear(sumWeightsPerSquarePerExpertCombine);
       Array.Clear(sumWeightsPerExpertPerSquareDispatch);
+      Array.Clear(sumWeightsPerPiecePerExpertCombine);
+      Array.Clear(sumWeightsPerExpertPerPieceDispatch);
+      Array.Clear(sumPieceCounts);
     }
 
 
@@ -75,6 +83,10 @@ namespace CeresTrain.NNIntrospection
       {
         sumWeightsPerSquarePerExpertCombine = new float[64, combineMatrix.GetLength(1)];
         sumWeightsPerExpertPerSquareDispatch = new float[combineMatrix.GetLength(1), 64];
+
+        sumWeightsPerPiecePerExpertCombine = new float[13, combineMatrix.GetLength(1)];
+        sumWeightsPerExpertPerPieceDispatch = new float[combineMatrix.GetLength(1), 13];
+        sumPieceCounts = new float[13];
       }
 
       float[] avgsByExpert = new float[combineMatrix.GetLength(1)];
@@ -90,6 +102,14 @@ namespace CeresTrain.NNIntrospection
           avgsBySquare[squareIndex] += dispatchMatrix[expertIndex, squareIndex] / 64;
           sumWeightsPerSquarePerExpertCombine[squareIndex, expertIndex] += thisWeightCombine;
           sumWeightsPerExpertPerSquareDispatch[expertIndex, squareIndex] += thisWeightDispatch;
+
+          // Update piece statistics.
+          Piece thisPiece = pos[new Square(squareIndex)];
+
+          int pieceIndex = ToPieceIndex(pos.SideToMove, thisPiece);
+          sumPieceCounts[pieceIndex] += 1;
+          sumWeightsPerPiecePerExpertCombine[pieceIndex, expertIndex] += thisWeightCombine;
+          sumWeightsPerExpertPerPieceDispatch[expertIndex, pieceIndex] += thisWeightDispatch;
         }
       }
 
@@ -158,6 +178,28 @@ namespace CeresTrain.NNIntrospection
       DumpBySquareByExpert("SQUARE AVERAGE EXPERT WEIGHTS (how much weight does a square receive from each expert's output?)", (s, e) => sumWeightsPerSquarePerExpertCombine[s, e], 0.075f);
       DumpBySquareByExpert("EXPERT AVERAGE SQUARE WEIGHTS (how much weight does an expert receive as input from each square?)", (s, e) => sumWeightsPerExpertPerSquareDispatch[e, s], 0.04f);
 
+      Console.WriteLine("\r\nAVERAGE PER PIECE TYPE DISPATCH WEIGHTS");
+      for (int i = 0; i < 13; i++)
+      {
+        Console.Write($"PIECE {FromPieceIndex(i), 15}");
+        for (int j=0; j<NumExperts;j++)
+        {
+          Console.Write($"{100 * sumWeightsPerExpertPerPieceDispatch[j, i] / sumPieceCounts[i],7:N2} ");
+        }
+        Console.WriteLine();
+      }
+
+      Console.WriteLine("\r\nAVERAGE PER PIECE TYPE COMBINE WEIGHTS");
+      for (int i = 0; i < 13; i++)
+      {
+        Console.Write($"PIECE {FromPieceIndex(i), 15}");
+        for (int j = 0; j < NumExperts; j++)
+        {
+          Console.Write($"{100 * sumWeightsPerPiecePerExpertCombine[i, j] / sumPieceCounts[i],7:N2} ");
+        }
+        Console.WriteLine();
+      }
+
       Console.WriteLine("\r\nAVERAGE SQUARE WEIGHTS");
       for (int i = 0; i < 64; i++)
       {
@@ -208,5 +250,35 @@ namespace CeresTrain.NNIntrospection
         Console.WriteLine();
       }
     }
+
+    #region Helpers
+
+    static string FromPieceIndex(int index)
+    {
+      if (index == 0)
+      {
+        return "empty";
+      }
+      else
+      {
+        PieceType type = index < 7 ? (PieceType)(index) : (PieceType)(index - 6);
+        return (index < 7 ? "player_" : "opponent_") + type.ToString();
+      }
+    }
+
+    static int ToPieceIndex(SideType sideToMove, Piece piece)
+    {
+      if (piece.Type == PieceType.None)
+      {
+        return 0;
+      }
+      else
+      {
+        return piece.Side == sideToMove ? (int)piece.Type : 7 + ((int)piece.Type - 1);
+      }
+    }
+
+
+    #endregion
   }
 }
