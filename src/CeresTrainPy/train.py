@@ -111,9 +111,6 @@ time_last_save_transient = datetime.datetime.now()
 def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any], net_step : str, save_onnx : str):
   CKPT_NAME = "ckpt_" + NAME + "_" + net_step
 
-  # save PyTorch checkpoint
-  fabric.save(os.path.join(SAVE_NET_DIR, CKPT_NAME), state)
-
   # save as TorchScript file
   SAVE_TS_NAME = CKPT_NAME + ".ts"
   SAVE_TS_PATH = os.path.join(SAVE_NET_DIR, SAVE_TS_NAME)
@@ -122,7 +119,6 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
 
   # TODO: consider using lightning/fabric directly?  to_torchscript(file_path=None, method='script', example_inputs=None, **kwargs)
   with torch.no_grad():
-    #model.load_state_dict(saved["model"])
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
@@ -172,7 +168,15 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
 
     except Exception as e:
       print(f"Warning: ONNX save failed, skipping. Exception details: {e}")
-     
+
+    # Save PyTorch checkpoint.
+    # N.B. If running multi-GPU, this tends to hang for unknown reasons.
+    #      Therefore if multi-GPU do not checkpoint (unless triggered with special file)
+    if devices.count == 1 or os.path.isfile("FORCE_CHECKPOINT"): # or net_step == "final" 
+      fabric.save(os.path.join(SAVE_NET_DIR, CKPT_NAME), state)
+      print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
+
+
     model.train()
 
 
