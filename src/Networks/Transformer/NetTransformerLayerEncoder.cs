@@ -216,7 +216,8 @@ namespace CeresTrain.Networks.Transformer
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: false);
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
 
-      bool useSoftMoE = (softMoEParams.NumExperts > 0)
+      bool useSoftMoE = (softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.None 
+                     && softMoEParams.NumExperts > 0)
                      && (!softMoEParams.OnlyForAlternatingLayers || (layerNum % 2 == 1));
 
       if (useSoftMoE)

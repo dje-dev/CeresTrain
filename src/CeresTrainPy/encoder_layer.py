@@ -50,9 +50,10 @@ class EncoderLayer(torch.nn.Module):
 
     SMOE_SLOTS_PER_EXPERT = 1
     SMOE_USE_NORMALIZATION = False
-    SMOE_ONLY_SECOND_LAYER = True
+    SMOE_ONLY_SECOND_LAYER = smoe_mode in ('AddLinearSecondLayer', 'ReplaceLinearSecondLayer')
     SMOE_USE_BIAS = True
     self.smoe_mode = smoe_mode
+    self.ffn_activation_type = ffn_activation_type
     
     if (smoe_num_experts > 0 and layerNum % 2 == 1):
       self.moe = SoftMoEBatchedDual(dim=hidden_size, ffn_dim=ffn_hidden_size,
@@ -72,14 +73,18 @@ class EncoderLayer(torch.nn.Module):
       attn_output = self.dropout_attn(attn_output)
 
     out1 = self.ln1(x * self.alpha + attn_output)
-    (mlp_before_linear2, mlp_output) = self.mlp(out1) 
-    if self.moe:
-      if self.smoe_mode == 'AddLinearSecondLayer':
-        mlp_output += self.moe(mlp_before_linear2)
-      elif self.smoe_mode == 'ReplaceLinearSecondLayer':
-        mlp_output = self.moe(mlp_before_linear2)
-      else:
-        assert False, f"Invalid smoe_mode {self.smoe_mode}"
+    if self.moe and self.smoe_mode == 'ReplaceLinear':
+      assert self.ffn_activation_type in ('ReLUSquared') # SoftMoEBatchedDual currently only supports ReLUSquared
+      mlp_output = self.moe(out1)
+    else:
+      (mlp_before_linear2, mlp_output) = self.mlp(out1) 
+      if self.moe:
+        if self.smoe_mode == 'AddLinearSecondLayer':
+          mlp_output += self.moe(mlp_before_linear2)
+        elif self.smoe_mode == 'ReplaceLinearSecondLayer':
+          mlp_output = self.moe(mlp_before_linear2)
+        else:
+          assert False, f"Invalid smoe_mode {self.smoe_mode}"
 
     if self.dropout_rate > 0:
       mlp_output = self.dropout_mlp(mlp_output)

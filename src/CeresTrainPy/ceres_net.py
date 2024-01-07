@@ -143,7 +143,7 @@ class CeresNet(pl.LightningModule):
     ATTENTION_MULTIPLIER = config.NetDef_AttentionMultiplier
 
     if config.NetDef_SoftMoE_NumExperts > 0:
-      assert config.NetDef_SoftMoE_MoEMode in ("None", "AddLinearSecondLayer", "ReplaceLinearSecondLayer"), 'implementation restriction: only AddLinearSecondLayer currently supported'
+      assert config.NetDef_SoftMoE_MoEMode in ("None", "ReplaceLinear", "AddLinearSecondLayer", "ReplaceLinearSecondLayer"), 'implementation restriction: only AddLinearSecondLayer currently supported'
       assert config.NetDef_SoftMoE_NumSlotsPerExpert == 1
       assert config.NetDef_SoftMoE_UseBias == True
       assert config.NetDef_SoftMoE_UseNormalization == False

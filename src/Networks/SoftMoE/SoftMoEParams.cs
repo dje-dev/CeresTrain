@@ -34,6 +34,11 @@ namespace CeresTrain.Networks.SoftMoE
     public enum SoftMoEModeType
     {
       /// <summary>
+      /// No SoftMoE.
+      /// </summary>
+      None,
+
+      /// <summary>
       /// Replace the FFN layer completely with a SoftMoE (comprised of two linear layers).
       /// </summary>
       ReplaceLinear,
