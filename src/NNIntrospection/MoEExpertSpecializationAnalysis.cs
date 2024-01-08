@@ -45,8 +45,8 @@ namespace CeresTrain.NNIntrospection
 
     float[,] sumWeightsPerPiecePerExpertCombine;
     float[,] sumWeightsPerExpertPerPieceDispatch;
-    float[] sumPieceCounts;
-
+    float[] sumPieceDispatchWeights;
+    float[] sumPieceCombineWeights;
 
     /// <summary>
     /// Constructor.
@@ -68,7 +68,8 @@ namespace CeresTrain.NNIntrospection
       Array.Clear(sumWeightsPerExpertPerSquareDispatch);
       Array.Clear(sumWeightsPerPiecePerExpertCombine);
       Array.Clear(sumWeightsPerExpertPerPieceDispatch);
-      Array.Clear(sumPieceCounts);
+      Array.Clear(sumPieceDispatchWeights);
+      Array.Clear(sumPieceCombineWeights);
     }
 
 
@@ -79,42 +80,56 @@ namespace CeresTrain.NNIntrospection
     /// <param name="combineMatrix"></param>
     public void AddPosition(Position pos, float[,] dispatchMatrix, float[,] combineMatrix)
     {
+      int numExperts = combineMatrix.GetLength(1);
+
       if (sumWeightsPerSquarePerExpertCombine == null)
       {
-        sumWeightsPerSquarePerExpertCombine = new float[64, combineMatrix.GetLength(1)];
-        sumWeightsPerExpertPerSquareDispatch = new float[combineMatrix.GetLength(1), 64];
+        sumWeightsPerSquarePerExpertCombine = new float[64, numExperts];
+        sumWeightsPerExpertPerSquareDispatch = new float[numExperts, 64];
 
-        sumWeightsPerPiecePerExpertCombine = new float[13, combineMatrix.GetLength(1)];
-        sumWeightsPerExpertPerPieceDispatch = new float[combineMatrix.GetLength(1), 13];
-        sumPieceCounts = new float[13];
+        sumWeightsPerPiecePerExpertCombine = new float[13, numExperts];
+        sumWeightsPerExpertPerPieceDispatch = new float[numExperts, 13];
+        sumPieceDispatchWeights = new float[13];
+        sumPieceCombineWeights = new float[64];
       }
 
-      float[] avgsByExpert = new float[combineMatrix.GetLength(1)];
+      float[] avgsByExpert = new float[numExperts];
       float[] avgsBySquare = new float[64];
 
       for (int squareIndex = 0; squareIndex < 64; squareIndex++)
       {
-        for (int expertIndex = 0; expertIndex < combineMatrix.GetLength(1); expertIndex++)
+        // Update piece statistics.
+        Piece thisPiece = pos[new Square(squareIndex)];
+        int pieceIndex = ToPieceIndex(pos.SideToMove, thisPiece);
+
+        if (thisPiece.Side == SideType.White && thisPiece.Type == PieceType.Rook)
         {
-          float thisWeightCombine = combineMatrix[squareIndex, expertIndex];
+//          Console.WriteLine("see white rook");
+        }
+
+        for (int expertIndex = 0; expertIndex < numExperts; expertIndex++)
+        {
           float thisWeightDispatch = dispatchMatrix[expertIndex, squareIndex];
-          avgsByExpert[expertIndex] += combineMatrix[squareIndex, expertIndex] / combineMatrix.GetLength(0);
+          float thisWeightCombine = combineMatrix[squareIndex, expertIndex];
+
+          sumPieceDispatchWeights[pieceIndex] += thisWeightDispatch;
+          sumPieceCombineWeights[pieceIndex] += thisWeightCombine;
+
+          avgsByExpert[expertIndex] += combineMatrix[squareIndex, expertIndex] / numExperts;
           avgsBySquare[squareIndex] += dispatchMatrix[expertIndex, squareIndex] / 64;
-          sumWeightsPerSquarePerExpertCombine[squareIndex, expertIndex] += thisWeightCombine;
+
           sumWeightsPerExpertPerSquareDispatch[expertIndex, squareIndex] += thisWeightDispatch;
+          sumWeightsPerSquarePerExpertCombine[squareIndex, expertIndex] += thisWeightCombine;
 
-          // Update piece statistics.
-          Piece thisPiece = pos[new Square(squareIndex)];
-
-          int pieceIndex = ToPieceIndex(pos.SideToMove, thisPiece);
-          sumPieceCounts[pieceIndex] += 1;
-          sumWeightsPerPiecePerExpertCombine[pieceIndex, expertIndex] += thisWeightCombine;
           sumWeightsPerExpertPerPieceDispatch[expertIndex, pieceIndex] += thisWeightDispatch;
+          sumWeightsPerPiecePerExpertCombine[pieceIndex, expertIndex] += thisWeightCombine;
+
         }
       }
 
       averageExpertWeights.Add((pos, avgsByExpert, avgsBySquare));
     }
+
 
 
     /// <summary>
@@ -123,7 +138,6 @@ namespace CeresTrain.NNIntrospection
     int NumExperts => averageExpertWeights[0].Item2.GetLength(0);
 
 
-    /// <summary>
     /// Dumps expert analysis to the Console.
     /// </summary>
     public void Dump()
@@ -184,7 +198,7 @@ namespace CeresTrain.NNIntrospection
         Console.Write($"PIECE {FromPieceIndex(i), 15}");
         for (int j=0; j<NumExperts;j++)
         {
-          Console.Write($"{100 * sumWeightsPerExpertPerPieceDispatch[j, i] / sumPieceCounts[i],7:N2} ");
+          Console.Write($"{sumWeightsPerExpertPerPieceDispatch[j, i] / sumPieceDispatchWeights[i],7:N2} ");
         }
         Console.WriteLine();
       }
@@ -195,7 +209,7 @@ namespace CeresTrain.NNIntrospection
         Console.Write($"PIECE {FromPieceIndex(i), 15}");
         for (int j = 0; j < NumExperts; j++)
         {
-          Console.Write($"{100 * sumWeightsPerPiecePerExpertCombine[i, j] / sumPieceCounts[i],7:N2} ");
+          Console.Write($"{sumWeightsPerPiecePerExpertCombine[i, j] / sumPieceDispatchWeights[i],7:N2} ");
         }
         Console.WriteLine();
       }
@@ -213,6 +227,17 @@ namespace CeresTrain.NNIntrospection
         Console.WriteLine($"EXPERT {i} weight {averageWeightsPerExpert[i],6:N2}");
       }
 
+      Console.WriteLine("\r\nAVERAGE PIECE DISPATCH WEIGHTS");
+      for (int i = 0; i < 13; i++)
+      {
+        Console.WriteLine($"PIECE {FromPieceIndex(i), 15} weight {this.sumPieceDispatchWeights[i],6:N2}");
+      }
+
+      Console.WriteLine("\r\nAVERAGE PIECE COMBINE WEIGHTS");
+      for (int i = 0; i < 13; i++)
+      {
+        Console.WriteLine($"PIECE {FromPieceIndex(i),15} weight {this.sumPieceCombineWeights[i],6:N2}");
+      }
     }
 
     private void DumpBySquareByExpert(string title, Func<int, int, float> getWeightFunc, float minShowWeight)
