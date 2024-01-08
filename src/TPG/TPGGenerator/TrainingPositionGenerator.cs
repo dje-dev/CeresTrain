@@ -287,7 +287,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
       // Note that we set filterOutFRCGames to false here, so we can see and count them,
       // but later in this method we filter them out.
-      var reader = EncodedTrainingPositionGameReader.EnumerateGames(fn, s => true, filterOutFRCGames: false);
+      var reader = EncodedTrainingPositionReader.EnumerateGames(fn, s => true, filterOutFRCGames: false);
 
       Dictionary<ulong, int> positionUsedCountsByHash = new();
 

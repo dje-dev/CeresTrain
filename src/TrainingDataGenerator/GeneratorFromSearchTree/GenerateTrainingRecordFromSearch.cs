@@ -52,7 +52,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       // Extract one test position from a TAR file.
       const string TAR_FN = @"d:\tar\t80\training-run1-test80-20221227-0417.tar";
-      foreach (EncodedTrainingPositionGame game in EncodedTrainingPositionGameReader.EnumerateGames(TAR_FN, filterOutFRCGames: true))
+      foreach (EncodedTrainingPositionGame game in EncodedTrainingPositionReader.EnumerateGames(TAR_FN, filterOutFRCGames: true))
       {
         string fenFirstPos = game.PositionAtIndex(0).HistoryPosition(0).FEN;
         Assert.Equal(Position.StartPosition.FEN, fenFirstPos);

@@ -49,7 +49,7 @@ namespace CeresTrain.TrainingDataGenerator
       {
         var correct = EncodedTrainingPositionReaderTAREngine.EnumerateGames(correctFN, filterOutFRCGames: false).GetEnumerator();
         var test = EncodedTrainingPositionReaderTAREngine.EnumerateGames(testFN, filterOutFRCGames: false).GetEnumerator();
-        var testGameReader = EncodedTrainingPositionGameReader.EnumerateGames(testFN, filterOutFRCGames: false).GetEnumerator();
+        var testGameReader = EncodedTrainingPositionReader.EnumerateGames(testFN, filterOutFRCGames: false).GetEnumerator();
 
         while (test.MoveNext())
         {
