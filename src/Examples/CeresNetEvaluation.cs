@@ -42,6 +42,9 @@ using System.IO;
 using System.Threading.Tasks;
 using Zstandard.Net;
 using Ceres.Base.DataType;
+using Ceres.Chess.EncodedPositions;
+using CeresTrain.CeresTrainDefaults;
+using Ceres.Base.Math;
 
 #endregion 
 
@@ -52,6 +55,79 @@ namespace CeresTrain.Examples
   /// </summary>
   public static class CeresNetEvaluation
   {
+    /// <summary>
+    /// Generates a set of TPG files from LC0 training games stored in TAR or ZST training data files.
+    /// </summary>
+    /// <param name="piecesString"></param>
+    /// <param name="numPositions"></param>
+    /// <param name="tarDirectory"></param>
+    /// <param name="outputDirectory"></param>
+    public static void GenerateTPGFilesFromLC0TrainingData(string piecesString, long numPositions, string tarDirectory, string outputDirectory)
+    {
+      if (!Directory.Exists(tarDirectory))
+      {
+        throw new Exception($"Specified TAR directory {tarDirectory} does not exist.");
+      }
+
+      if (!Directory.Exists(outputDirectory))
+      {
+        Directory.CreateDirectory(outputDirectory);
+      }
+
+      PieceList pieces = null;
+      bool usePieceCountLimit = false;
+      int upperBoundCount = 0;
+
+      if (!string.IsNullOrEmpty(piecesString))
+      {
+        if (piecesString.StartsWith("<") && int.TryParse(piecesString.Substring(1), out upperBoundCount))
+        {
+          usePieceCountLimit = true;
+        }
+        else
+        {
+          pieces = new PieceList(piecesString);
+        }
+      }
+
+      ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"GenerateTPGFilesFromLC0TrainingData positions {numPositions} "
+                                                     + $"of {piecesString} from {tarDirectory} threads to {outputDirectory}");
+
+      string description = "CT";
+      int SKIP_COUNT = CeresTrainGenerateTPGDefault.SKIP_COUNT_IF_ALL_POSITIONS;
+      Predicate<Position> posPredicate = null;
+      if (usePieceCountLimit)
+      {
+        posPredicate = (Position pos) => pos.PieceCount <= upperBoundCount;
+        description+= $"_LE{upperBoundCount}";
+        SKIP_COUNT = CeresTrainGenerateTPGDefault.SKIP_COUNT_IF_FILTERED_POSITIONS;
+      }
+      else if (pieces != null)
+      {
+        posPredicate = (Position pos) => pieces.PositionMatches(pos);
+        description+= $"_{piecesString}";
+        SKIP_COUNT = CeresTrainGenerateTPGDefault.SKIP_COUNT_IF_FILTERED_POSITIONS;
+      }
+
+
+      // Launch TPG generation.
+      DateTime startTime = DateTime.Now;
+      using (new TimingBlock("GenerateTPGFilesFromLC0TrainingData"))
+      {
+        const long BLOCK_SIZE = 8192 * 1640; 
+        numPositions = MathUtils.RoundedUp(numPositions, BLOCK_SIZE);
+        CeresTrainGenerateTPGDefault.GenerateTPG(tarDirectory, outputDirectory, numPositions, description,
+                                                   (EncodedTrainingPositionGame game, int positionIndex, in Position position)
+                                                   => posPredicate(position), null, SKIP_COUNT);
+
+      }
+
+      DateTime endTime = DateTime.Now;
+      int nps = (int)((float)(numPositions) / (endTime - startTime).TotalSeconds);
+      Console.WriteLine();
+      Console.WriteLine($"Done: {nps:N0} positions per second generation to TPG files.");
+    }
+
 
     /// <summary>
     /// Generates a set of TPG files from random endgame positions having specified set of pieces.
@@ -74,7 +150,7 @@ namespace CeresTrain.Examples
       long NUM_BATCHES_TO_WRITE = numPositions / (NUM_THREADS * BATCH_SIZE);
       ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"GenerateTPGFileFromRandomTablebasePositions positions {numPositions} "
                                                      + $"of {piecesString} with {NUM_THREADS} threads to {outputDirectory}");
-
+      
       // Launch and wait for parallel threads, each writing to separate file.
       DateTime startTime = DateTime.Now;
       const bool SUCCEED_IF_INCOMPLETE_DTZ_INFORMATION = true;
@@ -175,7 +251,7 @@ namespace CeresTrain.Examples
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, useHistory);
+        InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
       }
@@ -431,7 +507,7 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions, 
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory);
+      InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
       Ceres.Program.LaunchUCI(["network=CUSTOM1"], (ParamsSearch search) => { search.EnableTablebases = false; });
     }
 
@@ -473,11 +549,11 @@ namespace CeresTrain.Examples
     /// <param name="ceresDeviceSpec"></param>
     public static void InstallCustomEvaluator(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig, 
                                               string netFN, PositionGenerator posGenerator,
-                                              string lc0NetToUseForUncoveredPositions, string ceresDeviceSpec,
-                                              bool useHistory)
+                                              string lc0NetToUseForUncoveredPositions, string ceresDeviceSpec)
     {
       ArgumentNullException.ThrowIfNullOrEmpty(netFN);
 
+      bool useHistory = execConfig.UseHistory;
       bool useBestValueRepetitionHeuristic = !useHistory;
       // Create evaluator for the specified trained neural network and also a fallback LC0 network.
       NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
@@ -493,6 +569,16 @@ namespace CeresTrain.Examples
 
       // Install a handler to map the "CUSTOM1" evaluator to our evaluator for this network.
       NNEvaluatorFactory.Custom1Factory = (_, _, _) => evaluatorCeres;
+
+      string baseInfo = $"Installed custom evaluator with {evaluatorCeres} history {execConfig.UseHistory}";
+      if (posGenerator == null)
+      {
+        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, baseInfo);
+      }
+      else
+      {
+        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, baseInfo + $", outside {posGenerator} uses {lc0NetToUseForUncoveredPositions}");
+      }
     }
 
 

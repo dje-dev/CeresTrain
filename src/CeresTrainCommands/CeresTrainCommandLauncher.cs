@@ -23,16 +23,17 @@ using Ceres.Chess;
 using CeresTrain.Examples;
 using CeresTrain.UserSettings;
 using CeresTrain.Trainer;
+using CeresTrain.CeresTrainDefaults;
 
 #endregion
 
 namespace CeresTrain.TrainCommands
 {
-  /// <summary>
-  /// Runs console session (with command line arguments) for CeresTrain,
-  /// allowing for training, evaluation, and running of Ceres networks.
-  /// </summary>
-  public static class CeresTrainCommandLauncher
+    /// <summary>
+    /// Runs console session (with command line arguments) for CeresTrain,
+    /// allowing for training, evaluation, and running of Ceres networks.
+    /// </summary>
+    public static class CeresTrainCommandLauncher
   {
     static RootCommand rootCommand;
 
@@ -43,6 +44,7 @@ namespace CeresTrain.TrainCommands
     static Option<string> netSpecificationOptionalOption;
     static Option<string> netSpecificationFillinOption;
     static Option<string> tpgDirOption;
+    static Option<string> tarDirOption;
     static Option<bool> verboseOption;
     static Option<string> hostOption;
     static Option<string> searchLimitOptionDefaultBV;
@@ -78,6 +80,7 @@ namespace CeresTrain.TrainCommands
       netSpecificationOptionalOption = new Option<string>("--net-spec", "LC0 network specification used to compare performance against (or null for tablebase)") { IsRequired = false };
       netSpecificationFillinOption = new Option<string>("--net-spec-fillin", "LC0 network specification of network to use for noncovered positions") { IsRequired = false };
       tpgDirOption = new Option<string>("--tpg-dir", "Directory containing TPG training data files") { IsRequired = false };
+      tarDirOption = new Option<string>("--tar-dir", "Directory containing TAR training data files") { IsRequired = false };
       verboseOption = new Option<bool>("--verbose", "If verbose information should be sent to Console (true of false).");
       hostOption = new Option<string>("--host", "Name of host (or WSL) on which to execute command.") { IsRequired = false };
       devicesOption = new Option<int[]>("--devices", "List of indices of devices to use.") { IsRequired = false };
@@ -95,7 +98,7 @@ namespace CeresTrain.TrainCommands
       uciCommand = new Command("uci", "Launch trained net with specified configuration as UCI engine.  [config] [pieces] [net-spec-fillin]") { configOption, piecesOption, netSpecificationFillinOption };
       evalLC0Command = new Command("eval-lc0", "Evaluate vs LC0 with specific pieces and network.               [pieces] [net-spec] [num-pos] [search-limit] [pos-fn] [verbose]") { piecesOption, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption };
       extractPositionsCommand = new Command("extract-pos", "Generate EPD/PGN file with positions from specified PGN/EPD     [pieces] [num-pos] [pos-fn] [pos-out-fn]") { piecesOption, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption };
-      generateTPGCommand = new Command("gen-tpg", "Generate TPG files with positions from specified piece list.    [pieces] [num-pos] [tpg-dir]") { piecesOption, numPosOption, tpgDirOption };
+      generateTPGCommand = new Command("gen-tpg", "Generate TPG files with positions from specified pieces or \"*\"    [pieces] [num-pos] [tar-dir] [tpg-dir]") { piecesOption, numPosOption, tarDirOption, tpgDirOption };
 
       rootCommand.AddCommand(initCommand);
       rootCommand.AddCommand(infoCommand);
@@ -132,7 +135,7 @@ namespace CeresTrain.TrainCommands
           throw new Exception();
         }
 
-        CeresTrainCommands.ProcessInitCommand(in CeresTrainDefaults.DEFAULT_CONFIG_TRAINING, configID);
+        CeresTrainCommands.ProcessInitCommand(in CeresTrainDefault.DEFAULT_CONFIG_TRAINING, configID);
       }, configOption);
 
       extractPositionsCommand.SetHandler((string pieces, long numPos, string epdOrPgnFnOption, string epdOrPgnOutputFileNameOption) =>
@@ -153,10 +156,18 @@ namespace CeresTrain.TrainCommands
       }, configOption, piecesOption, netSpecificationFillinOption);
 
 
-      generateTPGCommand.SetHandler((piecesStr, numPos, outDirectory) =>
+      generateTPGCommand.SetHandler((piecesStr, numPos, tarDirectory, outDirectory) =>
       {
-        CeresNetEvaluation.GenerateTPGFilesFromRandomTablebasePositions(piecesStr, numPos, outDirectory);
-      }, piecesOption, numPosOption, tpgDirOption);
+        if (tarDirectory == null)
+        {
+          CeresNetEvaluation.GenerateTPGFilesFromRandomTablebasePositions(piecesStr, numPos, outDirectory);
+        }
+        else
+        {
+          CeresNetEvaluation.GenerateTPGFilesFromLC0TrainingData(piecesStr, numPos, tarDirectory, outDirectory);
+
+        }
+      }, piecesOption, numPosOption, tarDirOption, tpgDirOption);
 
 
       trainCommand.SetHandler((configID, piecesStr, numPos, tpgDir, hostName, devices) =>
