@@ -370,8 +370,8 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
           buffersOverridePolicies[targetSetIndex][i] = null;
         }
 
-        Evaluator.EvaluateOversizedBatch(batch, ((int startIndex, NNEvaluatorResult[] results) subResult)
-                                        => Postprocessor(positions, subResult.startIndex, subResult.results,
+        Evaluator.EvaluateOversizedBatch(batch, (int startIndex, NNEvaluatorResult[] results) 
+                                        => Postprocessor(positions, startIndex, results,
                                                          buffersTargets[targetSetIndex],
                                                          buffersOverridePolicies[targetSetIndex],
                                                          indicesPositionsToOmit));
