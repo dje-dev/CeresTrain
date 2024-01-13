@@ -50,38 +50,16 @@ namespace CeresTrain.NNEvaluators
 
 
     /// <summary>
-    /// Constructor from given Ceres net definition and underlying net.
-    /// </summary>
-    /// <param name="netDef"></param>
-    /// <param name="execConfig"></param>
-    /// <exception cref="Exception"></exception>
-    public ModuleNNEvaluatorFromTorchScript(ICeresNeuralNetDef netDef, ConfigNetExecution execConfig)
-    {
-      CeresNeuralNet transformer = netDef.CreateNetwork(execConfig);
-      if (execConfig.TrackFinalLayerIntrinsicDimensionality
-        && execConfig.EngineType != NNEvaluatorInferenceEngine.CSharpViaTorchscript)
-      {
-        throw new Exception("trackFinalIntrinsicDimensionality only supported for CSharpViaTorchscript");
-      }
-
-      Device = execConfig.Device;
-      DataType = execConfig.DataType;
-      CeresNet = transformer;
-      TorchscriptFileName1 = execConfig.SaveNetwork1FileName;
-    }
-
-
-    /// <summary>
     /// Constructor from given Ceres net definition.
     /// </summary>
     /// <param name="executionConfig"></param>
     /// <param name="transformerConfig"></param>
     /// <exception cref="Exception"></exception>
-    public ModuleNNEvaluatorFromTorchScript(ConfigNetExecution executionConfig, NetTransformerDef transformerConfig)
+    public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, in NetTransformerDef transformerConfig)
     {
       if (executionConfig.TrackFinalLayerIntrinsicDimensionality && executionConfig.EngineType != NNEvaluatorInferenceEngine.CSharpViaTorchscript)
       {
-        throw new Exception("trackFinalIntrinsicDimensionality only supported for CSharpViaTorchscript");
+        throw new Exception("TrackFinalIntrinsicDimensionality only supported for CSharpViaTorchscript");
       }
 
       Device = executionConfig.Device;
@@ -174,13 +152,19 @@ namespace CeresTrain.NNEvaluators
           {
             (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc) ret = default;
 
-            ret = CeresNet.call(inputSquares);
-
-            NetTransformer ceresTransformer = (NetTransformer)CeresNet as NetTransformer;
+            if (module != null)
+            {
+              ret = module.call(inputSquares); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
+            }
+            else
+            {
+              ret = CeresNet.call(inputSquares);
+            }
 
             // Save the intrinsic dimensionality of the final layer
-            if (ceresTransformer != null)
+            if (CeresNet is NetTransformer)
             {
+              NetTransformer ceresTransformer = (NetTransformer)CeresNet as NetTransformer;
               extraStats0 = ceresTransformer.IntrinsicDimensionalitiesLastBatch;
             }
 
