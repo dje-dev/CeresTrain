@@ -34,7 +34,6 @@ using CeresTrain.TPG;
 using CeresTrain.TrainingDataGenerator;
 using System.Linq;
 using Spectre.Console;
-using Ceres.Chess.Data.Nets;
 using Ceres.Chess.Positions;
 using Ceres.Base.Benchmarking;
 using System.Collections.Generic;
@@ -45,6 +44,9 @@ using Ceres.Base.DataType;
 using Ceres.Chess.EncodedPositions;
 using CeresTrain.CeresTrainDefaults;
 using Ceres.Base.Math;
+using Ceres.Chess.LC0NetInference;
+using Chess.Ceres.NNEvaluators;
+using System.Runtime.InteropServices;
 
 #endregion 
 
@@ -212,15 +214,18 @@ namespace CeresTrain.Examples
     /// <summary>
     /// Method that returns a neural network evaluator for a given trained network on disk. 
     /// </summary>
+    /// <param name="engineType"></param>
     /// <param name="netDef"></param>
     /// <param name="execConfig"></param>
     /// <param name="netFN"></param>
     /// <param name="useBestValueRepetitionHeuristic"></param>
     /// <returns></returns>
-    public static NNEvaluatorTorchsharp GetNNEvaluator(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
-                                                       string netFN, bool useBestValueRepetitionHeuristic)
+    public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
+                                             ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
+                                             string netFN, bool useBestValueRepetitionHeuristic)
     {
-      NNEvaluatorTorchsharp evaluator = new(netDef, execConfig with { SaveNetwork1FileName = netFN });
+
+      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with { SaveNetwork1FileName = netFN });
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -230,6 +235,7 @@ namespace CeresTrain.Examples
     /// Run a match between the specified trained network and the LC0 reference network,
     /// using either the pure value or pure policy head outputs.
     /// </summary>
+    /// <param name="engineType"></param>
     /// <param name="netFN"></param>
     /// <param name="opponentNetID"></param>
     /// <param name="ceresDeviceSpec"></param>
@@ -237,21 +243,20 @@ namespace CeresTrain.Examples
     /// <param name="searchLimit"></param>
     /// <param name="numGamePairs"></param>
     /// <param name="verbose"></param>
-    public static TournamentResultStats RunTournament(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
+    public static TournamentResultStats RunTournament(NNEvaluatorInferenceEngineType engineType,
+                                                      ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
                                                       string netFN, string opponentNetID, string ceresDeviceSpec, 
                                                       PositionGenerator posGenerator,
                                                       SearchLimit searchLimit, int numGamePairs = 50, bool verbose = false, 
                                                       bool opponentTablebasesEnabled = false)
     {
-      bool useHistory = execConfig.UseHistory;
-
       EnginePlayerDef player1;
       EnginePlayerDef player2;
 
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec);
+        InstallCustomEvaluator(1, engineType, netDef, in execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
       }
@@ -507,7 +512,7 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions, 
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      InstallCustomEvaluator(netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
+      InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDef, in execConfig, netFN, posGenerator, lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
       Ceres.Program.LaunchUCI(["network=CUSTOM1"], (ParamsSearch search) => { search.EnableTablebases = false; });
     }
 
@@ -543,20 +548,72 @@ namespace CeresTrain.Examples
     ///   - the trained network to be used for positions with the specified pieces (for which net was trained)
     ///   - as a fallback for other positions, a separate LC0 network which can play all positions.
     /// </summary>
+    /// <param name="engineType"></param>
     /// <param name="netFN"></param>
     /// <param name="posGenerator"></param>
     /// <param name="lc0NetToUseForUncoveredPositions"></param>
     /// <param name="ceresDeviceSpec"></param>
-    public static void InstallCustomEvaluator(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig, 
-                                              string netFN, PositionGenerator posGenerator,
-                                              string lc0NetToUseForUncoveredPositions, string ceresDeviceSpec)
+    public static void InstallCustomEvaluator(int customEvaluatorIndex,
+                                              NNEvaluatorInferenceEngineType engineType,
+                                              ICeresNeuralNetDef netDef, 
+                                              in ConfigNetExecution execConfig, 
+                                              string netFN, 
+                                              PositionGenerator posGenerator,
+                                              string lc0NetToUseForUncoveredPositions, 
+                                              string ceresDeviceSpec)
     {
       ArgumentNullException.ThrowIfNullOrEmpty(netFN);
 
       bool useHistory = execConfig.UseHistory;
       bool useBestValueRepetitionHeuristic = !useHistory;
       // Create evaluator for the specified trained neural network and also a fallback LC0 network.
-      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
+      //      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
+
+      NNEvaluator evaluatorCeres;
+
+      if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16)
+      {
+        EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
+        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, f1, f2);
+        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPG(o, history, f1, f2);
+
+        NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
+          ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
+        const bool USE_TRT = false;
+        const bool HAS_UNCERTAINTY = false;
+        const bool ENABLE_PROFILING = false;
+//        string onnxFN = @"e:\cout\nets\ckpt_83214081a1bd_ENT_384_12_12_3_nosmoe_wd3_fg_28bn_final.ts.onnx";
+        string onnxFN = netFN + ".onnx"; 
+        if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16)
+        {
+          onnxFN = onnxFN + "_fp16.onnx";
+        }
+        if (!File.Exists(onnxFN))
+        {
+          Console.WriteLine($"ONNX file not found {onnxFN}");
+        }
+        //CeresTrainingRunAnalyzer.DumpAndBenchmarkONNXNetInfo(onnxFN);
+
+        const bool USE_HISTORY = true;
+        evaluatorCeres = new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
+                                                  onnxFN, null, NNDeviceType.GPU, 0, USE_TRT,
+                                                  ONNXRuntimeExecutor.NetTypeEnum.TPG, 1024,
+                                                  PRECISION, true, true, HAS_UNCERTAINTY, "policy", "value", "mlh", "unc", true,
+                                                  false, ENABLE_PROFILING, false, USE_HISTORY);
+      }
+      else
+      {
+        evaluatorCeres = GetNNEvaluator(engineType, netDef, execConfig, netFN, useBestValueRepetitionHeuristic);
+      }
+#if NOT
+      Console.WriteLine("using TS <--------------------------------------");
+      IModuleNNEvaluator transformerTS = new ModuleNNEvaluatorFromTorchScript(netDef, in execConfig);
+      const bool INCLUDE_HISTORY = true;
+      NNEvaluator evaluatorCeres = new NNEvaluatorTorchsharp(transformerTS, execConfig.Device, execConfig.DataType,
+                                                 INCLUDE_HISTORY, TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE);
+#endif
+
       if (lc0NetToUseForUncoveredPositions != null)
       {
         NNEvaluator evaluatorLC0 = NNEvaluator.FromSpecification(lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
@@ -567,10 +624,21 @@ namespace CeresTrain.Examples
         evaluatorCeres = new NNEvaluatorDynamicByPos([evaluatorCeres, evaluatorLC0], (pos, _) => posGenerator.PositionMatches(in pos) ? 0 : 1);
       }
 
-      // Install a handler to map the "CUSTOM1" evaluator to our evaluator for this network.
-      NNEvaluatorFactory.Custom1Factory = (_, _, _) => evaluatorCeres;
+      // Install a handler to map the "CUSTOM<id>" evaluator to our evaluator for this network.
+      if (customEvaluatorIndex == 1)
+      {
+        NNEvaluatorFactory.Custom1Factory = (_, _, _) => evaluatorCeres;
+      }
+      else if (customEvaluatorIndex == 2)
+      {
+        NNEvaluatorFactory.Custom2Factory = (_, _, _) => evaluatorCeres;
+      }
+      else
+      {
+        throw new Exception($"Invalid custom evaluator index {customEvaluatorIndex}");
+      }
 
-      string baseInfo = $"Installed custom evaluator with {evaluatorCeres} history {execConfig.UseHistory}";
+      string baseInfo = $"Installed CUSTOM{customEvaluatorIndex} evaluator with {evaluatorCeres} history {execConfig.UseHistory}";
       if (posGenerator == null)
       {
         ConsoleUtils.WriteLineColored(ConsoleColor.Blue, baseInfo);
@@ -598,7 +666,231 @@ namespace CeresTrain.Examples
         Console.Write(f.ToString("0.##").PadLeft(6));
       }
     }
+  }
 
+
+
+  /// <summary>
+  /// Static helper methods to convert TPGRecord to flat square format.
+  /// </summary>
+  public static class TPGConvertersToFlat
+  {
+    /// <summary>
+    /// Converts a batch of TPGRecord[] into TPG flat square values.
+    /// </summary>
+    /// <param name="records"></param>
+    /// <param name="flatValuesPrimary"></param>
+    /// <param name="flatValuesSecondary"></param>
+    /// <returns></returns>
+    /// <exception cref="NotImplementedException"></exception>
+    public static int ConvertToFlatTPGFromTPG(object records, byte[] flatValuesPrimary, byte[] flatValuesSecondary)
+    {
+      // TODO: Requiring the converter to take a materialized array could be inefficient, can we use Memory instead?
+      TPGRecord[] tpgRecords = records as TPGRecord[];
+      if (tpgRecords == null)
+      {
+        throw new NotImplementedException("Expected input to be TPGRecord[]");
+      }
+
+      byte[] squareBytesAll = new byte[tpgRecords.Length * Marshal.SizeOf<TPGSquareRecord>() * 64];
+
+      for (int i = 0; i < tpgRecords.Length; i++)
+      {
+        int offsetSquares = i * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD;
+
+        // Extract as bytes.
+        tpgRecords[i].CopySquares(squareBytesAll, offsetSquares);
+      }
+
+      // N.B. Scaling (by 100) already done in ONXNRuntimeExecutor (but probably doesn't belong there?).
+      // TODO: This could be made more efficient, fold into the above loop.
+      for (int i = 0; i < squareBytesAll.Length; i++)
+      {
+        flatValuesPrimary[i] = squareBytesAll[i];
+      }
+
+      return squareBytesAll.Length;
+    }
+
+
+    /// <summary>
+    /// Converts a IEncodedPositionBatchFlat of encoded positions into TPG flat square values.
+    /// </summary>
+    /// <param name="batch"></param>
+    /// <param name="includeHistory"></param>
+    /// <param name="flatValuesPrimary"></param>
+    /// <param name="flatValuesSecondary"></param>
+    /// <exception cref="NotImplementedException"></exception>
+    public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch, bool includeHistory, float[] flatValuesPrimary, float[] flatValuesSecondary)
+    {
+      if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
+      {
+        throw new NotImplementedException();
+      }
+
+      const bool EMIT_PLY_SINCE = false;
+      TPGRecord tpgRecord = default;
+      EncodedPositionBatchFlat ebf = batch as EncodedPositionBatchFlat;
+
+      // TODO: Consider possibly restoring the commented out code below 
+      //       to efficiently decode the two top positions into TPGRecord
+      //       instead of having to setting EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true
+      //       and incurring all that overhead.
+      //       If do this, the regression/equivalency test can to be to compare
+      //       this version computed here against the new more efficient code.
+      // TODO: someday handle since ply, does that need to be passed in from the search engine?
+
+      byte[] squareBytesAll;
+      byte[] moveBytesAll;
+      short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
+      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE,
+                                                          out _, out squareBytesAll, out legalMoveIndices);
+      for (int i = 0; i < squareBytesAll.Length; i++)
+      {
+        flatValuesPrimary[i] = squareBytesAll[i];
+      }
+
+#if OLD_TPG_COMBO_DIRECT_CONVER
+      static bool HAVE_WARNED = false;
+
+      int offsetAttentionInput = 0;
+      int offsetBoardInput = 0;
+      for (int i = 0; i < batch.NumPos; i++)
+      {
+        Position pos = batch.Positions[i].ToPosition;
+
+        TPGRecordCombo tpgRecordCombo = default;
+
+        // NOTE: history (prior move to square) not passed here
+        //        var lastMoveInfo = batch[i].PositionWithBoards.LastMoveInfoFromSideToMovePerspective();
+        //        Console.WriteLine(lastMoveInfo.pieceType + " " + lastMoveInfo.fromSquare + " " + lastMoveInfo.toSquare + " " + (lastMoveInfo.wasCastle ? " ************ " : ""));
+        //        int? targetSquareFromPriorMoveFromOurPerspective = lastMoveInfo.pieceType == PieceType.None ? null : lastMoveInfo.toSquare.SquareIndexStartA1;
+        int? targetSquareFromPriorMoveFromOurPerspective = null;
+        if (!HAVE_WARNED)
+        {
+          HAVE_WARNED = true;
+          Console.WriteLine("WARNING: ConvertToFlatTPG does not yet set history (via targetSquareFromPriorMoveFromOurPerspective), someday pass in IEncodedPositionBatchFlat somehow");
+        }
+
+
+        // Get first board
+        int startOffset = i * 112;
+        Span<BitVector64> bvOurs0   = MemoryMarshal.Cast<ulong, BitVector64>(batch.PosPlaneBitmaps.Slice(startOffset, 6));
+        Span<BitVector64> bvTheirs0 = MemoryMarshal.Cast<ulong, BitVector64>(batch.PosPlaneBitmaps.Slice(startOffset + 6, 6));
+        EncodedPositionBoard eb0 = new EncodedPositionBoard(bvOurs0, bvTheirs0, false).Mirrored;
+
+        // Get second board
+        startOffset = i * 112 + 13;
+        Span<BitVector64> bvOurs1 = MemoryMarshal.Cast<ulong, BitVector64>(batch.PosPlaneBitmaps.Slice(startOffset, 6));
+        Span<BitVector64> bvTheirs1 = MemoryMarshal.Cast<ulong, BitVector64>(batch.PosPlaneBitmaps.Slice(startOffset + 6, 6));
+        EncodedPositionBoard eb1 = new EncodedPositionBoard(bvOurs1, bvTheirs1, false).Mirrored;
+
+        (PieceType pieceType, Square fromSquare, Square toSquare, bool wasCastle) = EncodedPositionWithHistory.LastMoveInfoFromSideToMovePerspective(in eb0, in eb1);
+//Console.WriteLine("decode_LAST_MOVE " + pieceType + " " + fromSquare + " " + toSquare + " " + wasCastle + " " + pos.FEN + " " + eb1.GetFEN(pos.IsWhite) + " " + eb1.GetFEN(!pos.IsWhite));
+
+
+
+        if (pieceType != PieceType.None)
+        {
+          targetSquareFromPriorMoveFromOurPerspective = pos.IsWhite ? toSquare.SquareIndexStartA1
+                                                                    : toSquare.Reversed.SquareIndexStartA1;
+        }
+
+        EncodedPositionBatchFlat batchFlat = batch as EncodedPositionBatchFlat; 
+        TPGRecordConverter.ConvertToTPGCombo(in pos, targetSquareFromPriorMoveFromOurPerspective, false, default, ref tpgRecordCombo);
+
+        // TODO: Consider if we could simplify and avoid code duplication, use this method
+        //   TPGRecordConverter.ConvertToTPGCombo(in EncodedTrainingPosition trainingPos, ref TPGRecordCombo tpgRecordCombo)
+        // like
+        //   TPGRecordConverter.ConvertToTPGCombo(in batchFlat.PositionsBuffer[i].BoardsHistory, ref tpgRecordCombo)
+
+        float[] rawDataSquaresAndMoves = tpgRecordCombo.SquareAndMoveRawValues;
+        for (int j = 0; j < rawDataSquaresAndMoves.Length; j++)
+        {
+          flatValuesPrimary[offsetAttentionInput++] = rawDataSquaresAndMoves[j];
+        }
+
+        if (TPGRecordCombo.NUM_RAW_BOARD_BYTES_TOTAL > 0)
+        {
+          TPGWriter.ExtractRawBoard(batchFlat.PositionsBuffer[i].Mirrored, ref tpgRecordCombo);
+          float[] rawBoardValues = tpgRecordCombo.BoardRawValues;
+          for (int j = 0; j < rawBoardValues.Length; j++)
+          {
+            flatValuesSecondary[offsetBoardInput++] = rawBoardValues[j];
+          }
+        }
+
+      }
+#endif
+    }
+
+
+#if BUGGY
+    /// <summary>
+    /// Converts a batch of encoded positions into TPG combo format values (floats)
+    /// ready to then be sent into neural network.
+    /// </summary>
+    /// <param name="batch"></param>
+    /// <param name="flatValues"></param>
+    static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch, float[] flatValues)
+    {
+      Parallel.For(0, batch.NumPos, i =>
+      {
+        int offset = i * TPGRecordCombo.BYTES_PER_MOVE_AND_SQUARE_RECORD;
+
+        Position pos = batch.Positions[i].ToPosition;
+
+        TPGRecordCombo tpgRecordCombo = default;
+        TPGRecordConverter.ConvertToTPGCombo(in pos, false, default, ref tpgRecordCombo);
+
+        float[] rawData = tpgRecordCombo.RawBoardInputs;
+        for (int j = 0; j < rawData.Length; j++)
+        {
+          flatValues[offset + j] = rawData[j];
+        }
+      });
+
+    }
+#endif
 
   }
 }
+
+
+#if NOT
+          //          if (bestMoveNNEncoded.Move.IndexNeuralNet == 97 || bestMoveNNEncoded.Move.IndexNeuralNet == 103)
+          if (pos.MiscInfo.EnPassantFileIndex != PositionMiscInfo.EnPassantFileIndexEnum.FileNone)
+          {
+            Console.WriteLine("................................ " + bestMoveTraining + " " + bestMoveNN);
+          }
+
+          //          Console.WriteLine("\r\n" + pos.FEN + "  " + bestMoveTraining + " " + bestMoveNN.Move);
+          //          Console.WriteLine(evalResult.Policy);
+
+          int promotionCount = 0;
+          int epCount = 0;
+          for (int ix = 0; ix < 64; ix++)
+          {
+            if (rawPosBuffer[i].SquaresAndMoves[ix].MoveRecord.PromotionBytes[0] > 0
+             || rawPosBuffer[i].SquaresAndMoves[ix].MoveRecord.PromotionBytes[1] > 0)
+              promotionCount++;
+            if (rawPosBuffer[i].SquaresAndMoves[ix].SquareRecord.IsEnPassant > 0)
+            {
+              epCount++;
+            }
+          }
+
+          if (promotionCount > 0)
+          {
+            Console.WriteLine(i + " found promotion " + pos.FEN);
+          }
+          if (epCount > 0)
+          {
+            Console.WriteLine(i + " found en passant " + pos.FEN);
+          }
+}
+#endif
+
+
+
+
