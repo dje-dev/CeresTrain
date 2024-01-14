@@ -72,7 +72,15 @@ namespace CeresTrain.TPG
       string str = $"[-{PlySinceLastMove} ply] ";
       str += (IsOurPiece(PieceTypeHistory(0)) ? "Our " : "Opponent ") + GetPieceInfo(PieceTypeHistory(0)).pieceType + " on " + GetSquare();
 
+      str += " EP= " + this.IsEnPassant;
       str += " Move50= " + Move50Count;
+
+      str += " Hist= ";
+      for (int i = 0; i < NUM_HISTORY_POS; i++)
+      {
+        (PieceType pieceType, bool isOurPiece) histInfo = GetPieceInfo(PieceTypeHistory(i));
+        str += histInfo.isOurPiece ? histInfo.pieceType : histInfo.pieceType.ToString().ToLower() + " ";
+      }
 
       str += "Reps= ";
       for (int i = 0; i < NUM_HISTORY_POS; i++)

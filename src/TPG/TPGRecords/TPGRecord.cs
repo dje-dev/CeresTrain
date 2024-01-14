@@ -465,6 +465,46 @@ namespace CeresTrain.TPG
 
 
     /// <summary>
+    /// Static version of PositionForSquares (does not support tryCompteEnPassant).
+    /// </summary>
+    /// <param name="squares"></param>
+    /// <param name="pieceHistoryIndex"></param>
+    /// <param name="tpgRecordIsWhiteToMove"></param>
+    /// <returns></returns>
+    public static Position PositionForSquares(ReadOnlySpan<TPGSquareRecord> squares, int pieceHistoryIndex, bool tpgRecordIsWhiteToMove)
+    {
+      // Since last argument (tryComputeEnPassant) is false, this can be called as if static (default object).
+      return default(TPGRecord).PositionForSquares(squares, pieceHistoryIndex, tpgRecordIsWhiteToMove, false);
+    }
+
+
+
+    /// <summary>
+    /// Returns if a policy move with the given index exists in the policy.
+    /// </summary>
+    /// <param name="index"></param>
+    /// <returns></returns>
+    public readonly bool PolicyWithIndexExists(int index)
+    {
+      for (int i = 0; i < MAX_MOVES; i++)
+      {
+        if (i > 1 && PolicyIndices[i] == PolicyIndices[i - 1])
+        {
+          // Hit beginning of padding (repeated last move).
+          break;
+        }
+
+        if (PolicyIndices[i] == index)
+        {
+          return true;
+        } 
+      }
+
+      return false;
+    } 
+
+
+    /// <summary>
     /// Extracts the policies into a CompressedPolicyVector.
     /// </summary>
     /// <param name="policy"></param>
