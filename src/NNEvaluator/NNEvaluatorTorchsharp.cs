@@ -26,6 +26,7 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using TorchSharp;
 using CeresTrain.TrainCommands;
+using System.Collections;
 
 #endregion
 
@@ -36,6 +37,11 @@ namespace CeresTrain.NNEvaluators
   /// </summary>
   public class NNEvaluatorTorchsharp : NNEvaluator
   {
+    /// <summary>
+    /// Type of engine (direct PyTorch via Torchscript or C# re-implementation).
+    /// </summary>
+    public readonly NNEvaluatorInferenceEngineType EngineType;
+    
     /// <summary>
     /// Device on which executor should execute.
     /// </summary>
@@ -60,40 +66,45 @@ namespace CeresTrain.NNEvaluators
     /// Underlying evaluator engine.
     /// </summary>
     IModuleNNEvaluator PytorchForwardEvaluator;
-    
-    
+
+
+
     /// <summary>
     /// Constructor.
     /// </summary>
+    /// <param name="engineType"></param>
     /// <param name="ceresTransformerNetDef"></param>
     /// <param name="configNetExec"></param>
-    /// <param name="includeHistory"></param>
     /// <param name="lastMovePliesEnabled"></param>
-    public NNEvaluatorTorchsharp(ICeresNeuralNetDef ceresTransformerNetDef,
+    public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
+                                 ICeresNeuralNetDef ceresTransformerNetDef,
                                  ConfigNetExecution configNetExec,
                                  bool lastMovePliesEnabled = false)
-      : this(new ModuleNNEvaluatorFromTorchScript(ceresTransformerNetDef, configNetExec),
-                                                  configNetExec.Device, configNetExec.DataType,
-                                                  configNetExec.UseHistory, lastMovePliesEnabled)
+      : this(engineType, new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
+             (NetTransformerDef)ceresTransformerNetDef),
+             configNetExec.Device, configNetExec.DataType, configNetExec.UseHistory, lastMovePliesEnabled)
     {
-      IncludeHistory = configNetExec.UseHistory;
     }
 
 
     /// <summary>
     /// Constructor.
     /// </summary>
+    /// <param name="engineType"></param>
     /// <param name="pytorchForwardEvaluator"></param>
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <param name="includeHistory"></param>
     /// <param name="lastMovePliesEnabled"></param>
-    public NNEvaluatorTorchsharp(IModuleNNEvaluator pytorchForwardEvaluator,
+    public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
+                                 IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
                                  bool lastMovePliesEnabled = false)
     {
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
+
       IncludeHistory = includeHistory;
+      EngineType = engineType;
 
       if (dataType != ScalarType.BFloat16)
       {
@@ -192,7 +203,7 @@ namespace CeresTrain.NNEvaluators
         haveWarned = true;
       }
 
-      if (positions is not EncodedPositionBatchFlat)
+      if (LastMovePliesEnabled &&  positions is not EncodedPositionBatchFlat)
       {
         throw new NotImplementedException("Internal error, not currently implemented, see notes below");
         // This alternate code below has been developed and tested
@@ -316,12 +327,9 @@ namespace CeresTrain.NNEvaluators
 
 
     static readonly int SQUARE_BYTES_PER_POSITION = 64 * TPGRecord.BYTES_PER_SQUARE_RECORD;
-    static readonly int BUFFER_SIZE_BYTES = MAX_BATCH_SIZE * 64 * Marshal.SizeOf<TPGSquareRecord>();
 
-    static readonly int SMALL_BUFFER_NUM_POSITIONS = 128;
+    static byte[] lastBytes = null;
 
-    [ThreadStatic]
-    static byte[] squareBytesBufferSmall;
 
     public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
                                                                  int numPositions,
@@ -343,32 +351,13 @@ namespace CeresTrain.NNEvaluators
 
       using (no_grad())
       {
-        // Create Tensor with input data.
-        Tensor inputSquares;
+        // Create a Tensor of bytes still on CPU.
+        Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
 
-        // TODO: can Torchsharp be enhanced to support initialization from a Span which is properly sized, avoiding any copy/narrow below?
+        // Move Tensor to the desired device and data type.
+        Tensor inputSquares = cpuTensor.to(Device).to(DataType);
 
-        if (numPositions <= SMALL_BUFFER_NUM_POSITIONS)
-        {
-          // The specified array is very oversized, avoid copying it all into a Tensor.
-          // Instead copy into a smaller sized buffer and initialize the Tensor from that.
-          if (squareBytesBufferSmall == null)
-          {
-            squareBytesBufferSmall = new byte[SMALL_BUFFER_NUM_POSITIONS * SQUARE_BYTES_PER_POSITION];
-          }
-          Array.Copy(squareBytesAll, squareBytesBufferSmall, numPositions * SQUARE_BYTES_PER_POSITION);
-          inputSquares = tensor(squareBytesBufferSmall, [SMALL_BUFFER_NUM_POSITIONS * SQUARE_BYTES_PER_POSITION], DataType, Device);
-        }
-        else
-        {
-          // Initialize tensor using full input array.
-          int numPositionsInBuffer = squareBytesAll.Length / SQUARE_BYTES_PER_POSITION;
-          inputSquares = tensor(squareBytesAll, [numPositionsInBuffer * SQUARE_BYTES_PER_POSITION], DataType, Device);
-        }
-
-        inputSquares = inputSquares.narrow(0, 0, numPositions * SQUARE_BYTES_PER_POSITION);
-        inputSquares = inputSquares.view([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
-
+        // Apply scaling factor to TPG square inputs.
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
 
         // Evaluate using neural net.
@@ -421,15 +410,14 @@ namespace CeresTrain.NNEvaluators
         //       (maybe because the arrays were created as oversized).
         CompressedPolicyVector[] policiesToReturn = new CompressedPolicyVector[numPositions];
 
-        // TODO: Use stackalloc instead
+        // TODO: Use a ThreadStatic buffer instead.
         FP16[] w = new FP16[numPositions];
         FP16[] l = new FP16[numPositions];
         FP16[] m = new FP16[numPositions];
         FP16[] uncertaintyV = new FP16[numPositions];
 
         // Populate policy.
-        const int MAX_MOVES = 128;
-        PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs = new PolicyVectorCompressedInitializerFromProbs.ProbEntry[MAX_MOVES];
+        PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs = new PolicyVectorCompressedInitializerFromProbs.ProbEntry[TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
 
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
@@ -451,8 +439,8 @@ namespace CeresTrain.NNEvaluators
             {
               ReadOnlySpan<TPGSquareRecord> thisPosSquareRecords = squareRecords.Slice(i * 64, 64);
               const bool POS_IS_WHITE_TO_MOVE = true; // TODO: Can we somehow determine this from the TPGRecord?
-              throw new Exception("Next line needs remediation (see also note in above line, we can set the color");
-              Position thisPos = default; //  TPGRecord.PositionForSquares(thisPosSquareRecords, 0, POS_IS_WHITE_TO_MOVE);
+              //throw new Exception("Next line needs remediation (see also note in above line, we can set the color");
+              Position thisPos = TPGRecord.PositionForSquares(thisPosSquareRecords, 0, POS_IS_WHITE_TO_MOVE);
               MGPosition thisPosMG = thisPos.ToMGPosition;
               getMGPosAtIndex = i => thisPosMG; // argument i is ignored deliberately, the call below will only reference current position
             }
@@ -474,7 +462,7 @@ namespace CeresTrain.NNEvaluators
 
         // These Tensors were created outside the DisposeScope
         // and therefore will not have been already disposed,
-        // do this expicitly now to immediately free up memory.
+        // do this explicitly now to immediately free up memory.
         predictionValue.Dispose();
         predictionMLH.Dispose();
         predictionUNC.Dispose();
@@ -597,7 +585,7 @@ namespace CeresTrain.NNEvaluators
     /// <returns></returns>
     public override string ToString()
     {
-      return $"<NNEvaluatorTorchsharp {PytorchForwardEvaluator.ToString()} on {Device} {DataType}>";
+      return $"<NNEvaluatorTorchsharp {EngineType} {PytorchForwardEvaluator.ToString()} on {Device} {DataType}>";
     }
 
 

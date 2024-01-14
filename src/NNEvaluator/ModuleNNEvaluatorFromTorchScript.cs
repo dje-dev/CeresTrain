@@ -10,6 +10,13 @@ using CeresTrain.Utils;
 using CeresTrain.Networks;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
+using Ceres.Chess.LC0NetInference;
+using Ceres.Chess.NNEvaluators.Defs;
+using Ceres.Chess.NNEvaluators;
+using Chess.Ceres.NNEvaluators;
+using Ceres.Chess.LC0.Batches;
+using CeresTrain.TPG;
+using System.Runtime.InteropServices;
 
 #endregion
 
@@ -57,7 +64,7 @@ namespace CeresTrain.NNEvaluators
     /// <exception cref="Exception"></exception>
     public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, in NetTransformerDef transformerConfig)
     {
-      if (executionConfig.TrackFinalLayerIntrinsicDimensionality && executionConfig.EngineType != NNEvaluatorInferenceEngine.CSharpViaTorchscript)
+      if (executionConfig.TrackFinalLayerIntrinsicDimensionality && executionConfig.EngineType != NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
         throw new Exception("TrackFinalIntrinsicDimensionality only supported for CSharpViaTorchscript");
       }
@@ -76,13 +83,12 @@ namespace CeresTrain.NNEvaluators
         Console.WriteLine("  " + executionConfig.SaveNetwork2FileName);
       }
 
-      bool useCSharp = executionConfig.EngineType == NNEvaluatorInferenceEngine.CSharpViaTorchscript;
-      if (useCSharp)
+      if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
         CeresNet = transformerConfig.CreateNetwork(executionConfig);
         CeresNet.eval();
       }
-      else
+      else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
         // NOTE: better to move to device first so type conversion can happen on potentially faster device
         module = TorchscriptUtils.TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
@@ -92,6 +98,11 @@ namespace CeresTrain.NNEvaluators
         //      module = module.to(dataType).to(device);
         module.eval();
       }
+      else
+      {
+        throw new Exception("Internal error, unexpected inference engine type: " + executionConfig.EngineType);
+      } 
+
     }
 
     public void SetTraining(bool trainingMode)
@@ -178,5 +189,4 @@ namespace CeresTrain.NNEvaluators
       }
     }
   }
-
 }
