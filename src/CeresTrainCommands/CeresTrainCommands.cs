@@ -317,7 +317,7 @@ namespace CeresTrain.TrainCommands
             sourceEPDOrPGNFileName == null ? new PositionGeneratorFromIEnumerable(piecesStr, pos => generator.PositionMatches(in pos), generator.AsPositionEnumerable())
                                            : new PositionGeneratorFromIEnumerable(piecesStr+"_file", pos => generator.PositionMatches(in pos), PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGNFileName, (int)numPos, p => generator.PositionMatches(in p))); 
 
-          TournamentResultStats tournResults = CeresNetEvaluation.RunTournament(netDefConfig, execConfig, netFileName,
+          TournamentResultStats tournResults = CeresNetEvaluation.RunTournament(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, execConfig, netFileName,
                                                                                 compareLC0NetSpec, "GPU:0", posGeneratorForTournament, searchLimit, (int)numPos, verbose,
                                                                                 opponentTablebasesEnabled);
           return tournResults;
@@ -329,7 +329,7 @@ namespace CeresTrain.TrainCommands
             throw new NotImplementedException();
           }
           string FN = sourceEPDOrPGNFileName;
-          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(netDefConfig, execConfig, netFileName, true);
+          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, execConfig, netFileName, true);
           NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, "GPU:0");
           (float accuracyValue, float accuracyPolicy) = CeresNetEvaluation.TestAccuracyOnPositions(generator, FN, evaluator, compareLC0Evaluator, default, (int)numPos, verbose);
         }

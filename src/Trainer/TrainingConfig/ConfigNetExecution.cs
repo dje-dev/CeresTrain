@@ -29,7 +29,7 @@ namespace CeresTrain.Trainer
   /// <summary>
   /// Method of execution of the neural network.
   /// </summary>
-  public enum NNEvaluatorInferenceEngine
+  public enum NNEvaluatorInferenceEngineType
   {
     /// <summary>
     /// Executed via Torchsharp code in C# (weights loaded from Torchscript file).
@@ -40,6 +40,16 @@ namespace CeresTrain.Trainer
     /// Executed by using Torch to execute a specified Torchscript file.
     /// </summary>
     TorchViaTorchscript,
+
+    /// <summary>
+    /// Uses ONNXRuntime (32 bit).
+    /// </summary>
+    ONNXRuntime,
+
+    /// <summary>
+    /// Uses ONNXRuntime (16 bit).
+    /// </summary>
+    ONNXRuntime16,
   }
 
 
@@ -67,7 +77,7 @@ namespace CeresTrain.Trainer
                               ScalarType dataType = ScalarType.BFloat16,
                               string networkFileName1 = null,
                               string networkFileName2 = null,
-                              NNEvaluatorInferenceEngine engineType = NNEvaluatorInferenceEngine.CSharpViaTorchscript,
+                              NNEvaluatorInferenceEngineType engineType = NNEvaluatorInferenceEngineType.CSharpViaTorchscript,
                               int activationMonitoringSkipCount = 0)
     {
       ArgumentNullException.ThrowIfNull(deviceIDs);
@@ -159,7 +169,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Type of inference engine to use.
     /// </summary>
-    public readonly NNEvaluatorInferenceEngine EngineType { get; init; }
+    public readonly NNEvaluatorInferenceEngineType EngineType { get; init; }
 
     /// <summary>
     /// Path to file containing primary model parameters (either Torchscript format or Torchsharp format depending on EngineType).

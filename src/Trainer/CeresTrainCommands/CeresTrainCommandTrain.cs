@@ -393,9 +393,16 @@ namespace CeresTrain.Trainer
             if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.PreprocessedFromTAR)
             {
               TPGGeneratorOptions.DeblunderType DEBLUNDER_TYPE = TPGGeneratorOptions.DeblunderType.PositionQ;
+              const int SKIP_COUNT = 20;
+
               enumerator = TPGTorchDatasetComboHelpers.GeneratorTPGRecordsViaGeneratorFromV6(TrainingConfig.DataConfig.TrainingFilesDirectory, null,
-                                                                                             TrainingConfig.OptConfig.BatchSizeForwardPass, DEBLUNDER_TYPE, true,
-                                                                                             false, true, true);
+                                                                                             long.MaxValue, TrainingConfig.OptConfig.BatchSizeForwardPass, 
+                                                                                             DEBLUNDER_TYPE,
+                                                                                             allowFilterOutRepeatedPositions: false,
+                                                                                             rescoreTablebases: true,
+                                                                                             partiallyFilterObviousDrawsAndWins : false,
+                                                                                             verbose : true, 
+                                                                                             skipCount : SKIP_COUNT);
             }
 
             // Using larger parallelism will:
