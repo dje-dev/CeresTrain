@@ -26,7 +26,6 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using TorchSharp;
 using CeresTrain.TrainCommands;
-using System.Collections;
 
 #endregion
 
@@ -337,6 +336,31 @@ namespace CeresTrain.NNEvaluators
                                                                  byte[] squareBytesAll,
                                                                  short[] legalMovesIndices = null)
     {
+      if (false)
+      {
+        // Test code to show any differences in raw input compared to last call (only first position checked).
+        var subBytes = squareBytesAll.AsSpan().Slice(0, 64 * 135);
+        var posx = TPGRecord.PositionForSquares(MemoryMarshal.Cast<byte, TPGSquareRecord>(subBytes), 0, true);
+        if (lastBytes != null)
+        {
+          Console.WriteLine("testcompare vs first seen");
+          for (int i = 0; i < 64; i++)
+            for (int j = 0; j < 135; j++)
+            {
+              if (squareBytesAll[i * 135 + j] != lastBytes[i * 135 + j])
+              {
+                Console.WriteLine("diff at " + i + " " + j + "  ... breaking");
+                break;
+              }
+            }
+        }
+        if (lastBytes == null)
+        {
+          lastBytes = new byte[8640];
+          Array.Copy(squareBytesAll, lastBytes, lastBytes.Length);
+        }
+      }
+
       if (numPositions > MAX_BATCH_SIZE)
       {
         throw new Exception($"NNEvaluatorTorchsharp: requested batch size of {numPositions} exceeds maximum supported of {MAX_BATCH_SIZE}");
@@ -363,6 +387,7 @@ namespace CeresTrain.NNEvaluators
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, extraStats0, extraStats1) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
 
+        cpuTensor.Dispose();
         inputSquares.Dispose();
       }
 
@@ -370,12 +395,16 @@ namespace CeresTrain.NNEvaluators
       {
         // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
         Tensor valueFloat = predictionValue.to(ScalarType.Float32);
+
+//        float[] valueOnCPURAW = predictionValue.cpu().FloatArray();
+//Console.WriteLine("RAWVAL " + valueOnCPURAW[0] + " " + valueOnCPURAW[1] + " " + valueOnCPURAW[2]);
+
         Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
         Tensor exp_logits = torch.exp(valueFloat - max_logits);
 
         // Sum the exponentiated logits along the last dimension and use to normalize.
         Tensor sum_exp_logits = torch.sum(exp_logits, dim: 1, keepdim: true);
-        Tensor wdlProbabilities = (exp_logits / sum_exp_logits).to(predictionValue.dtype);
+        Tensor wdlProbabilities = (exp_logits / sum_exp_logits);
         Span<Half> wdlProbabilitiesCPU = MemoryMarshal.Cast<byte, Half>(wdlProbabilities.to(ScalarType.Float16).cpu().bytes);
 
         // Cast data to desired C# data type and transfer to CPU.
