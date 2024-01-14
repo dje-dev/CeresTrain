@@ -56,7 +56,7 @@ namespace CeresTrain.TPG.TPGGenerator
     public readonly TPGGeneratorOptions.OutputRecordFormat OutputFormat;
     public readonly NNEvaluator Evaluator;
     public readonly TrainingPositionGenerator.PositionPostprocessor EvaluatorPostprocessor;
-    public readonly long TargetNumRecordsPerSet;
+    public readonly long TotalNumPositionsToBeWritten;
     public readonly bool EmitPlySinceLastMovePerSquare;
     public readonly bool EmitHistory;
 
@@ -99,7 +99,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="outputFormat"></param>
     /// <param name="useZstandard"></param>
     /// <param name="compressionLevel"></param>
-    /// <param name="targetNumRecordsPerSet"></param>
+    /// <param name="totalNumPositionsToBeWritten"></param>
     /// <param name="evaluator"></param>
     /// <param name="evaluatorPostprocessor"></param>
     /// <param name="batchPostprocessorDelegate">called with each TPGRecord[] generate (make copy of array if needed subsequently)</param>
@@ -110,8 +110,8 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <exception cref="ArgumentException"></exception>
     public TrainingPositionWriter(string outputFileNameBase, int numSets,
                                   TPGGeneratorOptions.OutputRecordFormat outputFormat,
-                                  bool useZstandard, CompressionLevel compressionLevel,
-                                  long targetNumRecordsPerSet,
+                                  bool useZstandard, CompressionLevel compressionLevel,                                  
+                                  long totalNumPositionsToBeWritten,
                                   NNEvaluator evaluator,
                                   TrainingPositionGenerator.PositionPostprocessor evaluatorPostprocessor,
                                   Func<TPGRecord[], bool> batchPostprocessorDelegate,
@@ -121,9 +121,9 @@ namespace CeresTrain.TPG.TPGGenerator
     {
       BUFFER_SIZE = batchSize;
 
-      if (targetNumRecordsPerSet % BUFFER_SIZE != 0)
+      if (totalNumPositionsToBeWritten % BUFFER_SIZE != 0)
       {
-        throw new Exception("TargetNumRecordsPerSet must be a multiple of " + BUFFER_SIZE);
+        throw new Exception("TotalNumPositions must be a multiple of " + BUFFER_SIZE);
       }
 
       if (outputFormat != TPGGeneratorOptions.OutputRecordFormat.TPGRecord && evaluatorPostprocessor != null)
@@ -131,9 +131,11 @@ namespace CeresTrain.TPG.TPGGenerator
         throw new ArgumentException("evaluatorPostprocessor only supported with TPGOptions.OutputRecordFormat.TPGRecord");
       }
 
+      numSets = (int)Math.Min(numSets, totalNumPositionsToBeWritten / batchSize);
+
       OutputFileNameBase = outputFileNameBase;
+      TotalNumPositionsToBeWritten = totalNumPositionsToBeWritten;
       OutputFormat = outputFormat;
-      TargetNumRecordsPerSet = targetNumRecordsPerSet;
       Evaluator = evaluator;
       EvaluatorPostprocessor = evaluatorPostprocessor;
       BatchPostprocessorDelegate = batchPostprocessorDelegate;
@@ -264,7 +266,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     /// <returns></returns>
     public override string ToString()
     {
-      return $"<TrainingPositionWriter {OutputFormat} to {OutputFileNameBase} with {TargetNumRecordsPerSet} per set";
+      return $"<TrainingPositionWriter {OutputFormat} to {OutputFileNameBase} with {TotalNumPositionsToBeWritten} per set";
     }
 
 
@@ -291,18 +293,19 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
 
     void Postprocessor(EncodedTrainingPosition[] positions,
                       int startIndexNonNNResult,
-                      NNEvaluatorResult[] results,
+                      Memory<NNEvaluatorResult> results,
                       TrainingPositionWriterNonPolicyTargetInfo[] nonPolicyTarget,
                       CompressedPolicyVector?[] overridePolicyTarget,
                       HashSet<int> indicesPositionsToOmit)
     {
       MGMoveList movesList = new MGMoveList();
-      int numToProcess = results == null ? positions.Length : results.Length;
+      int numToProcess = results.Length;
       Span<EncodedMove> movesNotPresent = stackalloc EncodedMove[CompressedPolicyVector.NUM_MOVE_SLOTS];
+      Span<NNEvaluatorResult> resultsSpan = results.Span;
 
       for (int i = 0; i < numToProcess; i++)
       {
-        NNEvaluatorResult nnResult = results == null ? default : results[i];
+        NNEvaluatorResult nnResult = resultsSpan[i];
         Position thisPosition = positions[i + startIndexNonNNResult].PositionWithBoards.FinalPosition;
 
         // Always reject positions with missing BestQ/BestD.
@@ -370,7 +373,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
           buffersOverridePolicies[targetSetIndex][i] = null;
         }
 
-        Evaluator.EvaluateOversizedBatch(batch, (int startIndex, NNEvaluatorResult[] results) 
+        Evaluator.EvaluateOversizedBatch(batch, (int startIndex, Memory<NNEvaluatorResult> results) 
                                         => Postprocessor(positions, startIndex, results,
                                                          buffersTargets[targetSetIndex],
                                                          buffersOverridePolicies[targetSetIndex],

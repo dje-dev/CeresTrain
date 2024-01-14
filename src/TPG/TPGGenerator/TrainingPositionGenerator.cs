@@ -87,6 +87,8 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="verbose"></param>
     public TrainingPositionGenerator(TPGGeneratorOptions options, bool verbose = true)
     {
+      options.NumConcurrentSets = Math.Min(options.NumConcurrentSets, (int)( options.NumPositionsTotal / options.BatchSize));
+
       Options = options;
       Options.Validate();
 
@@ -141,14 +143,14 @@ namespace CeresTrain.TPG.TPGGenerator
     {
       string targetFNBase = Options.TargetFileNameBase == null ? null : Options.TargetFileNameBase + ".tpg";
       writer = new TrainingPositionWriter(targetFNBase, Options.NumConcurrentSets,
-                             Options.OutputFormat,
-                             Options.UseZstandard, Options.TargetCompression,
-                             Options.NumPositionsPerSet,
-                             Options.AnnotationNNEvaluator,
-                             Options.AnnotationPostprocessor,
-                             Options.BufferPostprocessorDelegate,
-                             Options.BatchSize,
-                             Options.EmitPlySinceLastMovePerSquare);
+                                          Options.OutputFormat,
+                                          Options.UseZstandard, Options.TargetCompression,                                         
+                                          Options.NumPositionsTotal,
+                                          Options.AnnotationNNEvaluator,
+                                          Options.AnnotationPostprocessor,
+                                          Options.BufferPostprocessorDelegate,
+                                          Options.BatchSize,
+                                          Options.EmitPlySinceLastMovePerSquare);
 
       if (Options.CeresJSONFileName == null)
       {
@@ -460,7 +462,6 @@ namespace CeresTrain.TPG.TPGGenerator
               Console.WriteLine("playedmove1 " + thisPosition + " " + em + " " + em.Value.ToSquare.Flipped);
             }
 #endif
-            TrainingPositionWriterNonPolicyTargetInfo targetInfo = writer.buffersTargets[setNum][i];
 
             TrainingPositionWriterNonPolicyTargetInfo target = new();
             EncodedPositionEvalMiscInfoV6 infoTraining = game.PositionTrainingInfoAtIndex(i);
@@ -471,7 +472,7 @@ namespace CeresTrain.TPG.TPGGenerator
             target.DeltaQVersusV = infoTraining.Uncertainty;
             target.DeltaQForwardAbs = gameAnalyzer.deltaQIntermediateBestWDL[i];
             target.Source = gameAnalyzer.targetSourceInfo[i];
-            targetInfo = target;
+            TrainingPositionWriterNonPolicyTargetInfo targetInfo = target;
 
             // TODO: avoid calling PositionAdIndex here
             EncodedTrainingPosition saveTrainingPos = new EncodedTrainingPosition(game.Version, game.InputFormat,

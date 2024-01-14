@@ -29,6 +29,7 @@ using Ceres.Chess;
 using CeresTrain.TPG;
 using CeresTrain.Trainer;
 using CeresTrain.TPG.TPGGenerator;
+using CeresTrain.UserSettings;
 
 
 #endregion
@@ -42,6 +43,7 @@ namespace CeresTrain.TrainData.TPGDatasets
   {
     public static void TestOnTheFlyTPGGenerator(string dirTrainingTARs,
                                             string singleTrainingTARPath,
+                                            long totalNumPositions,
                                             Func<TPGRecord[], bool> bufferPostprocessor,
                                             TPGGeneratorOptions.DeblunderType deblunderType,
                                             bool allowFilterOutRepeatedPositions,
@@ -75,10 +77,9 @@ namespace CeresTrain.TrainData.TPGDatasets
       {
         TargetCompression = CompressionLevel.Optimal,
         BatchSize = batchSize,
-
+        
         // TODO: cleanup hardcoded path here
-        CeresJSONFileName = SoftwareManager.IsLinux ? @"/raid/dev/Ceres/artifacts/release/net7.0/Ceres.json"
-                                                : @"c:\dev\ceres\artifacts\release\net7.0\Ceres.json",
+        CeresJSONFileName = CeresTrainUserSettingsManager.Settings.CeresJSONFileName,
         Description = "Filled planes, deduplicated, deblundered, focus for 512b Apr 2021 (T60)",
         SourceDirectory = dirTrainingTARs,
         FilenameFilter = singleTrainingTARPath == null ? null : f => f.ToUpper() == singleTrainingTARPath.ToUpper(),
@@ -193,6 +194,7 @@ namespace CeresTrain.TrainData.TPGDatasets
           //            return false;
         },
 
+        PositionMaxFraction = allowFilterOutRepeatedPositions ? 0.001f * 0.001f : float.MaxValue,
         OutputFormat = TPGGeneratorOptions.OutputRecordFormat.TPGRecord, // note: possibly update FillInHistoryPlanes below
         FillInHistoryPlanes = false, // doesn't make sense with TPG
 
@@ -203,7 +205,7 @@ namespace CeresTrain.TrainData.TPGDatasets
         NumConcurrentSets = numConcurrentFiles,
 
         //            RescoreWithTablebase = true,
-        NumPositionsTotal = 40 * 1024L * 2048L * batchSize, // arbitrary large
+        NumPositionsTotal = batchSize, // only this one batch
 
         Deblunder = deblunderType,
         DeblunderThreshold = 0.06f,
@@ -224,12 +226,14 @@ namespace CeresTrain.TrainData.TPGDatasets
 
     public static IEnumerator<TPGRecord[]> GeneratorTPGRecordsViaGeneratorFromV6(string dirTrainingTARs,
                                                                                  string singleTrainingTARPath,
+                                                                                 long totalNumPositions,
                                                                                  int batchSize,
                                                                                  TPGGeneratorOptions.DeblunderType deblunderType,
                                                                                  bool allowFilterOutRepeatedPositions,
                                                                                  bool rescoreTablebases,
                                                                                  bool partiallyFilterObviousDrawsAndWins,
                                                                                  bool verbose,
+                                                                                 int skipCount,
                                                                                  bool singleThreadSingleSetMember = false)
     {
       DateTime startTime = DateTime.Now;
@@ -244,14 +248,13 @@ namespace CeresTrain.TrainData.TPGDatasets
 
         // Alternate between two distinct buffers
         const int READAHEAD_COUNT = 20;
-        const int POSITION_SKIP_COUNT = 20;
         const int NUM_CONCURRENT_STREAMS_PER_READER = 10;
 
         try
         {
-          DoBackgroundFill(dirTrainingTARs, singleTrainingTARPath, batchSize, deblunderType, allowFilterOutRepeatedPositions,
+          DoBackgroundFill(dirTrainingTARs, singleTrainingTARPath, totalNumPositions, batchSize, deblunderType, allowFilterOutRepeatedPositions,
                            rescoreTablebases, partiallyFilterObviousDrawsAndWins, singleThreadSingleSetMember, pendingBatches,
-                           READAHEAD_COUNT, POSITION_SKIP_COUNT, NUM_CONCURRENT_STREAMS_PER_READER, verbose);
+                           READAHEAD_COUNT, skipCount, NUM_CONCURRENT_STREAMS_PER_READER, verbose);
         }
         catch (Exception e)
         {
@@ -292,6 +295,7 @@ namespace CeresTrain.TrainData.TPGDatasets
 
     private static void DoBackgroundFill(string dirTrainingTARs,
                                          string singleTrainingTARPath,
+                                         long totalNumPositions,
                                          int batchSize,
                                          TPGGeneratorOptions.DeblunderType deblunderType,
                                          bool allowFilterOutRepeatedPositions,
@@ -305,7 +309,7 @@ namespace CeresTrain.TrainData.TPGDatasets
                                          bool verbose)
     {
 
-      TestOnTheFlyTPGGenerator(dirTrainingTARs, singleTrainingTARPath, delegate (TPGRecord[] records)
+      TestOnTheFlyTPGGenerator(dirTrainingTARs, singleTrainingTARPath, totalNumPositions, delegate (TPGRecord[] records)
       {
         while (true)
         {
