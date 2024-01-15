@@ -95,7 +95,7 @@ namespace CeresTrain.Trainer
                            MathF.Round(100*policyAcc, 2).ToString(), MathF.Round(100*valueAcc, 2).ToString(),
                            curLR.ToString()];
 
-        const int UPDATE_INTERVAL_SECS = 20;
+        int UPDATE_INTERVAL_SECS = numPositions > 10_000_000 ? 180 : 30;
         if ((DateTime.Now - lastTime).TotalSeconds > UPDATE_INTERVAL_SECS)
         {
           float tableElapsedSecs = (float)(DateTime.Now - startTime).TotalSeconds;
