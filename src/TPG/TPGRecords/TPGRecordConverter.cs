@@ -204,7 +204,7 @@ namespace CeresTrain.TPG
     /// <param name="squareBytesAll"></param>
     /// <param name="moveBytesAll"></param>
     public static void ConvertPositionsToRawSquareBytes(IEncodedPositionBatchFlat positions,
-                                                         bool includeHistory,
+                                                        bool includeHistory,
                                                         Memory<MGMoveList> moves,
                                                         bool lastMovePliesEnabled,
                                                         out MGPosition[] mgPos,
@@ -230,7 +230,7 @@ namespace CeresTrain.TPG
 
       // Determine each position and copy converted raw board bytes into rawBoardBytesAll.
       // TODO: for efficiency, avoid doing this if the NN evaluator does not need raw bytes
-      Parallel.For(0, positions.NumPos, i =>
+      Parallel.For(0, positions.NumPos, new ParallelOptions() { MaxDegreeOfParallelism = 8 }, i =>
 
       //for (int i = 0; i < positions.NumPos; i++)
       {

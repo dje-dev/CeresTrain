@@ -31,6 +31,12 @@ namespace CeresTrain.TPG
   [StructLayout(LayoutKind.Sequential, Pack = 1)]
   public unsafe struct TPGSquareRecord
   {
+    /// <summary>
+    /// All bytes encoded within this record are ultimately
+    /// converted to floating point values and divided by this divisor
+    /// when used in the neural network.
+    /// </summary>
+    public const float SQUARE_BYTES_DIVISOR = ByteScaled.SCALING_FACTOR;
 
     public static bool IsOurPiece(ReadOnlySpan<ByteScaled> pieceTypeOneHot)
     {
