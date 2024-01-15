@@ -534,11 +534,11 @@ namespace CeresTrain.Trainer
                                      }
                                      else
                                      {
-                                       // Linearly interpolate between 1.0 and FRAC_MIN as fracComplete goes from FRAC_START_DECAY to 1.0
-                                       lrScale = 1.0f - (fractionComplete - FRAC_START_DECAY) * (1.0f - WARMUP_LR_SCALING) / (1.0f - FRAC_START_DECAY);
+                                       // # Once decay starts, LR multiplier is same as fraction remaining until end of training.
+                                       lrScale = 1.0f - fractionComplete;
                                      }
 
-                                     return MathF.Min(lrScale, 1);
+                                     return MathF.Max(0.05f, MathF.Min(lrScale, 1));
                                    });
 
       Stopwatch sw = new Stopwatch();

@@ -340,17 +340,17 @@ def Train():
     global fraction_complete
 
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
-    FRAC_MIN = 0.10
+    FRAC_MIN = 0.05
 
     if fraction_complete < 0.02:
         lr_scale = 0.1 # warmup
     elif fraction_complete < FRAC_START_DELAY:
         lr_scale = 1.0
     else:
-        # Linearly interpolate between 1.0 and FRAC_MIN as fracComplete goes from FRAC_START_DECAY to 1.0
-        lr_scale = 1.0 - (fraction_complete - FRAC_START_DELAY) * (1.0 - FRAC_MIN) / (1.0 - FRAC_START_DELAY)
+        # Once decay starts, LR multiplier is same as fraction remaining until end of training.
+        lr_scale = 1.0 - fraction_complete
 
-    return min(lr_scale, 1)
+    return max(FRAC_MIN, min(lr_scale, 1))
 
   scheduler = LambdaLR(optimizer, lr_lambda)
 
