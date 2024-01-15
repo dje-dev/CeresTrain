@@ -105,7 +105,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Weight decay coefficient for the optimizer.
     /// </summary>
-    public readonly float WeightDecay { get; init; } = 0.01f;
+    public readonly float WeightDecay { get; init; } = 0.02f;
 
     /// <summary>
     /// Maximum learning rate to be used with the optimizer.
