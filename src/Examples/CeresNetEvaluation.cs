@@ -582,14 +582,15 @@ namespace CeresTrain.Examples
         NNEvaluatorEngineONNX.ConverterToFlat = (o, history, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPG(o, history, f1, f2);
 
         NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
-          ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
+                                      || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
+                                      ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
         bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
         const bool HAS_UNCERTAINTY = false;
         const bool ENABLE_PROFILING = false;
 
         string onnxFN = netFN + ".onnx"; 
-        if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16)
+        if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
         {
           onnxFN = onnxFN + "_fp16.onnx";
         }
