@@ -62,14 +62,6 @@ namespace CeresTrain.UserSettings
     /// </summary>
     public string OutputLogsDir => MakeDir(OutputsDir, "logs");
 
-
-    /// <summary>
-    /// Optional override directory from which nets are sourced
-    /// (replacing directory stored in the results file associated with the network).
-    /// </summary>
-    public string OverrideNetsDir { get; set; } = null;
-
-
     #region Helper methods
 
     /// <summary>

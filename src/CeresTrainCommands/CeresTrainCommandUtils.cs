@@ -218,11 +218,6 @@ namespace CeresTrain.TrainCommands
       }
 
       TrainingResultSummary resultsFile = JsonSerializer.Deserialize<TrainingResultSummary>(File.ReadAllText(resultsFileName));
-      if (!File.Exists(resultsFile.NetFileName))
-      {
-        ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"Referenced network {resultsFile.NetFileName} from result file {resultsFileName} not found. ");
-        return null;
-      }
 
       return resultsFile;
     }
