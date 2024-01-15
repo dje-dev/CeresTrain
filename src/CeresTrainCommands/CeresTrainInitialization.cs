@@ -79,6 +79,9 @@ namespace CeresTrain.TrainCommands
       // TODO:CLEANUP
       Environment.SetEnvironmentVariable("OMP_NUM_THREADS", "4");
 
+      // CUDA lazy loading improves startup time, and potentially reduces memory usage.
+      Environment.SetEnvironmentVariable("CUDA_MODULE_LOADING", "LAZY");
+
       // Load the JSON file with configured hosts, if it exists.
       string hostsConfigFileName = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "CeresTrainHosts.json");
       if (File.Exists(hostsConfigFileName))
