@@ -47,9 +47,19 @@ namespace CeresTrain.Trainer
     ONNXRuntime,
 
     /// <summary>
+    /// Uses ONNXRuntime (32 bit) using TensorRT.
+    /// </summary>
+    ONNXRuntimeTensorRT,
+
+    /// <summary>
     /// Uses ONNXRuntime (16 bit).
     /// </summary>
     ONNXRuntime16,
+
+    /// <summary>
+    /// Uses ONNXRuntime (16 bit) using TensorRT.
+    /// </summary>
+    ONNXRuntime16TensorRT
   }
 
 

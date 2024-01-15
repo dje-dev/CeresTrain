@@ -572,7 +572,10 @@ namespace CeresTrain.Examples
       NNEvaluator evaluatorCeres;
 
       if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
-        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16)
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
+        )
       {
         EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
         NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, f1, f2);
@@ -580,10 +583,11 @@ namespace CeresTrain.Examples
 
         NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
           ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
-        const bool USE_TRT = false;
+        bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
+                    || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
         const bool HAS_UNCERTAINTY = false;
         const bool ENABLE_PROFILING = false;
-//        string onnxFN = @"e:\cout\nets\ckpt_83214081a1bd_ENT_384_12_12_3_nosmoe_wd3_fg_28bn_final.ts.onnx";
+
         string onnxFN = netFN + ".onnx"; 
         if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16)
         {
@@ -745,9 +749,12 @@ namespace CeresTrain.Examples
       short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE,
                                                           out _, out squareBytesAll, out legalMoveIndices);
+
+      // NOTE: unrolling loop here does not improve performance.
+      // TODO: push this division onto the GPU
       for (int i = 0; i < squareBytesAll.Length; i++)
       {
-        flatValuesPrimary[i] = squareBytesAll[i];
+        flatValuesPrimary[i] = squareBytesAll[i] / TPGSquareRecord.SQUARE_BYTES_DIVISOR;
       }
 
 #if OLD_TPG_COMBO_DIRECT_CONVER
