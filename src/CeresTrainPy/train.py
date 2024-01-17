@@ -12,6 +12,7 @@ If not, see <http://www.gnu.org/licenses/>.
 # End of License Notice
 
 import os
+import fnmatch
 import sys
 import socket
 import datetime
@@ -364,7 +365,9 @@ def Train():
   def worker_init_fn(worker_id):
     dataset.set_worker_id(worker_id)
 
-  NUM_DATASET_WORKERS = 2
+  # Use two concurrent dataset workers (if more than one training data file is available)
+  count_zst_files = len(fnmatch.filter(os.listdir(TPG_TRAIN_DIR), '*.zst'))
+  NUM_DATASET_WORKERS = min(2, count_zst_files)
   PREFETCH_FACTOR = 8 # to keep GPU busy
 
   world_size = len(devices)
