@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torchsummary import summary
+#from torchsummary import summary
 from torch import nn, optim
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -45,14 +45,14 @@ print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.enable_flash_sdp(True)
 
-#sys.argv = ['train.py', '/mnt/e/cout/configs/KRP_256_8_start35x', '/mnt/e/cout/nets']
-#sys.argv = ['train.py', '/mnt/e/cout/configs/t1_wsl', '/mnt/e/cout/nets', 'CONVERT', '1525782528']
+#sys.argv = ['train.py', '/mnt/e/cout/configs/KRP_256_8_start35x', '/mnt/e/cout']
+#sys.argv = ['train.py', '/mnt/e/cout/configs/t1_wsl', '/mnt/e/cout', 'CONVERT', '1525782528']
 
 if len(sys.argv) < 3:
-  raise ValueError("train.py expected <config_path> <save_nets_directory>")
+  raise ValueError("train.py expected <config_path> <outputs_directory>")
 
 TRAINING_ID = sys.argv[1]
-SAVE_NET_DIR = sys.argv[2]
+OUTPUTS_DIR = sys.argv[2]
 CONVERT_ONLY = len(sys.argv) >= 4 and sys.argv[3].upper() == 'CONVERT'
 
 config = Configuration('.', TRAINING_ID)
@@ -114,7 +114,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
 
   # save as TorchScript file
   SAVE_TS_NAME = CKPT_NAME + ".ts"
-  SAVE_TS_PATH = os.path.join(SAVE_NET_DIR, SAVE_TS_NAME)
+  SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', SAVE_TS_NAME)
   print()
   print ('INFO: TORCHSCRIPT_FILENAME', SAVE_TS_NAME)
 
@@ -174,7 +174,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # N.B. If running multi-GPU, this tends to hang for unknown reasons.
     #      Therefore if multi-GPU do not checkpoint (unless triggered with special file)
     if devices.count == 1 or os.path.isfile("FORCE_CHECKPOINT"): # or net_step == "final" 
-      fabric.save(os.path.join(SAVE_NET_DIR, CKPT_NAME), state)
+      fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state)
       print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
 
 
@@ -193,12 +193,12 @@ def Train():
 #    recipe = {"fp8_format": "HYBRID", "amax_history_len": 16, "amax_compute_algo": "max"}
 #    precision = TransformerEnginePrecision(dtype=torch.bfloat16, recipe=recipe, replace_layers=False)
 #    fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
-#                    loggers=TensorBoardLogger("./logs", name=NAME))  
+#                    loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
     fabric = Fabric(precision="transformer-engine",accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger("./logs", name=NAME))  
   else:
     fabric = Fabric(precision="bf16-mixed", accelerator=accelerator, devices=devices,
-                    loggers=TensorBoardLogger("./logs", name=NAME))  
+                    loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
 
 
   # NOTE: these very small values for MLH and UNC are best because

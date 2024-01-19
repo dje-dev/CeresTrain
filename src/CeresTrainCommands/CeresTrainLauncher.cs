@@ -83,12 +83,10 @@ namespace CeresTrain.TrainCommands
       (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue("wsl", ceresTrainPyDir, configID, in config, configFullPath, trainingStatusTable);
       DateTime startTime = DateTime.Now;
 
-      string netOutputPath = $"{hostPathToOutput}/nets";
-
       ProcessStartInfo startInfo = new()
       {
         FileName = "wsl",
-        Arguments = $"bash -c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {netOutputPath}\"",
+        Arguments = $"bash -c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {hostPathToOutput}\"",
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
@@ -151,7 +149,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="saveNetDirectory"></param>
     /// <returns></returns>
     public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configBasePath,
-                                                     string configPath, in ConfigTraining config, string saveNetDirectory,
+                                                     string configPath, in ConfigTraining config, string outputsDirectory,
                                                      string dockerLaunchCommand,
                                                      TrainingStatusTable trainingStatusTable)
     {
@@ -163,7 +161,7 @@ namespace CeresTrain.TrainCommands
       {
         if (dockerLaunchCommand == null)
         {
-          throw new Exception("Docker requestd but host configuration is missing required launch command.");
+          throw new Exception("Docker requested but host configuration is missing required launch command.");
         }
       }
       else
@@ -173,7 +171,7 @@ namespace CeresTrain.TrainCommands
 
       consoleStatusTable.RunTraining(() =>
       {
-        DoGoRemote(consoleStatusTable, logger, hostName, userName, dockerLaunchCommand, hostWorkingDir, configPath, saveNetDirectory);
+        DoGoRemote(consoleStatusTable, logger, hostName, userName, dockerLaunchCommand, hostWorkingDir, configPath, outputsDirectory);
       });
 
       return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configBasePath, startTime, logger, consoleStatusTable);
@@ -188,7 +186,7 @@ namespace CeresTrain.TrainCommands
     static void DoGoRemote(TrainingStatusTable table, FileLogger logger,
                            string hostName, string userName, 
                            string dockerLaunchCommand, string baseDir,
-                           string configBasePath, string saveNetDirectory)
+                           string configBasePath, string outputsDirectory)
     {
       using SSHClient sshClientx = new SSHClient(hostName, userName);
       sshClientx.CheckSSHClientConnected();
@@ -205,7 +203,7 @@ namespace CeresTrain.TrainCommands
       int numTrainLinesSeen = 0;
       DateTime startTime = default;
 
-      string command = $"cd {baseDir} && python3 train.py {configBasePath} {saveNetDirectory}";
+      string command = $"cd {baseDir} && python3 train.py {configBasePath} {outputsDirectory}";
 
       if (dockerLaunchCommand != null)
       {
