@@ -195,7 +195,7 @@ def Train():
 #    fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
 #                    loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
     fabric = Fabric(precision="transformer-engine",accelerator=accelerator, devices=devices,
-                    loggers=TensorBoardLogger("./logs", name=NAME))  
+                    loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
   else:
     fabric = Fabric(precision="bf16-mixed", accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
