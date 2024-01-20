@@ -91,7 +91,7 @@ namespace CeresTrain.NNEvaluators
       else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
         // NOTE: better to move to device first so type conversion can happen on potentially faster device
-        module = TorchscriptUtils.TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
+        module = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
         //      module = torch.jit.load<Tensor, (Tensor, Tensor, Tensor, Tensor)>(fileNameTorchscript, Device.type, Device.index).to(dataType);
 
         //module = TorchscriptUtils. TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(tsFileName1, tsFileName2, device, dataType);

@@ -138,7 +138,7 @@ namespace CeresTrain.Networks.Transformer
                  ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts"))
         {
           ScriptModule<Tensor, (Tensor, Tensor, Tensor, Tensor)> transformerTS
-            = TorchscriptUtils.TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(ExecutionConfig.SaveNetwork1FileName,
+            = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(ExecutionConfig.SaveNetwork1FileName,
                                                                                                     ExecutionConfig.SaveNetwork2FileName,
                                                                                                     ExecutionConfig.Device, ExecutionConfig.DataType);
           paramsToLoad = new();

@@ -27,12 +27,12 @@ using static TorchSharp.torch.jit;
 namespace CeresTrain.Utils
 {
   /// <summary>
-  ///  Static helper methods relating to Torchscript API.
+  ///  Static helper methods relating to TorchScript API.
   /// </summary>
   public static class TorchscriptUtils
   {
     /// <summary>
-    /// Returns a Torchscript module from a file, averaging in a second Torchscript module if provided.
+    /// Returns a TorchScript module from a file, averaging in a second TorchScript module if provided.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <typeparam name="TResult"></typeparam>
@@ -41,7 +41,7 @@ namespace CeresTrain.Utils
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <returns></returns>
-    public static ScriptModule<T, TResult> TorchscriptFilesAveraged<T, TResult>(string tsFileName1, string tsFileName2, Device device, ScalarType dataType)
+    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string tsFileName1, string tsFileName2, Device device, ScalarType dataType)
     {
       ArgumentException.ThrowIfNullOrEmpty(tsFileName1, nameof(tsFileName1));
 
@@ -54,12 +54,12 @@ namespace CeresTrain.Utils
       }
 
       ScriptModule<T, TResult> module2 = load<T, TResult>(tsFileName2, device.type, device.index).to(dataType);
-      return TorchscriptModulesAveraged(module1, module2);
+      return TorchScriptModulesAveraged(module1, module2);
     }
 
 
     /// <summary>
-    /// Returns a Torchscript module averaged with another Torchscript module.
+    /// Returns a TorchScript module averaged with another Torchscript module.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <typeparam name="TResult"></typeparam>
@@ -67,7 +67,7 @@ namespace CeresTrain.Utils
     /// <param name="module2"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentException"></exception>
-    public static ScriptModule<T, TResult> TorchscriptModulesAveraged<T, TResult>(ScriptModule<T, TResult> module1, ScriptModule<T, TResult> module2)
+    public static ScriptModule<T, TResult> TorchScriptModulesAveraged<T, TResult>(ScriptModule<T, TResult> module1, ScriptModule<T, TResult> module2)
     {
       if (module2 == null)
       {
@@ -84,6 +84,7 @@ namespace CeresTrain.Utils
         p1.requires_grad = false;
         p2Dict[param.name].parameter.requires_grad = false;
 
+        // Add in the second parameter and divide by 2 to get average.
         Tensor averageTensor = p1.add(p2Dict[param.name].parameter).div(2);
         averageTensor.requires_grad = false;
         param.parameter.set_(new Parameter(averageTensor, false));
