@@ -145,10 +145,9 @@ namespace CeresTrain.TrainCommands
                                                                             devices, overrideForwardBatchSize, hostConfig.OverridePyTorchCompileMode);
 
           string pathToConfigFromHost = hostConfig.PathToOutputFromHost + "/configs/" + configID;
-          string pathToNetSaveDirFromHost = hostConfig.PathToOutputFromHost + "/nets";
 
           result = CeresTrainLauncher.RunRemoteSSH(hostConfig.HostName, hostConfig.UserName, hostConfig.CeresTrainPyDir,
-                                                   configID, pathToConfigFromHost, in configRemote, pathToNetSaveDirFromHost, 
+                                                   configID, pathToConfigFromHost, in configRemote, hostConfig.PathToOutputFromHost, 
                                                    hostConfig.DockerLaunchCommand, trainingStatusTable);
         }
 
