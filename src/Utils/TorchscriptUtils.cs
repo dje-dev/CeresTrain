@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 using TorchSharp;
@@ -41,56 +42,135 @@ namespace CeresTrain.Utils
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <returns></returns>
-    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string tsFileName1, string tsFileName2, Device device, ScalarType dataType)
+    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string tsFileName1, string tsFileName2, 
+                                                                                Device device, ScalarType dataType)
     {
-      ArgumentException.ThrowIfNullOrEmpty(tsFileName1, nameof(tsFileName1));
-
-      ScriptModule<T, TResult> module1 = load<T, TResult>(tsFileName1, device.type, device.index).to(dataType);
-      module1.eval();
-
       if (tsFileName2 == null)
       {
-        return module1;
+        return load<T, TResult>(tsFileName1, device.type, device.index).to(dataType);
       }
-
-      ScriptModule<T, TResult> module2 = load<T, TResult>(tsFileName2, device.type, device.index).to(dataType);
-      return TorchScriptModulesAveraged(module1, module2);
+      else
+      {
+        return TorchScriptFilesAveraged<T, TResult>(new string[] { tsFileName1, tsFileName2 }, null, device, dataType);
+      }
     }
 
 
     /// <summary>
-    /// Returns a TorchScript module averaged with another Torchscript module.
+    /// Returns a TorchScript module created from a weighted average of the TorchScript files.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <typeparam name="TResult"></typeparam>
-    /// <param name="module1"></param>
-    /// <param name="module2"></param>
+    /// <param name="tsFileName1"></param>
+    /// <param name="tsFileName2"></param>
+    /// <param name="device"></param>
+    /// <param name="dataType"></param>
+    /// <returns></returns>
+    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(
+        string[] tsFileNames, float[] tsWeights, Device device, ScalarType dataType)
+    {
+      if (tsFileNames == null || tsFileNames.Length == 0)
+      {
+        throw new ArgumentException("No file names provided.", nameof(tsFileNames));
+      }
+
+      if (tsWeights != null && tsWeights.Length != tsFileNames.Length)
+      {
+        throw new ArgumentException("Weights array must be the same length as file names array.", nameof(tsWeights));
+      }
+
+      if (tsFileNames.Any(fn => string.IsNullOrEmpty(fn)))
+      {
+        throw new ArgumentException("One or more provided file names are null or empty.", nameof(tsFileNames));
+      }
+
+      // Load each file as a module
+      ScriptModule<T, TResult>[] modules =  new ScriptModule<T, TResult>[tsFileNames.Length];
+      for (int i = 0; i < tsFileNames.Length; i++)
+      {
+        if (!File.Exists(tsFileNames[i]))
+        {
+          throw new ArgumentException($"File {tsFileNames[i]} does not exist.", nameof(tsFileNames));
+        }
+
+        modules[i] = load<T, TResult>(tsFileNames[i], device.type, device.index).to(dataType);
+      }
+
+      // Apply weighted averaging to the modules
+      return TorchScriptModulesAverage(modules, tsWeights);
+    }
+
+
+    /// <summary>
+    /// Returns weighted average of TorchScript modules.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="TResult"></typeparam>
+    /// <param name="modules"></param>
+    /// <param name="weights"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentException"></exception>
-    public static ScriptModule<T, TResult> TorchScriptModulesAveraged<T, TResult>(ScriptModule<T, TResult> module1, ScriptModule<T, TResult> module2)
+    public static ScriptModule<T, TResult> TorchScriptModulesAverage<T, TResult>(ScriptModule<T, TResult>[] modules, float[] weights = null)
     {
-      if (module2 == null)
+      if (modules == null || modules.Length == 0)
       {
-        throw new ArgumentException(nameof(module2));
+        throw new ArgumentException("No modules provided.", nameof(modules));
       }
 
-      // Build dictionary of parameters from module2.
-      Dictionary<string, (string name, Parameter parameter)> p2Dict = module2.named_parameters().ToDictionary(s => s.name);
-
-      // Average in parameters.
-      foreach ((string name, Parameter parameter) param in module1.named_parameters())
+      if (weights != null && weights.Length != modules.Length)
       {
-        Parameter p1 = param.parameter;
-        p1.requires_grad = false;
-        p2Dict[param.name].parameter.requires_grad = false;
-
-        // Add in the second parameter and divide by 2 to get average.
-        Tensor averageTensor = p1.add(p2Dict[param.name].parameter).div(2);
-        averageTensor.requires_grad = false;
-        param.parameter.set_(new Parameter(averageTensor, false));
+        throw new ArgumentException("Weights array must be the same length as modules array.", nameof(weights));
       }
-      return module1;
+
+      if (modules.Any(m => m == null))
+      {
+        throw new ArgumentException("One or more provided modules are null.", nameof(modules));
+      }
+
+      if (weights == null)
+      {
+        // Set weights to be array of equal values summing to 1.0.
+        weights = new float[modules.Length];
+        Array.Fill(weights, 1.0f / weights.Length); 
+      }
+
+      // Initialize dictionary to hold weighted sum of parameters.
+      Dictionary<string, Tensor> weightedSumDict = new ();
+
+      // Compute weighted sum of parameters from all modules.
+      for (int i = 0; i < modules.Length; i++)
+      {
+        var module = modules[i];
+        float weight = weights[i];
+
+        foreach ((string name, Parameter parameter) in module.named_parameters())
+        {
+          parameter.requires_grad = false;
+          Tensor weightedParam = parameter.mul(weight);
+
+          if (weightedSumDict.ContainsKey(name))
+          {
+            weightedSumDict[name] = weightedSumDict[name].add(weightedParam);
+          }
+          else
+          {
+            weightedSumDict[name] = weightedParam; // No need to clone as mul returns a new tensor
+          }
+        }
+      }
+
+      // Update the first module's parameters with the weighted average.
+      foreach ((string name, Parameter parameter) in modules[0].named_parameters())
+      {
+        Tensor weightedAverageTensor = weightedSumDict[name];
+        weightedAverageTensor.requires_grad = false;
+        parameter.set_(new Parameter(weightedAverageTensor, false));
+      }
+
+      modules[0].eval();
+      return modules[0];
     }
+
 
   }
 
