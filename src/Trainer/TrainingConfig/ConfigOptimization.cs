@@ -117,7 +117,7 @@ namespace CeresTrain.Trainer
     /// scaling down of the LearningRateBase begins 
     /// (linearly from LearningRateBase to a fixed minimum value of 0.10).
     /// </summary>
-    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.5f;
+    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.4f;
 
     /// <summary>
     /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or Nadam.
