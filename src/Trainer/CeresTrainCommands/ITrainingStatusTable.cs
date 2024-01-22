@@ -61,10 +61,14 @@ namespace CeresTrain.Trainer
     /// <param name="valueAcc"></param>
     /// <param name="policyLoss"></param>
     /// <param name="policyAcc"></param>
+    /// <param name="mlhLoss"></param>
+    /// <param name="uncLoss"></param>
     /// <param name="curLR"></param>
     public abstract void UpdateInfo(string configID, int numRowsAdded, bool endRow, float posPerSecond, 
-                                    DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss, 
-                                    float valueAcc, float policyLoss, float policyAcc, float curLR);
+                                    DateTime time, float elapsedSecs, long numPositions, 
+                                    float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
+                                    float mlhLoss, float uncLoss,
+                                    float curLR);
 
 
     /// <summary>

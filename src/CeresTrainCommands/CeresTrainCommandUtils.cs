@@ -195,8 +195,8 @@ namespace CeresTrain.TrainCommands
         table.UpdateInfo(DateTime.Now, configID, elapsedSeconds, trainingData.NumPos, trainingData.TotalLoss,
                          trainingData.LastValueLoss, 0.01f * trainingData.LastValueAcc,
                          trainingData.LastPolicyLoss, 0.01f * trainingData.LastPolicyAcc,
-                        //                     trainingData.LastMlhLoss, trainingData.LastUncLoss, 
-                        trainingData.LastLR);
+                         trainingData.LastMLHLoss, trainingData.LastUNCLoss, 
+                         trainingData.LastLR);
       }
     }
 

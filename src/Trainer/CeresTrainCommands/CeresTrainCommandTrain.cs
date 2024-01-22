@@ -371,7 +371,9 @@ namespace CeresTrain.Trainer
         // TODO: tpgDataset should be a  member of class, not passed explicitly
       }
 
-      TrainingLossSummary lossSummary = new(thisLossAdjRunning, lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning);
+      TrainingLossSummary lossSummary = new(thisLossAdjRunning, lossValueAdjRunning, valueAccAdjRunning, 
+                                            lossPolicyAdjRunning, policyAccAdjRunning,
+                                            lossMLHAdjRunning, lossUNCAdjRunning);
 
 
       return new TrainingResultSummary(Environment.MachineName, Environment.MachineName, TrainingConfig.ExecConfig.ID,

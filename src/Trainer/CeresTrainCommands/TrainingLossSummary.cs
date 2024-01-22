@@ -27,10 +27,14 @@ namespace CeresTrain.Trainer
   /// <param name="ValueAccuracy"></param>
   /// <param name="PolicyLoss"></param>
   /// <param name="PolicyAccuracy"></param>
+  /// <param name="MLHLoss"></param>
+  /// <param name="UNCLoss"></param>
+
   [Serializable]
   public readonly record struct TrainingLossSummary(float TotalLoss,
                                                     float ValueLoss, float ValueAccuracy,
-                                                    float PolicyLoss, float PolicyAccuracy)
+                                                    float PolicyLoss, float PolicyAccuracy,
+                                                    float MLHLoss, float UNCLoss)
   {
   }
 }

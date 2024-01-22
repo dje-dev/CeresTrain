@@ -27,13 +27,7 @@ class LossCalculator():
     self.MASK_POLICY_VALUE = -1E5 #; // for illegal moves
 
     # Keep running statistics (counts/totals) in between calls to reset_counters.
-    self.PENDING_COUNT = 0
-    self.PENDING_VALUE_LOSS = 0
-    self.PENDING_POLICY_LOSS = 0
-    self.PENDING_VALUE_ACC = 0
-    self.PENDING_POLICY_ACC = 0
-    self.PENDING_MLH_LOSS = 0
-    self.PENDING_UNC_LOSS = 0
+    self.reset_counters()
 
   def reset_counters(self):
     self.PENDING_COUNT = 0
