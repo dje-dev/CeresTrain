@@ -188,9 +188,14 @@ namespace CeresTrain.NNEvaluators
 
     }
 
-
     static bool haveInitialized = false;
     static bool haveWarned = false;
+
+#if DEBUG
+    public static EncodedPositionWithHistory lastPosition;
+    public static IPositionEvaluationBatch lastBatch; // for debugging only
+#endif
+
     public override IPositionEvaluationBatch DoEvaluateIntoBuffers(IEncodedPositionBatchFlat positions, bool retrieveSupplementalResults = false)
     {
       if (LastMovePliesEnabled && !haveWarned)
@@ -202,7 +207,7 @@ namespace CeresTrain.NNEvaluators
         haveWarned = true;
       }
 
-      if (LastMovePliesEnabled &&  positions is not EncodedPositionBatchFlat)
+      if (LastMovePliesEnabled && positions is not EncodedPositionBatchFlat)
       {
         throw new NotImplementedException("Internal error, not currently implemented, see notes below");
         // This alternate code below has been developed and tested
@@ -234,8 +239,10 @@ namespace CeresTrain.NNEvaluators
       short[] legalMoveIndices = null;
 
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled, out mgPos, out squareBytesAll, out legalMoveIndices);
-
+#if DEBUG
       lastPosition = positions.PositionsBuffer.Span[0];
+#endif
+
       IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.Moves.Span[i], positions.NumPos,
                                                                     i => mgPos[i], squareBytesAll, legalMoveIndices);
       if (false) // debug code, test against tablebase if accurate
@@ -262,17 +269,22 @@ namespace CeresTrain.NNEvaluators
             {
               Console.WriteLine("   ok " + mgPos[i].ToPosition.FEN + " TB score: " + score + " " + MathF.Round(batch.GetV(0), 1) + " " + win);
             }
+#if DEBUG
             Console.WriteLine(lastPosition.FinalPosition.FEN + " TB score: " + score + " " + MathF.Round(batch.GetV(0), 1));
+#endif
             Console.WriteLine();
           }
         }
       }
+
+#if DEBUG
+      lastBatch = batch;
+#endif
       return batch;
     }
 
-    ISyzygyEvaluatorEngine tbEvaluator = null; // For debug code above only
 
-    public static EncodedPositionWithHistory lastPosition;
+    ISyzygyEvaluatorEngine tbEvaluator = null; // For debug code above only
 
 
     /// <summary>
