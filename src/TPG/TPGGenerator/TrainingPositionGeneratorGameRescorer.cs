@@ -39,7 +39,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     // Unintended blunders are revealed by a best Q which changes
     // dramatically after making the move.
-    const float SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = 0.15f;
+    const float SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = 999; // disabled, was 0.15f;
 
     const int MAX_PLY = 512;
 
@@ -156,7 +156,7 @@ namespace CeresTrain.TPG.TPGGenerator
             numUnintendedBlunders++;
             currentTrainWDL = thisInfoTraining.BestWDL;
             targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.UnintendedDeblunder;
-            SHOULD_REJECT_POSITION[i] = true; // the policy reflects a mistake, don't use
+            // SHOULD_REJECT_POSITION[i] = true;
           }
         }
 
@@ -389,7 +389,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
         Position thisPosition = thisPos.FinalPosition;
         string fen = thisPosition.FEN;
-        var lastMoveInfo = thisPos.LastMoveInfoFromSideToMovePerspective();
+        (PieceType pieceType, Square fromSquare, Square toSquare, bool wasCastle) lastMoveInfo = thisPos.LastMoveInfoFromSideToMovePerspective();
 #if NOT
 // TODO: in Console.WriteLine below show an MGMove string instead of raw thisInfoTraining.PlayedIndex
         MGMove playedMoveMG = thisPos.PlayedMove;
@@ -405,6 +405,9 @@ namespace CeresTrain.TPG.TPGGenerator
         float origResultWL = thisInfoTraining.ResultQ;
         float deltaEval = newResultWL - trainingQ;
 
+        Square fromSquare = !thisPosition.IsWhite ? lastMoveInfo.fromSquare.Mirrored.Reversed : lastMoveInfo.fromSquare.Mirrored;
+        Square toSquare = !thisPosition.IsWhite ? lastMoveInfo.toSquare.Mirrored.Reversed : lastMoveInfo.toSquare.Mirrored;
+
         string nonBestMoveChar = thisInfoTraining.NotBestMove ? "x" : " ";
         bool isLastPosition = i == numPosThisGame - 1;
         bool terminalBlunder = isLastPosition && LC0TrainingPosGeneratorFromSingleNNEval.TrainingPosWasForcedMovePossiblySeriousBlunder(in thisPos);
@@ -417,7 +420,7 @@ namespace CeresTrain.TPG.TPGGenerator
                         + $" mlh={thisInfoTraining.PliesLeft,4:N0}/{thisInfoTraining.BestM,4:N0}  "
                         + $" [fwd={intermediateBestWDL[i].w,4:F2} {intermediateBestWDL[i].d,4:F2} {intermediateBestWDL[i].l,4:F2}  delta={deltaQIntermediateBestWDL[i],5:F2}]  "
                         + $" [ns_bl={noiseBlunderStr}  slf_bl{selfBlunderStr}]  "
-                        + $" {fen}  play: {thisInfoTraining.PlayedIndex}  ast: {lastMoveInfo.pieceType} {lastMoveInfo.fromSquare} {lastMoveInfo.toSquare} {lastMoveInfo.wasCastle}");
+                        + $" {fen}  play: {thisInfoTraining.PlayedIndex}  ast: {lastMoveInfo.pieceType} {fromSquare} {toSquare} {lastMoveInfo.wasCastle}");
 
       }
     }
