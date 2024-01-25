@@ -24,10 +24,10 @@ from dot_product_attention import DotProductAttention
 
 class EncoderLayer(torch.nn.Module):
   def __init__(self, num_layers: int, hidden_size: int, ffn_hidden_size: int, 
-                num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps: int = 1e-5, 
+                num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5, 
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, smolgenPrepLayer = None,
                 attention_multiplier : int = 1, smoe_mode : str = 'None', smoe_num_experts : int = 0,
-                alpha : float = 1, layerNum : int = 0, dropout_rate:float = 0):
+                alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0):
     super().__init__()
 
     assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish')

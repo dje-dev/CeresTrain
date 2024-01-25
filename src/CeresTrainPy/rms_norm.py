@@ -15,7 +15,7 @@ import torch
 from torch import Tensor
 
 class RMSNorm(torch.nn.Module):
-  def __init__(self, d_model, eps=1e-6):
+  def __init__(self, d_model : int, eps : float =1e-6):
     super().__init__()
 
     self.d_model = d_model
