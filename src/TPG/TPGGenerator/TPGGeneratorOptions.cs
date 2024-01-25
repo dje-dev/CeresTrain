@@ -178,9 +178,17 @@ namespace CeresTrain.TPG.TPGGenerator
 
     /// <summary>
     /// If Deblunder enabled, sets the minimum difference in Q required
-    /// for a move to be considered a blunder.
+    /// for a move to be considered a blunder 
+    /// (in cases where move made was other than best, i.e. deliberately injected noise).
     /// </summary>
     public float DeblunderThreshold { init; get; } = 0.05f;
+
+
+    /// If Deblunder enabled, sets the minimum difference in Q required
+    /// for a move to be considered an unintended blunder 
+    /// (based on negative change in evaluations see within next 2 moves).
+    public float DeblunderUnintnededThreshold { init; get; } = 0.15f;
+
 
     /// <summary>
     /// If any missing history planes (e.g. in first moves of game)
@@ -339,6 +347,7 @@ namespace CeresTrain.TPG.TPGGenerator
       writer.WriteLine($"  MinProbabilityForLegalMove   : {100 * MinProbabilityForLegalMove}%");
       writer.WriteLine($"  Deblunder                    : {Deblunder}");
       writer.WriteLine($"  Deblunder Threshold          : {DeblunderThreshold}");
+      writer.WriteLine($"  Deblunder (unint.) Threshold : {DeblunderUnintnededThreshold}");
       writer.WriteLine();
       writer.WriteLine($"  OutputFormat                 : {OutputFormat}");
       writer.WriteLine($"  NumThreads                   : {NumThreads}");

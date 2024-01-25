@@ -31,7 +31,7 @@ namespace CeresTrain.TPG.TPGGenerator
   ///   - fixup unintended major blunders in play so do not contaminate prior move evaluations
   ///   - calculate certain extra optional training targets (such as measures of uncertainty).
   /// </summary>
-  internal class TrainingPositionGeneratorGameRescorer
+  public class TrainingPositionGeneratorGameRescorer
   {
     // Blunders due to injected noise can be definitively identified.
     // Ignore noise blunders only if very small in magnitude.
@@ -39,7 +39,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     // Unintended blunders are revealed by a best Q which changes
     // dramatically after making the move.
-    const float SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = 999; // disabled, was 0.15f;
+    public readonly float SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = 0.15f;
 
     const int MAX_PLY = 512;
 
@@ -62,7 +62,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     public readonly bool EmitPlySinceLastMovePerSquare;
 
-    public TrainingPositionGeneratorGameRescorer(float noiseBlunderThreshold, bool emitPlySinceLastMovePerSquare)
+    public TrainingPositionGeneratorGameRescorer(float noiseBlunderThreshold, float noiseBlunderUnintendedThreshold, bool emitPlySinceLastMovePerSquare)
     {
       if (noiseBlunderThreshold <= 0)
       {
@@ -70,6 +70,7 @@ namespace CeresTrain.TPG.TPGGenerator
       }
 
       SUBOPTIMAL_NOISE_BLUNDER_THRESHOLD = noiseBlunderThreshold;
+      SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = noiseBlunderUnintendedThreshold;
       EmitPlySinceLastMovePerSquare = emitPlySinceLastMovePerSquare;
 
       if (EmitPlySinceLastMovePerSquare)
@@ -360,7 +361,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// about training data and subsequent deblunder/tablebase operations
     /// and final training WDL determined.
     /// </summary>
-    public void Dump()
+    public void Dump((float v1, float v2)[] extraValues = null)
     {
       numGamesProcessed++;
       for (int i = 0; i < numPosThisGame; i++)
@@ -414,7 +415,14 @@ namespace CeresTrain.TPG.TPGGenerator
         string terminalBlunderChar = terminalBlunder ? "B" : " ";
         string targetSourceStr = targetSourceInfo[i].ToString();
         targetSourceStr = $"{(targetSourceStr.Length > 9 ? targetSourceStr.Substring(0, 9) : targetSourceStr.PadRight(9, ' '))}";
-        Console.WriteLine($"{i,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
+
+        string prefix = "";
+        if (extraValues != null)
+        {
+          prefix += $"  {extraValues[i].v1,5:F2} {extraValues[i].v2,5:F2}  ";
+        }
+
+        Console.WriteLine($"{prefix} {i,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
                         + $"  WL {origResultWL,5:F2} --> {newResultWL,5:F2}  (bestQ= {trainingQ,5:F2} delta= {deltaEval,5:F2})"
                         + $"  TGT --> {newResultWDL[i].w,4:F2} {newResultWDL[i].d,4:F2} {newResultWDL[i].l,4:F2}"
                         + $" mlh={thisInfoTraining.PliesLeft,4:N0}/{thisInfoTraining.BestM,4:N0}  "

@@ -327,7 +327,9 @@ namespace CeresTrain.TPG.TPGGenerator
 
           if (gameAnalyzer == null)
           {
-            gameAnalyzer = new TrainingPositionGeneratorGameRescorer(Options.DeblunderThreshold, Options.EmitPlySinceLastMovePerSquare);
+            gameAnalyzer = new TrainingPositionGeneratorGameRescorer(Options.DeblunderThreshold, 
+                                                                     Options.DeblunderUnintnededThreshold,
+                                                                     Options.EmitPlySinceLastMovePerSquare);
           }
 
           // Set up the game to analyze and run analysis so that
