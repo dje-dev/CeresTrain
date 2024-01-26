@@ -90,7 +90,20 @@ namespace CeresTrain.TrainingDataGenerator
     /// </summary>
     /// <param name="lastPos"></param>
     /// <returns></returns>
-    public static bool TrainingPosWasForcedMovePossiblySeriousBlunder(in EncodedPositionWithHistory lastPos)
+    public static bool TrainingPosWasForcedMovePossiblySeriousBlunder(in EncodedPositionWithHistory lastPos, float thresholdBlunder = 0.7f)
+    => TrainingPosWasForcedMovePossiblySeriousBlunder(in lastPos, out _, thresholdBlunder);
+
+
+    /// <summary>
+    /// Returns if the position looks like a terminal blunder, i.e. 
+    /// a not obviously lost position where the chosen move was not optimal.
+    /// </summary>
+    /// <param name="lastPos"></param>
+    /// <returns></returns>
+    public static bool TrainingPosWasForcedMovePossiblySeriousBlunder(in EncodedPositionWithHistory lastPos,
+                                                                      out PositionWithHistory finalPos,
+                                                                      float thresholdBlunder = 0.7f)
+
     {
       ref readonly EncodedPositionEvalMiscInfoV6 lastInfo = ref lastPos.MiscInfo.InfoTraining;
 
@@ -98,12 +111,16 @@ namespace CeresTrain.TrainingDataGenerator
       MGMove mgMove = lastPos.PlayedMove;
       mgPos.MakeMove(mgMove);
 
+      finalPos = lastPos.ToPositionWithHistory(8);
+      finalPos.AppendPosition(mgPos, mgMove);
+
       bool wasWinLoss = Math.Abs(lastInfo.ResultQ) == 1;
       bool wasForcedBlunder = lastInfo.NotBestMove;
-      bool lastPosWasFarFromActualResult = Math.Abs(lastInfo.BestQ - lastInfo.ResultQ) > 0.7f;
+      float THRESHOLD_BLUNDER = 0.7f;
+      bool lastPosWasFarFromActualResult = Math.Abs(lastInfo.BestQ - lastInfo.ResultQ) > thresholdBlunder;
       return wasWinLoss && wasForcedBlunder && lastPosWasFarFromActualResult;
     }
-
+    
     #endregion
 
     #region Statistics collecting 
