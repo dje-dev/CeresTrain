@@ -163,7 +163,7 @@ namespace CeresTrain.Networks.Transformer
 
         if (TransformerConfig.SmolgenDimPerSquare > 0)
         {
-          smLinearShared = Linear(TransformerConfig.NumHeads * TransformerConfig.SmolgenDim, 64 * 64, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+          smLinearShared = Linear(TransformerConfig.SmolgenDim, 64 * 64, true, ExecutionConfig.Device, ExecutionConfig.DataType);
         }
 
         // ENCODER LAYERS
