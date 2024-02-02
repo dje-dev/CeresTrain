@@ -371,6 +371,25 @@ namespace CeresTrain.NNEvaluators
 
     static byte[] lastBytes = null;
 
+    // Create a result batch to receive results.
+    // TODO: try to make this a reusable buffer,
+    //       but WARNING a first attempt at this introduced serious incorrectness
+    //       (maybe because the arrays were created as oversized).
+    [ThreadStatic] static CompressedPolicyVector[] policiesToReturn;
+
+    // TODO: Use a ThreadStatic buffer instead.
+    [ThreadStatic] static FP16[] w;
+    [ThreadStatic] static FP16[] l;
+    [ThreadStatic] static FP16[] w2;
+    [ThreadStatic] static FP16[] l2;
+    [ThreadStatic] static FP16[] m;
+    [ThreadStatic] static FP16[] uncertaintyV;
+
+
+    [ThreadStatic] static FP16[] extraStats0;
+    [ThreadStatic] static FP16[] extraStats1;
+
+
 
     public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
                                                                  int numPositions,
@@ -378,6 +397,19 @@ namespace CeresTrain.NNEvaluators
                                                                  byte[] squareBytesAll,
                                                                  short[] legalMovesIndices = null)
     {
+      if (w == null)
+      {
+        policiesToReturn = new CompressedPolicyVector[MAX_BATCH_SIZE];
+        w = new FP16[MAX_BATCH_SIZE];
+        l = new FP16[MAX_BATCH_SIZE];
+        w2 = new FP16[MAX_BATCH_SIZE];
+        l2 = new FP16[MAX_BATCH_SIZE];
+        m = new FP16[MAX_BATCH_SIZE];
+        uncertaintyV = new FP16[MAX_BATCH_SIZE];
+        extraStats0 = new FP16[MAX_BATCH_SIZE];
+        extraStats1 = new FP16[MAX_BATCH_SIZE];
+      }
+
       if (false)
       {
         // Test code to show any differences in raw input compared to last call (only first position checked).
@@ -416,9 +448,6 @@ namespace CeresTrain.NNEvaluators
       Tensor predictionQDeviationLower;
       Tensor predictionQDeviationUpper;
 
-      FP16[] extraStats0;
-      FP16[] extraStats1;
-
       using (no_grad())
       {
         if (false && numPositions == 2)
@@ -447,14 +476,11 @@ namespace CeresTrain.NNEvaluators
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
           predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
-          extraStats0, extraStats1) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
+          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
       }
-
-      extraStats0 = HasValueSecondary ? new FP16[numPositions] : null;
-      extraStats1 = HasValueSecondary ? new FP16[numPositions] : null;
 
       using (var _ = NewDisposeScope())
       {
@@ -508,18 +534,10 @@ namespace CeresTrain.NNEvaluators
         // TODO: try to make this a reusable buffer,
         //       but WARNING a first attempt at this introduced serious incorrectness
         //       (maybe because the arrays were created as oversized).
-        CompressedPolicyVector[] policiesToReturn = new CompressedPolicyVector[numPositions];
-
-        // TODO: Use a ThreadStatic buffer instead.
-        FP16[] w = new FP16[numPositions];
-        FP16[] l = new FP16[numPositions];
-        FP16[] w2 = HasValueSecondary ? new FP16[numPositions] : null;
-        FP16[] l2 = HasValueSecondary ? new FP16[numPositions] : null;
-        FP16[] m = new FP16[numPositions];
-        FP16[] uncertaintyV = new FP16[numPositions];
 
         // Populate policy.
-        PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs = new PolicyVectorCompressedInitializerFromProbs.ProbEntry[TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
+        // Convert to next line to Span
+        Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs = stackalloc PolicyVectorCompressedInitializerFromProbs.ProbEntry[TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
 
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
@@ -605,7 +623,7 @@ namespace CeresTrain.NNEvaluators
     }
 
     static void InitPolicyProbabilities(int i,
-                                        PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs,
+                                        Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
                                         short[] legalMoveIndices,
                                         ReadOnlySpan<Half> spanPoliciesMasked,
                                         CompressedPolicyVector[] policiesToReturn)
@@ -648,7 +666,7 @@ namespace CeresTrain.NNEvaluators
     public static bool MIRROR = false;
 
     static void InitPolicyProbabilities(int i,
-                                        PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs,
+                                        Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
                                         Func<int, MGPosition> getMGPosAtIndex,
                                         Func<int, MGMoveList> getMoveListAtIndex,
                                         ReadOnlySpan<Half> spanPolicies1858,
