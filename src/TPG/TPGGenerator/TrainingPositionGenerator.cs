@@ -467,13 +467,21 @@ namespace CeresTrain.TPG.TPGGenerator
 
             TrainingPositionWriterNonPolicyTargetInfo target = new();
             EncodedPositionEvalMiscInfoV6 infoTraining = game.PositionTrainingInfoAtIndex(i);
-            target.ResultWDL = gameAnalyzer.newResultWDL[i];
+            target.ResultNonDeblunderedWDL = infoTraining.ResultWDL;
+            target.ResultDeblunderedWDL = gameAnalyzer.newResultWDL[i];
             target.BestWDL = infoTraining.BestWDL;
             target.IntermediateWDL = gameAnalyzer.intermediateBestWDL[i];
             target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);
             target.DeltaQVersusV = infoTraining.Uncertainty;
             target.DeltaQForwardAbs = gameAnalyzer.deltaQIntermediateBestWDL[i];
             target.Source = gameAnalyzer.targetSourceInfo[i];
+
+            target.ForwardSumPositiveBlunders = gameAnalyzer.forwardSumPositiveBlunders[i];
+            target.ForwardSumNegativeBlunders = gameAnalyzer.forwardSumNegativeBlunders[i];
+
+            target.ForwardMinQDeviation = gameAnalyzer.forwardMinQDeviation[i];
+            target.ForwardMaxQDeviation = gameAnalyzer.forwardMaxQDeviation[i];
+
             TrainingPositionWriterNonPolicyTargetInfo targetInfo = target;
 
             // TODO: avoid calling PositionAdIndex here

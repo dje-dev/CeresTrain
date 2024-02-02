@@ -47,7 +47,16 @@ namespace CeresTrain.Examples
                                                      string dataFilesDir = null, long numPos = 0, int[] deviceIDs = null,
                                                      int? batchSizeForwardPassOverride = null, string pyTorchCompileMode = null)
     {
-      ArgumentNullException.ThrowIfNull(piecesStr, nameof(piecesStr));
+      if (piecesStr == null && dataFilesDir == null)
+      {
+        throw new ArgumentException("Must specify either piecesStr or dataFilesDir");
+      }
+
+      if (piecesStr != null && dataFilesDir != null)
+      {
+        throw new ArgumentException("Implementation limitation: pieces filter not currently supported when reading from training data files");
+      }
+
       if (deviceIDs == null || deviceIDs.Length == 0)
       {
         deviceIDs = [0];
@@ -58,7 +67,7 @@ namespace CeresTrain.Examples
                                               out NetTransformerDef configTransformerDef, out ConfigOptimization configOptimization, out ConfigMonitoring configMonitoring);
       configData = configData with
       {
-        SourceType = useTPGFiles ? ConfigData.DataSourceType.DirectFromTPG : ConfigData.DataSourceType.DirectFromPositionGenerator,
+        SourceType = configData.SourceType,
         PositionGenerator = useTPGFiles ? null : new PositionGeneratorRandomFromPieces(piecesStr),
         TrainingFilesDirectory = dataFilesDir
       };

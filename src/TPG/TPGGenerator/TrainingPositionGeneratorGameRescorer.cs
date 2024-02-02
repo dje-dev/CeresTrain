@@ -55,6 +55,12 @@ namespace CeresTrain.TPG.TPGGenerator
     public float[] suboptimalityUnintended = new float[MAX_PLY];
     public float?[] tablebaseWL = new float?[MAX_PLY];
 
+    public float[] forwardSumPositiveBlunders = new float[MAX_PLY];
+    public float[] forwardSumNegativeBlunders = new float[MAX_PLY];
+
+    public float[] forwardMinQDeviation = new float[MAX_PLY];
+    public float[] forwardMaxQDeviation = new float[MAX_PLY];
+
     public (float w, float d, float l)[] intermediateBestWDL = new (float w, float d, float l)[MAX_PLY];
     public float[] deltaQIntermediateBestWDL = new float[MAX_PLY];
 
@@ -91,8 +97,65 @@ namespace CeresTrain.TPG.TPGGenerator
     public ref readonly EncodedPositionWithHistory PositionRef(int index) => ref gamePositionsBuffer.Span[index];
 
 
+    void CalcForwardBlunders()
+    {
+      Array.Fill(forwardSumPositiveBlunders, 0, 0, numPosThisGame);
+      Array.Fill(forwardSumNegativeBlunders, 0, 0, numPosThisGame);
+      Array.Fill(forwardMinQDeviation, 0, 0, numPosThisGame);
+      Array.Fill(forwardMaxQDeviation, 0, 0, numPosThisGame);
+
+      Span<EncodedPositionWithHistory> gamePositions = gamePositionsBuffer.Span;
+
+      for (int moveIndexInGame = 0; moveIndexInGame < numPosThisGame; moveIndexInGame++)
+      {
+        // Get information about this position handy.
+        ref readonly EncodedPositionWithHistory thisTrainingPos = ref gamePositions[moveIndexInGame];
+
+        // Set forward cumulative suboptimalities
+        // TODO: make this more efficient
+        float baselineQ = thisTrainingPos.MiscInfo.InfoTraining.BestQ;
+        float minQDeviation = 0;
+        float maxQDeviation = 0;
+        for (int fwdMoveIndex = moveIndexInGame; fwdMoveIndex < numPosThisGame; fwdMoveIndex++)
+        {
+          bool ourSide = fwdMoveIndex % 2 == moveIndexInGame % 2;
+          float qOurPerspective = ourSide ? gamePositions[fwdMoveIndex].MiscInfo.InfoTraining.BestQ 
+                                          : -gamePositions[fwdMoveIndex].MiscInfo.InfoTraining.BestQ;
+
+          // Possibly update min/max Q deviation. 
+          float qDeviation = qOurPerspective - baselineQ; 
+          float qDeviationAbs = Math.Abs(qDeviation);
+          if (qDeviation < 0 && qDeviationAbs > minQDeviation)
+          {
+            minQDeviation = qDeviationAbs;
+          }
+          else if (qDeviation > 0 && qDeviationAbs > maxQDeviation)
+          {
+            maxQDeviation = qDeviationAbs;
+          } 
+         
+
+          if (ourSide && suboptimalityNoiseBlunder[fwdMoveIndex] > 0)
+          {
+            // Our side played a blunder.
+            forwardSumNegativeBlunders[moveIndexInGame] += suboptimalityNoiseBlunder[fwdMoveIndex];
+          }
+          else if (!ourSide && suboptimalityNoiseBlunder[fwdMoveIndex] > 0)
+          {
+            forwardSumPositiveBlunders[moveIndexInGame] += suboptimalityNoiseBlunder[fwdMoveIndex];
+          }
+        }
+
+        forwardMinQDeviation[moveIndexInGame] = minQDeviation;
+        forwardMaxQDeviation[moveIndexInGame] = maxQDeviation;
+      }
+    }
+
+
     public void CalcTrainWDL(TPGGeneratorOptions.DeblunderType deblunderType, bool doTBRescore)
     {
+      CalcForwardBlunders();
+
       (float w, float d, float l) currentTrainWDL = default;
 
       Span<EncodedPositionWithHistory> positionsSpan = gamePositionsBuffer.Span;
@@ -161,7 +224,7 @@ namespace CeresTrain.TPG.TPGGenerator
           }
         }
 
-        // Set the training value based on current.
+        // Set the result values based on current.
         newResultWDL[i] = currentTrainWDL;
 
         // Try to move forward some number of plys to see an intermediate forward position.
@@ -421,6 +484,9 @@ namespace CeresTrain.TPG.TPGGenerator
         {
           prefix += $"  {extraValues[i].v1,5:F2} {extraValues[i].v2,5:F2}  ";
         }
+
+        prefix += $"  {forwardSumPositiveBlunders[i], 5:F2} {forwardSumNegativeBlunders[i],5:F2}  ";
+        prefix += $"  {forwardMinQDeviation[i],5:F2} {forwardMaxQDeviation[i],5:F2}  ";
 
         Console.WriteLine($"{prefix} {i,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
                         + $"  WL {origResultWL,5:F2} --> {newResultWL,5:F2}  (bestQ= {trainingQ,5:F2} delta= {deltaEval,5:F2})"

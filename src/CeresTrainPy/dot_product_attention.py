@@ -69,7 +69,7 @@ class DotProductAttention(torch.nn.Module):
       self.ln1 = torch.nn.LayerNorm(smolgen_intermediate_dim) if norm_type == 'LayerNorm' else RMSNorm(smolgen_intermediate_dim, eps=layernorm_eps)
       self.sm3 = torch.nn.Linear(smolgen_intermediate_dim, num_attention_heads * smolgen_intermediate_dim)
       self.ln2 = torch.nn.LayerNorm(num_attention_heads * smolgen_intermediate_dim)if norm_type == 'LayerNorm' else RMSNorm(num_attention_heads * smolgen_intermediate_dim, eps=layernorm_eps)
-
+      
   @property
   def smolgenPrepLayer(self):
     return self.wrapped_smolgen_prep_layer.linear
@@ -84,7 +84,7 @@ class DotProductAttention(torch.nn.Module):
     scores = torch.matmul(Q, K.transpose(2, 3))
     scores = scores / math.sqrt(self.d_k)
 
-    smolgen_logits_repeated = smolgen.repeat(1, self.num_heads, 1, 1).reshape(smolgen.shape[0], self.num_heads, 64, 64)
+    smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
     scores = scores + smolgen_logits_repeated
 
     A = self.softmax(scores)
@@ -113,8 +113,9 @@ class DotProductAttention(torch.nn.Module):
       smolgen = self.ln1(smolgen)
       smolgen = self.sm3(smolgen)
       smolgen = self.ln2(smolgen)
+      smolgen = smolgen.reshape(-1, self.num_heads, self.smolgen_intermediate_dim)
       smolgen = self.smolgenPrepLayer(smolgen) # shared
-      smolgen = smolgen.reshape(-1, 64, 64)
+      smolgen = smolgen.reshape(-1, self.num_heads, 64, 64)
       H_cat, A = self.sdp_smolgen(Q, K, V, smolgen)
     else:
       H_cat = torch.nn.functional.scaled_dot_product_attention(Q, K, V)

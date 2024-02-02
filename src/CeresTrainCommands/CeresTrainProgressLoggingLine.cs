@@ -64,6 +64,21 @@ namespace CeresTrain.TrainCommands
     public readonly float LastUNCLoss;
 
     /// <summary>
+    /// Value head 2 (secondary) loss.
+    /// </summary>
+    public readonly float LastValue2Loss;
+
+    /// <summary>
+    /// Foward Q deviation lower bound loss.
+    /// </summary>
+    public readonly float LastQDeviationLowerLoss;
+
+    /// <summary>
+    /// Foward Q deviation upper bound loss.
+    /// </summary>
+    public readonly float LastQDeviationUpperLoss;
+
+    /// <summary>
     /// Learning rate
     /// </summary>
     public readonly float LastLR;
@@ -87,7 +102,10 @@ namespace CeresTrain.TrainCommands
 
       LastMLHLoss = float.Parse(parts[6].Trim());
       LastUNCLoss = float.Parse(parts[7].Trim());
-      LastLR = float.Parse(parts[8].Trim());
+      LastValue2Loss = float.Parse(parts[8].Trim());
+      LastQDeviationLowerLoss = float.Parse(parts[9].Trim());
+      LastQDeviationUpperLoss = float.Parse(parts[10].Trim());
+      LastLR = float.Parse(parts[11].Trim());
     }
   }
 }

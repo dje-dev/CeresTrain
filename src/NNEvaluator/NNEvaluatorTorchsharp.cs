@@ -31,6 +31,24 @@ using CeresTrain.TrainCommands;
 
 namespace CeresTrain.NNEvaluators
 {
+  public record class NNEvaluatorTorchsharpOptions
+  {
+    public readonly float QNegativeBlunders;
+    public readonly float QPositiveBlunders;
+    public readonly float FractionUndeblunderedValueHead;
+    public readonly bool MonitorActivations;
+
+    public NNEvaluatorTorchsharpOptions(float qNegativeBlunders, float qPositiveBlunders, float fractionUndeblunderedValueHead, 
+                                        bool monitorActivations = false)
+    {
+      QNegativeBlunders = qNegativeBlunders;
+      QPositiveBlunders = qPositiveBlunders;
+      FractionUndeblunderedValueHead = fractionUndeblunderedValueHead;
+      MonitorActivations = monitorActivations;
+    }
+  }
+
+
   /// <summary>
   /// Subclass of NNEvaluator which uses CeresTrain networks.
   /// </summary>
@@ -66,6 +84,8 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     IModuleNNEvaluator PytorchForwardEvaluator;
 
+    public NNEvaluatorTorchsharpOptions Options;
+
 
 
     /// <summary>
@@ -78,10 +98,11 @@ namespace CeresTrain.NNEvaluators
     public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
                                  ICeresNeuralNetDef ceresTransformerNetDef,
                                  ConfigNetExecution configNetExec,
-                                 bool lastMovePliesEnabled = false)
+                                 bool lastMovePliesEnabled = false,
+                                 NNEvaluatorTorchsharpOptions options = default)
       : this(engineType, new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
              (NetTransformerDef)ceresTransformerNetDef),
-             configNetExec.Device, configNetExec.DataType, configNetExec.UseHistory, lastMovePliesEnabled)
+             configNetExec.Device, configNetExec.DataType, configNetExec.UseHistory, lastMovePliesEnabled, options)
     {
     }
 
@@ -95,15 +116,17 @@ namespace CeresTrain.NNEvaluators
     /// <param name="dataType"></param>
     /// <param name="includeHistory"></param>
     /// <param name="lastMovePliesEnabled"></param>
-    public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
+    public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType,
                                  IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
-                                 bool lastMovePliesEnabled = false)
+                                 bool lastMovePliesEnabled = false,
+                                 NNEvaluatorTorchsharpOptions options = default)
     {
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
 
       IncludeHistory = includeHistory;
       EngineType = engineType;
+      Options = options;
 
       if (dataType != ScalarType.BFloat16)
       {
@@ -137,6 +160,10 @@ namespace CeresTrain.NNEvaluators
     public override bool HasM => true;
     public override bool IsWDL => true;
     public override bool HasUncertaintyV => true;
+
+    public bool hasValue2 = true; // TODO: cleanup
+
+    public override bool HasValueSecondary => hasValue2;
 
     public override bool IsEquivalentTo(NNEvaluator evaluator)
     {
@@ -238,7 +265,10 @@ namespace CeresTrain.NNEvaluators
       byte[] moveBytesAll;
       short[] legalMoveIndices = null;
 
-      TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled, out mgPos, out squareBytesAll, out legalMoveIndices);
+      TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled,
+                                                          Options == null ? 0 : Options.QNegativeBlunders,
+                                                          Options == null ? 0 : Options.QPositiveBlunders,
+                                                          out mgPos, out squareBytesAll, out legalMoveIndices);
 #if DEBUG
       lastPosition = positions.PositionsBuffer.Span[0];
 #endif
@@ -351,15 +381,15 @@ namespace CeresTrain.NNEvaluators
       if (false)
       {
         // Test code to show any differences in raw input compared to last call (only first position checked).
-        var subBytes = squareBytesAll.AsSpan().Slice(0, 64 * 135);
+        var subBytes = squareBytesAll.AsSpan().Slice(0, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
         var posx = TPGRecord.PositionForSquares(MemoryMarshal.Cast<byte, TPGSquareRecord>(subBytes), 0, true);
         if (lastBytes != null)
         {
           Console.WriteLine("testcompare vs first seen");
           for (int i = 0; i < 64; i++)
-            for (int j = 0; j < 135; j++)
+            for (int j = 0; j < TPGRecord.BYTES_PER_SQUARE_RECORD; j++)
             {
-              if (squareBytesAll[i * 135 + j] != lastBytes[i * 135 + j])
+              if (squareBytesAll[i * TPGRecord.BYTES_PER_SQUARE_RECORD + j] != lastBytes[i * TPGRecord.BYTES_PER_SQUARE_RECORD + j])
               {
                 Console.WriteLine("diff at " + i + " " + j + "  ... breaking");
                 break;
@@ -368,7 +398,7 @@ namespace CeresTrain.NNEvaluators
         }
         if (lastBytes == null)
         {
-          lastBytes = new byte[8640];
+          lastBytes = new byte[SQUARE_BYTES_PER_POSITION];
           Array.Copy(squareBytesAll, lastBytes, lastBytes.Length);
         }
       }
@@ -382,13 +412,31 @@ namespace CeresTrain.NNEvaluators
       Tensor predictionPolicy;
       Tensor predictionMLH;
       Tensor predictionUNC;
+      Tensor predictionValue2;
+      Tensor predictionQDeviationLower;
+      Tensor predictionQDeviationUpper;
+
       FP16[] extraStats0;
       FP16[] extraStats1;
 
       using (no_grad())
       {
+        if (false && numPositions == 2)
+        {
+          Console.WriteLine("refixul ");
+          for (int i= 0; i < 64 * TPGRecord.BYTES_PER_SQUARE_RECORD; i++)
+          {
+            squareBytesAll[64 * TPGRecord.BYTES_PER_SQUARE_RECORD + i] = squareBytesAll[i];
+          }
+          squareBytesAll[64 * TPGRecord.BYTES_PER_SQUARE_RECORD + 1] = 33;
+        }
         // Create a Tensor of bytes still on CPU.
         Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
+
+//        long ja = 0;
+//        for (int i=0;i<1*64* TPGRecord.BYTES_PER_SQUARE_RECORD;i++)
+//          ja+= (squareBytesAll[i] * i) % 377;
+//        Console.WriteLine(ja); System.Environment.Exit(3);
 
         // Move Tensor to the desired device and data type.
         Tensor inputSquares = cpuTensor.to(Device).to(DataType);
@@ -397,27 +445,38 @@ namespace CeresTrain.NNEvaluators
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
 
         // Evaluate using neural net.
-        (predictionValue, predictionPolicy, predictionMLH, predictionUNC, extraStats0, extraStats1) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
+        (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
+          predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
+          extraStats0, extraStats1) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
       }
 
+      extraStats0 = HasValueSecondary ? new FP16[numPositions] : null;
+      extraStats1 = HasValueSecondary ? new FP16[numPositions] : null;
+
       using (var _ = NewDisposeScope())
       {
-        // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
-        Tensor valueFloat = predictionValue.to(ScalarType.Float32);
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2);
 
-//        float[] valueOnCPURAW = predictionValue.cpu().FloatArray();
-//Console.WriteLine("RAWVAL " + valueOnCPURAW[0] + " " + valueOnCPURAW[1] + " " + valueOnCPURAW[2]);
+        if (Options?.FractionUndeblunderedValueHead != 0)
+        {
+          float fraction1 = 1.0f - Options.FractionUndeblunderedValueHead;
+          float fractionNonDeblundered = Options.FractionUndeblunderedValueHead;
 
-        Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
-        Tensor exp_logits = torch.exp(valueFloat - max_logits);
+          for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
+          {
+            float avg = (float)wdlProbabilitiesCPU[i] * fraction1
+                      + (float)wdl2ProbabilitiesCPU[i] * fractionNonDeblundered;
+            wdlProbabilitiesCPU[i] = (Half)avg;
+          }
 
-        // Sum the exponentiated logits along the last dimension and use to normalize.
-        Tensor sum_exp_logits = torch.sum(exp_logits, dim: 1, keepdim: true);
-        Tensor wdlProbabilities = (exp_logits / sum_exp_logits);
-        Span<Half> wdlProbabilitiesCPU = MemoryMarshal.Cast<byte, Half>(wdlProbabilities.to(ScalarType.Float16).cpu().bytes);
+        }
+
+        ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
+        ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
         // Cast data to desired C# data type and transfer to CPU.
         // Then get ReadOnlySpans over the underlying data of the tensors.
@@ -454,6 +513,8 @@ namespace CeresTrain.NNEvaluators
         // TODO: Use a ThreadStatic buffer instead.
         FP16[] w = new FP16[numPositions];
         FP16[] l = new FP16[numPositions];
+        FP16[] w2 = HasValueSecondary ? new FP16[numPositions] : null;
+        FP16[] l2 = HasValueSecondary ? new FP16[numPositions] : null;
         FP16[] m = new FP16[numPositions];
         FP16[] uncertaintyV = new FP16[numPositions];
 
@@ -492,13 +553,25 @@ namespace CeresTrain.NNEvaluators
           w[i] = (FP16)(float)wdlProbabilitiesCPU[i * 3];
           l[i] = (FP16)(float)wdlProbabilitiesCPU[i * 3 + 2];
 
+          if (HasValueSecondary)
+          {
+            w2[i] = (FP16)(float)wdl2ProbabilitiesCPU[i * 3];
+            l2[i] = (FP16)(float)wdl2ProbabilitiesCPU[i * 3 + 2];
+            extraStats0[i] = (FP16)(float)predictionQDeviationLowerCPU[i];
+            extraStats1[i] = (FP16)(float)predictionQDeviationUpperCPU[i];
+          }
+
           float rawM = (float)predictionsMLH[i] * NetTransformer.MLH_DIVISOR;
           m[i] = (FP16)Math.Max(rawM, 0);
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
-        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, numPositions, policiesToReturn,
-                                                                          w, l, m, uncertaintyV, null, new TimingStats(),
+        //Console.WriteLine((w[0] - l[0]) + " " + (w2[0] - l2[0]) +
+//  "  U=" + uncertaintyV[0] + "  [-" + predictionQDeviationLowerCPU[0] + " +" + predictionQDeviationUpperCPU[0] + "]");
+
+        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasValueSecondary,
+                                                                          numPositions, policiesToReturn,
+                                                                          w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
         // These Tensors were created outside the DisposeScope
@@ -513,8 +586,23 @@ namespace CeresTrain.NNEvaluators
       }
     }
 
+    private static Span<Half> ExtractValueWDL(Tensor predictionValue)
+    {
+      // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
+      Tensor valueFloat = predictionValue.to(ScalarType.Float32);
 
+      //        float[] valueOnCPURAW = predictionValue.cpu().FloatArray();
+      //Console.WriteLine("RAWVAL " + valueOnCPURAW[0] + " " + valueOnCPURAW[1] + " " + valueOnCPURAW[2]);
 
+      Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
+      Tensor exp_logits = torch.exp(valueFloat - max_logits);
+
+      // Sum the exponentiated logits along the last dimension and use to normalize.
+      Tensor sum_exp_logits = torch.sum(exp_logits, dim: 1, keepdim: true);
+      Tensor wdlProbabilities = (exp_logits / sum_exp_logits);
+      Span<Half> wdlProbabilitiesCPU = MemoryMarshal.Cast<byte, Half>(wdlProbabilities.to(ScalarType.Float16).cpu().bytes);
+      return wdlProbabilitiesCPU;
+    }
 
     static void InitPolicyProbabilities(int i,
                                         PolicyVectorCompressedInitializerFromProbs.ProbEntry[] probs,

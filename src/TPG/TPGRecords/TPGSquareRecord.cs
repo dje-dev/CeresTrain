@@ -121,11 +121,13 @@ namespace CeresTrain.TPG
     public ByteScaled Move50Count;
     public ByteScaled PlySinceLastMove;
     public ByteScaled IsEnPassant;
+    public ByteScaled QPositiveBlunders;
+    public ByteScaled QNegativeBlunders;
 
     fixed byte rankEncoding[8];
     fixed byte fileEncoding[8];
 
-    #endregion
+#endregion
 
     public ReadOnlySpan<ByteScaled> PieceTypeHistory(int historyPosIndex)
     {
@@ -163,7 +165,9 @@ namespace CeresTrain.TPG
                                                in Position historyPos7,
                                                Span<TPGSquareRecord> squareRecords,
                                                Span<byte> pliesSinceLastPieceMoveBySquare,
-                                               bool emitPlySinceLastMovePerSquare)
+                                               bool emitPlySinceLastMovePerSquare,
+                                               float qNegativeBlunders, 
+                                               float qPositiveBlunders)
     {
       bool hasEnPassant = pos.MiscInfo.EnPassantRightsPresent;
       bool sawEnPassant = false;
@@ -205,6 +209,8 @@ namespace CeresTrain.TPG
         pieceRecord.OpponentCanOO.Value = opponentCanOO;
         pieceRecord.OpponentCanOOO.Value = opponentCanOOO;
         pieceRecord.Move50Count.Value = TPGRecordEncoding.Move50CountEncoded(pos.MiscInfo.Move50Count);
+        pieceRecord.QNegativeBlunders.Value = Math.Min(ByteScaled.MAX_VALUE, qNegativeBlunders);
+        pieceRecord.QPositiveBlunders.Value = Math.Min(ByteScaled.MAX_VALUE, qPositiveBlunders);
 
         if (emitPlySinceLastMovePerSquare)
         {

@@ -118,8 +118,8 @@ namespace CeresTrain.Networks.Transformer
 
       if (extraFeatures.HasFlag(TransformerFeatures.Smolgen))
       {
-        SmolgenDimPerSquare = 8;
-        SmolgenDim = 64;
+        SmolgenDimPerSquare = 16;
+        SmolgenDim = 128;
       }
 
       if (extraFeatures.HasFlag(TransformerFeatures.SoftMoE))

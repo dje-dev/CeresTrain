@@ -37,6 +37,10 @@ class LossCalculator():
     self.PENDING_POLICY_ACC = 0
     self.PENDING_MLH_LOSS = 0
     self.PENDING_UNC_LOSS = 0
+    self.PENDING_VALUE2_LOSS = 0
+    self.PENDING_Q_DEVIATION_LOWER_LOSS = 0
+    self.PENDING_Q_DEVIATION_UPPER_LOSS = 0
+
 
   @property
   def LAST_VALUE_LOSS(self):
@@ -61,7 +65,19 @@ class LossCalculator():
   @property
   def LAST_UNC_LOSS(self):
     return self.PENDING_UNC_LOSS / self.PENDING_COUNT
+
+  @property
+  def LAST_VALUE2_LOSS(self):
+    return self.PENDING_VALUE2_LOSS / self.PENDING_COUNT
   
+  @property
+  def LAST_Q_DEVIATION_LOWER_LOSS(self):
+    return self.PENDING_Q_DEVIATION_LOWER_LOSS / self.PENDING_COUNT
+
+  @property
+  def LAST_Q_DEVIATION_UPPER_LOSS(self):
+    return self.PENDING_Q_DEVIATION_UPPER_LOSS / self.PENDING_COUNT
+
   
   def calc_accuracy(self, target: torch.Tensor, output: torch.Tensor, apply_masking : bool) -> float:
     if apply_masking:
@@ -97,10 +113,13 @@ class LossCalculator():
 
   def value_loss(self, target: torch.Tensor, output: torch.Tensor):
     loss = nn.CrossEntropyLoss().forward(output, target)
-
     self.PENDING_VALUE_LOSS += loss.item()
     self.PENDING_VALUE_ACC += self.calc_accuracy(target, output, False)
+    return loss
 
+  def value2_loss(self, target: torch.Tensor, output: torch.Tensor):
+    loss = nn.CrossEntropyLoss().forward(output, target)
+    self.PENDING_VALUE2_LOSS += loss.item()
     return loss
 
 
@@ -108,9 +127,7 @@ class LossCalculator():
     # Scale the loss to similar range as other losses.
     self.POST_SCALE = 5.0
     loss = self.POST_SCALE * F.huber_loss(output, target, reduction="mean", delta=0.5)
-
     self.PENDING_MLH_LOSS += loss.item()
-
     return loss
 
 
@@ -118,7 +135,19 @@ class LossCalculator():
     # Scale the loss to similar range as other losses.
     self.POST_SCALE = 150.0
     loss = self.POST_SCALE * F.huber_loss(output, target, reduction="mean", delta=0.5)
-
     self.PENDING_UNC_LOSS += loss.item()
+    return loss
 
+
+  def q_deviation_lower_loss(self, target: torch.Tensor, output: torch.Tensor):
+    self.POST_SCALE = 10.0
+    loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
+    self.PENDING_Q_DEVIATION_LOWER_LOSS += loss.item()
+    return loss
+
+
+  def q_deviation_upper_loss(self, target: torch.Tensor, output: torch.Tensor):
+    self.POST_SCALE = 10.0
+    loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
+    self.PENDING_Q_DEVIATION_UPPER_LOSS += loss.item()
     return loss

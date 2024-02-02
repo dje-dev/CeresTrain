@@ -78,7 +78,7 @@ namespace CeresTrain.Networks.MLP
     }
 
 
-    public override (Tensor, Tensor, Tensor, Tensor) forward(Tensor input)
+    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor input)
     {
       var batchSize = input.shape[0];
       Tensor reshaped = input.to(ExecutionConfig.DataType).reshape(batchSize, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
@@ -89,14 +89,19 @@ namespace CeresTrain.Networks.MLP
       Tensor policy = zeros([batchSize, 1858], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
       Tensor mlh = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
       Tensor unc = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
+      Tensor value2 = zeros([batchSize, 3], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
+      Tensor qDeviationLower = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
+      Tensor qDeviationUpper = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
 
-      return (value, policy, mlh, unc);
+      return (value, policy, mlh, unc, value2, qDeviationLower, qDeviationUpper);
     }
 
-    public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
+    public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
+                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+                     FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
     {
-      (Tensor, Tensor, Tensor, Tensor) ret = forward(inputSquares);
-      return (ret.Item1, ret.Item2, ret.Item3, ret.Item4, null, null);
+      (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) ret = forward(inputSquares);
+      return (ret.Item1, ret.Item2, ret.Item3, ret.Item4, ret.Item5, ret.Item6, ret.Item7, null, null);
     }
   }
 

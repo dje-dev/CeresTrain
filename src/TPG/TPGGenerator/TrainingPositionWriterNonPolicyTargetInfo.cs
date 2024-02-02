@@ -48,13 +48,21 @@ namespace CeresTrain.TPG.TPGGenerator
     };
 
 
-    public (float w, float d, float l) ResultWDL;
+    public (float w, float d, float l) ResultDeblunderedWDL;
+    public (float w, float d, float l) ResultNonDeblunderedWDL;
     public (float w, float d, float l) BestWDL;
     public float MLH;
     public float DeltaQVersusV;
     public (float, float, float) IntermediateWDL;
     public float DeltaQForwardAbs;
     public TargetSourceInfo Source;
+
+    public float ForwardMinQDeviation;
+    public float ForwardMaxQDeviation;
+
+    // TODO: clean this up, possibly store somewhere else. Technically these are not targets but rather inputs.
+    public float ForwardSumPositiveBlunders;
+    public float ForwardSumNegativeBlunders;
   }
 
 

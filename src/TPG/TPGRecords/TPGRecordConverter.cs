@@ -14,6 +14,7 @@
 #region Using directives
 
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
@@ -105,7 +106,8 @@ namespace CeresTrain.TPG
     /// <exception cref="NotImplementedException"></exception>
     public static TPGRecord ConvertedToTPGRecord(in EncodedPositionWithHistory encodedPosToConvert,
                                                  bool includeHistory,
-                                                 Span<byte> pliesSinceLastPieceMoveBySquare = default)
+                                                 Span<byte> pliesSinceLastPieceMoveBySquare = default,
+                                                 float qNegativeBlunders = 0, float qPositiveBlunders = 0)
     {
 #if MOVES
         throw new NotImplementedException();
@@ -116,7 +118,8 @@ namespace CeresTrain.TPG
 
       // Write squares.
       ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, default, null,
-                                ref tpgRecord, pliesSinceLastPieceMoveBySquare, pliesSinceLastPieceMoveBySquare != default);
+                                ref tpgRecord, pliesSinceLastPieceMoveBySquare, pliesSinceLastPieceMoveBySquare != default,
+                                qNegativeBlunders, qPositiveBlunders);
 
       return tpgRecord;
     }
@@ -130,20 +133,24 @@ namespace CeresTrain.TPG
                                                  float minLegalMoveProbability,
                                                  ref TPGRecord tpgRecord,
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
-                                                 bool emitPlySinceLastMovePerSquare)
+                                                 bool emitPlySinceLastMovePerSquare,
+                                                 float qNegativeBlunders = 0,
+                                                 float qPositiveBlunders = 0)
     {
       // N.B. Some logic here is the same as in method above (ConvertedToTPGRecord) and should be kept in sync.
 
       // Clear out any prior values.
       tpgRecord = default;
-
+      
       // Write squares.
 #if DISABLED_MIRROR
       // TODO: we mirror the position here to match expectation of trained net based on 
       //       LC0 training data (which is mirrored). Someday undo this mirroring in training and then can remove here.
       EncodedPositionWithHistory encodedPosToConvertMirrored = encodedPosToConvert.Mirrored;
 #endif
-      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, moves, targetInfo, ref tpgRecord, pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare);
+      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, moves, targetInfo, ref tpgRecord, 
+                                pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
+                                qNegativeBlunders, qPositiveBlunders);
 
       // Convert the values unrelated to moves and squares
       if (targetInfo != null)
@@ -207,6 +214,8 @@ namespace CeresTrain.TPG
                                                         bool includeHistory,
                                                         Memory<MGMoveList> moves,
                                                         bool lastMovePliesEnabled,
+                                                        float qNegativeBlunders,
+                                                        float qPositiveBlunders,
                                                         out MGPosition[] mgPos,
                                                         out byte[] squareBytesAll,
                                                         out short[] legalMoveIndices)
@@ -249,7 +258,7 @@ namespace CeresTrain.TPG
         Span<byte> thesePliesSinceLastMove = pliesSinceLastMoveAllPositions == null ? default : new Span<byte>(pliesSinceLastMoveAllPositions, i * 64, 64);
 
         ConvertToTPGRecord(in positionsFlat.Span[i], includeHistory, moves, null, null, float.NaN,
-                           ref tpgRecord, thesePliesSinceLastMove, lastMovePliesEnabled);
+                           ref tpgRecord, thesePliesSinceLastMove, lastMovePliesEnabled, qNegativeBlunders, qPositiveBlunders);
         tempTPGRecords[i] = tpgRecord;
 
         const bool VALIDITY_CHECK = true;
@@ -285,7 +294,9 @@ namespace CeresTrain.TPG
                                                  ref TPGRecord tpgRecord,
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
                                                  bool emitPlySinceLastMovePerSquare,
-                                                 bool emitMoves)
+                                                 bool emitMoves,
+                                                 float qNegativeBlunders, float qPositivelBlunders)
+                                                 
     {
       trainingPos.ValidateIntegrity("Validate in ConvertToTPGRecord");
 
@@ -318,7 +329,8 @@ namespace CeresTrain.TPG
 
       // Write squares.
       ConvertToTPGRecordSquares(trainingPos.PositionWithBoards, includeHistory, default, targetInfo, ref tpgRecord,
-                                pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare);
+                                pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
+                                qNegativeBlunders, qPositivelBlunders);
 
 #if DEBUG
       const bool validate = TPGRecord.NUM_SQUARES == 64;; // TODO: Generalize this for <64
@@ -436,7 +448,9 @@ namespace CeresTrain.TPG
                                                         in TrainingPositionWriterNonPolicyTargetInfo? targetInfo,
                                                         ref TPGRecord tpgRecord,
                                                         Span<byte> pliesSinceLastPieceMoveBySquare,
-                                                        bool emitPlySinceLastMovePerSquare)
+                                                        bool emitPlySinceLastMovePerSquare,
+                                                        float qNegativeBlunders, float qPositiveBlunders
+      )
     {
       static Position GetHistoryPosition(in EncodedPositionWithHistory historyPos, int index, in Position? fillInIfEmpty)
       {
@@ -487,12 +501,15 @@ namespace CeresTrain.TPG
         }
       }
 
+#if DEBUG
+      Debug.Assert(targetInfo == null || qNegativeBlunders == targetInfo.Value.ForwardSumNegativeBlunders);
+      Debug.Assert(targetInfo == null || qPositiveBlunders == targetInfo.Value.ForwardSumPositiveBlunders);
+#endif
       // Write squares.
       TPGSquareRecord.WritePosPieces(in thisPosition, in historyPos1, in historyPos2, in historyPos3,
                                      in historyPos4, in historyPos5, in historyPos6, in historyPos7,
-                                     tpgRecord.Squares, pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare);
-
-
+                                     tpgRecord.Squares, pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
+                                     qNegativeBlunders, qPositiveBlunders);
 #if DEBUG
       const bool validate = true;
 #else
@@ -515,17 +532,21 @@ namespace CeresTrain.TPG
     /// <param name="targetInfo"></param>
     /// <param name="tpgRecord"></param>
     /// <exception cref="Exception"></exception>
-    internal static unsafe void ConvertToTPGEvalInfo(in TrainingPositionWriterNonPolicyTargetInfo targetInfo,
-                                                     ref TPGRecord tpgRecord)
+    internal static unsafe void ConvertToTPGEvalInfo(in TrainingPositionWriterNonPolicyTargetInfo targetInfo, ref TPGRecord tpgRecord)
     {
-      if (IsInvalid(targetInfo.ResultWDL)) throw new Exception("Bad ResultWDL " + targetInfo.ResultWDL);
+      if (IsInvalid(targetInfo.ResultDeblunderedWDL)) throw new Exception("Bad ResultDeblunderedWDL " + targetInfo.ResultDeblunderedWDL);
+      if (IsInvalid(targetInfo.ResultNonDeblunderedWDL)) throw new Exception("Bad ResultNonDeblunderedWDL " + targetInfo.ResultNonDeblunderedWDL);
       if (IsInvalid(targetInfo.BestWDL)) throw new Exception("Bad BestWDL " + targetInfo.BestWDL);
       if (IsInvalid(targetInfo.MLH)) throw new Exception("Bad MLH " + targetInfo.MLH);
       if (IsInvalid(targetInfo.DeltaQVersusV)) throw new Exception("Bad UNC " + targetInfo.DeltaQVersusV);
 
-      tpgRecord.WDLResult[0] = targetInfo.ResultWDL.w;
-      tpgRecord.WDLResult[1] = targetInfo.ResultWDL.d;
-      tpgRecord.WDLResult[2] = targetInfo.ResultWDL.l;
+      tpgRecord.WDLResultNonDeblundered[0] = targetInfo.ResultNonDeblunderedWDL.w;
+      tpgRecord.WDLResultNonDeblundered[1] = targetInfo.ResultNonDeblunderedWDL.d;
+      tpgRecord.WDLResultNonDeblundered[2] = targetInfo.ResultNonDeblunderedWDL.l;
+
+      tpgRecord.WDLResultDeblundered[0] = targetInfo.ResultDeblunderedWDL.w;
+      tpgRecord.WDLResultDeblundered[1] = targetInfo.ResultDeblunderedWDL.d;
+      tpgRecord.WDLResultDeblundered[2] = targetInfo.ResultDeblunderedWDL.l;
 
       tpgRecord.WDLQ[0] = targetInfo.BestWDL.w;
       tpgRecord.WDLQ[1] = targetInfo.BestWDL.d;
@@ -533,6 +554,9 @@ namespace CeresTrain.TPG
 
       tpgRecord.MLH = targetInfo.MLH;
       tpgRecord.DeltaQVersusV = targetInfo.DeltaQVersusV;
+
+      tpgRecord.QDeviationLower = (Half)targetInfo.ForwardMinQDeviation;
+      tpgRecord.QDeviationUpper = (Half)targetInfo.ForwardMaxQDeviation;
 
 #if NOT
 // Old fill in directly from training position. Seemingly not needed now.

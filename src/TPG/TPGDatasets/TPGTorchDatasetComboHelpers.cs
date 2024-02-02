@@ -204,8 +204,7 @@ namespace CeresTrain.TrainData.TPGDatasets
         NumThreads = numConcurrentFiles,
         NumConcurrentSets = numConcurrentFiles,
 
-        //            RescoreWithTablebase = true,
-        NumPositionsTotal = batchSize, // only this one batch
+        NumPositionsTotal = 100 * 1024L * 1024L * 1024L, // essentially infinite
 
         Deblunder = deblunderType,
         DeblunderThreshold = 0.06f,

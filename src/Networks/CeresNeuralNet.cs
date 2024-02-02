@@ -28,7 +28,7 @@ namespace CeresTrain.Networks
   /// <summary>
   /// Base class from which all Ceres neural networks are derived.  
   /// </summary>
-  public abstract class CeresNeuralNet : Module<Tensor, (Tensor, Tensor, Tensor, Tensor)>, IModuleNNEvaluator
+  public abstract class CeresNeuralNet : Module<Tensor, (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)>, IModuleNNEvaluator
   {
     /// <summary>
     /// Constructor.
@@ -45,7 +45,9 @@ namespace CeresTrain.Networks
     /// <param name="inputSquares"></param>
     /// <param name="inputMoves"></param>
     /// <returns></returns>
-    public abstract (Tensor value, Tensor policy, Tensor mlh, Tensor unc, FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves);
+    public abstract (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
+                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+                     FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves);
 
 
     public virtual void SetType(ScalarType type)
@@ -53,7 +55,9 @@ namespace CeresTrain.Networks
       throw new NotImplementedException();
     }
 
-    public virtual (Tensor value, Tensor policy, Tensor mlh, Tensor unc, FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves)
+    public virtual (Tensor value, Tensor policy, Tensor mlh, Tensor unc,
+                    Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+                    FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves)
     {
       return Forward(inputSquares, inputMoves);
     }

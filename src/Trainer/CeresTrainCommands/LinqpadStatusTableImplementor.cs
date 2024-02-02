@@ -65,7 +65,9 @@ namespace CeresTrain.Trainer
     public override void UpdateInfo(string configID, int numLinesWritten, bool endRow, float posPerSecond,
                                     DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss,
                                     float valueAcc, float policyLoss, float policyAcc, 
-                                    float mlhLoss, float uncLoss, float curLR)
+                                    float mlhLoss, float uncLoss,
+                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                    float curLR)
     {
       float pctDone = MathF.Min(100, 100 * numPositions / MaxPositions);
       if (timeAtOnePercentDone == default && pctDone >= 1)
@@ -88,7 +90,8 @@ namespace CeresTrain.Trainer
 
       string showStr = $"{time,-11:HH\\:mm\\:ss} {elapsedSecs,5:F1} {numPositions,12:N0}  "
        + $"{posPerSecond,7:N0}   {deltaLoss,7:F3} {totalLoss,7:F3} {policyLoss,7:F3} {valueLoss,7:F3} "
-       + $"{100 * policyAcc,7:F2}% {100 * valueAcc,7:F2}%  {mlhLoss,7:F3} {uncLoss,7:F3}   {Math.Round(curLR, 6),-10:F6}";
+       + $"{100 * policyAcc,7:F2}% {100 * valueAcc,7:F2}%  {mlhLoss,7:F3} {uncLoss,7:F3}  " 
+       + $"{value2Loss,7:F3} {qDeviationLowerLoss,7:F3} {qDeviationUpperLoss,7:F3} {Math.Round(curLR, 6),-10:F6}";
 
 
       if (dc == null)

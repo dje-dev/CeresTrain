@@ -86,7 +86,8 @@ namespace CeresTrain.TrainingDataGenerator
       targetInfo = default;
       targetInfo.BestWDL = (q == 1 ? 1 : 0, q == 0 ? 1 : 0, q == -1 ? 1 : 0);
       targetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Tablebase;
-      targetInfo.ResultWDL = targetInfo.BestWDL;
+      targetInfo.ResultDeblunderedWDL = targetInfo.BestWDL;
+      targetInfo.ResultNonDeblunderedWDL = targetInfo.BestWDL;
       return true;
     }
 

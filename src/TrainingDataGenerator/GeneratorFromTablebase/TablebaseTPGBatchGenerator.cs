@@ -197,7 +197,7 @@ namespace CeresTrain.TrainingDataGenerator
       const int NUM_WRITE = int.MaxValue;
       const bool WRITE_TO_FILE = false;
       const bool EMIT_HISTORY = false;
-      int TARGET_NUM_TPG() => BatchSize * 2;
+      int TARGET_NUM_TPG() => BatchSize * NumWorkerThreads;
 
       int random = Environment.TickCount % 100_000;
       string outFileName = WRITE_TO_FILE ? "KP_" + random + ".tpg" : null;

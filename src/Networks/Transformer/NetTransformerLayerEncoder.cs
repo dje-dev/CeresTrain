@@ -333,9 +333,9 @@ namespace CeresTrain.Networks.Transformer
         x = smLN1.call(x);
         x = smolgenLinear3.call(x); // --> 256 * H (batch, H * SM_INTERMEDIATE)
         x = smLN2.call(x);
+        x = x.reshape(-1, NumHeads, SmolgenIntermediateDim);
         x = smolgenLinearShared.Linear.call(x); // --> 64 * 64 = (batch, H, S, S)
-        x = x.reshape(-1, 64, 64);
-
+        x = x.reshape(-1, NumHeads, 64, 64);
 #if DEBUG
         if (float.IsNaN(x.sum().to(ScalarType.Float32).cpu().item<float>()))
           throw new Exception("Null smolgen");
@@ -363,7 +363,7 @@ namespace CeresTrain.Networks.Transformer
 
         if (SmolgenPerSquareDim > 0)
         {
-          Tensor smolgenLogitsRepeated = smolgenLogits.repeat(1, NumHeads, 1, 1).reshape(smolgenLogits.shape[0], NumHeads, 64, 64);
+          Tensor smolgenLogitsRepeated = smolgenLogits.reshape(smolgenLogits.shape[0], NumHeads, 64, 64);
           scores += smolgenLogitsRepeated;
         }
 

@@ -81,6 +81,14 @@ namespace CeresTrain.Trainer
     public readonly string TrainingFilesDirectory { get; init; }
 
     /// <summary>
+    /// Number of positions to skip between selected training positions 
+    /// when generating TPG data from TAR files.
+    /// Note that consecutively selected positions are typically spread 
+    /// across multiple processor threads and sent to different target files, ehancing shuffling).
+    /// </summary>
+    public readonly int TARPositionSkipCount { get; init; } = 20;
+
+    /// <summary>
     /// Fraction of the WDL (value) targets that are taken from the Q (search at root).
     /// </summary>
     public readonly float FractionQ { get; init; } = 0.0f;

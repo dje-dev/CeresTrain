@@ -24,6 +24,10 @@ using Ceres.Base.DataType;
 using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using TorchSharp;
+using CeresTrain.Utils;
+using System.Linq;
+using Ceres.Chess.EncodedPositions;
+using Ceres.Base.Math;
 
 
 #endregion
@@ -73,8 +77,11 @@ namespace CeresTrain.TPGDatasets
     static Half[] policyValuesTemp;
 
     float[] bytesValueWDLOutput;
+    float[] bytesValue2WDLOutput;
     float[] bytesValueWDLQOutput;
 
+    float[] bytesQDeviationLowerOutputTensors;
+    float[] bytesQDeviationUpperOutputTensors;
 
     /// <summary>
     /// Constructor.
@@ -95,10 +102,14 @@ namespace CeresTrain.TPGDatasets
       bytesMLHOutput = new float[BatchSize];
       bytesUNCOutput = new float[BatchSize];
 
+      bytesQDeviationLowerOutputTensors = new float[BatchSize];
+      bytesQDeviationUpperOutputTensors = new float[BatchSize];
+
       policyIndicesTemp = new short[BatchSize * TPGRecord.MAX_MOVES];
       policyValuesTemp = new Half[BatchSize * TPGRecord.MAX_MOVES];
 
       bytesValueWDLOutput = new float[BatchSize * 3];
+      bytesValue2WDLOutput = new float[BatchSize * 3];
       bytesValueWDLQOutput = new float[BatchSize * 3];
     }
 
@@ -114,6 +125,9 @@ namespace CeresTrain.TPGDatasets
       {
         ref readonly TPGRecord thisTPG = ref theseRecords[i];
 
+#if DEBUG
+        TPGRecordValidation.Validate(in thisTPG);
+#endif
         // Copy the square records
         int offsetBytesSquareAndMove = i * NUM_SQUARES * Marshal.SizeOf<TPGSquareRecord>();
         thisTPG.CopySquares(bytesSquares, offsetBytesSquareAndMove);
@@ -123,10 +137,17 @@ namespace CeresTrain.TPGDatasets
 
         bytesUNCOutput[i] = MathF.Abs(thisTPG.DeltaQVersusV);
 
+        bytesQDeviationLowerOutputTensors[i] = (float)thisTPG.QDeviationLower;
+        bytesQDeviationUpperOutputTensors[i] = (float)thisTPG.QDeviationUpper;
+
         // The targets NOT expected to be logits.
-        bytesValueWDLOutput[i * 3 + 0] = thisTPG.WDLResult[0];
-        bytesValueWDLOutput[i * 3 + 1] = thisTPG.WDLResult[1];
-        bytesValueWDLOutput[i * 3 + 2] = thisTPG.WDLResult[2];
+        bytesValueWDLOutput[i * 3 + 0] = thisTPG.WDLResultDeblundered[0];
+        bytesValueWDLOutput[i * 3 + 1] = thisTPG.WDLResultDeblundered[1];
+        bytesValueWDLOutput[i * 3 + 2] = thisTPG.WDLResultDeblundered[2];
+
+        bytesValue2WDLOutput[i * 3 + 0] = thisTPG.WDLResultNonDeblundered[0];
+        bytesValue2WDLOutput[i * 3 + 1] = thisTPG.WDLResultNonDeblundered[1];
+        bytesValue2WDLOutput[i * 3 + 2] = thisTPG.WDLResultNonDeblundered[2];
 
         bytesValueWDLQOutput[i * 3 + 0] = thisTPG.WDLQ[0];
         bytesValueWDLQOutput[i * 3 + 1] = thisTPG.WDLQ[1];
@@ -137,9 +158,9 @@ namespace CeresTrain.TPGDatasets
           float w1 = 1.0f - FractionQ;
           float w2 = FractionQ;
 
-          bytesValueWDLOutput[i * 3 + 0] = w1 * thisTPG.WDLResult[0] + w2 * thisTPG.WDLQ[0];
-          bytesValueWDLOutput[i * 3 + 1] = w1 * thisTPG.WDLResult[1] + w2 * thisTPG.WDLQ[1];
-          bytesValueWDLOutput[i * 3 + 2] = w1 * thisTPG.WDLResult[2] + w2 * thisTPG.WDLQ[2];
+          bytesValueWDLOutput[i * 3 + 0] = w1 * thisTPG.WDLResultDeblundered[0] + w2 * thisTPG.WDLQ[0];
+          bytesValueWDLOutput[i * 3 + 1] = w1 * thisTPG.WDLResultDeblundered[1] + w2 * thisTPG.WDLQ[1];
+          bytesValueWDLOutput[i * 3 + 2] = w1 * thisTPG.WDLResultDeblundered[2] + w2 * thisTPG.WDLQ[2];
         }
 
         // Copy the policy indices and values into the temporary array for all records in the batch
@@ -157,6 +178,15 @@ namespace CeresTrain.TPGDatasets
       using (var _ = NewDisposeScope())
       {
         Tensor tensorIndices = tensor(policyIndicesTemp, ScalarType.Int16, Device).to(ScalarType.Int64).reshape(BatchSize, TPGRecord.MAX_MOVES);
+#if DEBUG
+        for (int i = 0; i < BatchSize * TPGRecord.MAX_MOVES; i++)
+        {
+          if (policyIndicesTemp[i] < 0 || policyIndicesTemp[i] >= EncodedPolicyVector.POLICY_VECTOR_LENGTH)
+          {
+            throw new Exception("Invalid policy index found before scatter attempted.");
+          }
+        }
+#endif
         Tensor tensorProbs = tensor(policyValuesTemp, DataType, Device).reshape(BatchSize, TPGRecord.MAX_MOVES);
 
         // Create target policy probability array, and scatter in values from index/value pairs above.
@@ -165,6 +195,10 @@ namespace CeresTrain.TPGDatasets
       }
 
       Tensor valueWDLOutputTensors = tensor(bytesValueWDLOutput, DataType, Device).reshape([BatchSize, 3]);
+      Tensor value2WDLOutputTensors = tensor(bytesValue2WDLOutput, DataType, Device).reshape([BatchSize, 3]);
+
+      Tensor qDeviationLowerOutputTensors = tensor(bytesQDeviationLowerOutputTensors, DataType, Device);
+      Tensor qDeviationUpperOutputTensors = tensor(bytesQDeviationUpperOutputTensors, DataType, Device);
 
       if (WDLLabelSmoothing > 0)
       {
@@ -199,7 +233,11 @@ namespace CeresTrain.TPGDatasets
         {"wdl",           valueWDLOutputTensors },
         {"wdlq",          valueWDLQOutputTensors },
         {"policy",        policyOutputTensors },
-      };
+
+        {"wdl2",          value2WDLOutputTensors },
+        {"q_deviation_lower", qDeviationLowerOutputTensors },
+        {"q_deviation_upper", qDeviationUpperOutputTensors },
+    };
 
       return dict;
     }

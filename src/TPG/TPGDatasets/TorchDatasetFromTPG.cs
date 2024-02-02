@@ -39,7 +39,7 @@ namespace CeresTrain.TPGDatasets
     /// <summary>
     /// Constructor.
     /// </summary>
-    /// <param name="tpgDirectory"></param>
+    /// <param name="tpgOrTARSourceDirectory"></param>
     /// <param name="fractionQ"></param>
     /// <param name="device"></param>
     /// <param name="dataType"></param>
@@ -47,7 +47,7 @@ namespace CeresTrain.TPGDatasets
     /// <param name="wdlLabelSmoothing"></param>
     /// <param name="overrideRecordEnumerator"></param>
     /// <param name="countParallel"></param>
-    public TorchDatasetFromTPG(string tpgDirectory,
+    public TorchDatasetFromTPG(string tpgOrTARSourceDirectory,
                                float fractionQ,
                                Device device, ScalarType dataType, int batchSize,
                                float wdlLabelSmoothing,
@@ -55,35 +55,37 @@ namespace CeresTrain.TPGDatasets
                                int countParallel = 3)
     {
       // Throw if tpgDirectory does not exist
-      if (!System.IO.Directory.Exists(tpgDirectory))
+      if (!System.IO.Directory.Exists(tpgOrTARSourceDirectory))
       {
-        throw new System.IO.DirectoryNotFoundException($"TPG directory {tpgDirectory} does not exist");
+        throw new System.IO.DirectoryNotFoundException($"Directory {tpgOrTARSourceDirectory} does not exist");
       }
 
-      // As file system how many files are in tpgDirectory which end in .zst
-      int numTPGFiles = System.IO.Directory.GetFiles(tpgDirectory, "*.zst").Length;
-
-      // Verify that there are some .zst files in the directory.
-      if (numTPGFiles == 0)
+      int numSourceFiles = overrideRecordEnumerator == null ? System.IO.Directory.GetFiles(tpgOrTARSourceDirectory, "*.zst").Length 
+                                                            : System.IO.Directory.GetFiles(tpgOrTARSourceDirectory, "*.tar").Length;
+      // Verify that there are some files in the directory.
+      if (numSourceFiles == 0)
       {
-        throw new System.IO.DirectoryNotFoundException($"TPG directory {tpgDirectory} contains no .zst files");
+        throw new System.IO.DirectoryNotFoundException($"Directory {tpgOrTARSourceDirectory} " 
+          + $"contains no {(overrideRecordEnumerator == null ? ".zst" : ".tar")} files");
       }
 
       // Don't start more workers than there are files!
-      countParallel = System.Math.Min(countParallel, numTPGFiles);
+      countParallel = System.Math.Min(countParallel, numSourceFiles);
 
       // Also avoid situation where some workers would have 2 files and others only 1.
-      if (numTPGFiles < 2 * countParallel)
+      if (numSourceFiles < 2 * countParallel)
       {
-        countParallel = numTPGFiles / 2;
+        countParallel = numSourceFiles / 2;
       }
+
+ countParallel = 1; // Dataset can't be parallelized due to CUDA overlap operations (?)
 
       subsets = new TorchDatasetFromTPGWorker[countParallel];
       for (int i = 0; i < countParallel; i++)
       {
-        subsets[i] = new TorchDatasetFromTPGWorker(tpgDirectory, countParallel, i,
-                                              fractionQ, device, dataType, batchSize, 
-                                              wdlLabelSmoothing, overrideRecordEnumerator);
+        subsets[i] = new TorchDatasetFromTPGWorker(tpgOrTARSourceDirectory, countParallel, i,
+                                                   fractionQ, device, dataType, batchSize, 
+                                                   wdlLabelSmoothing, overrideRecordEnumerator);
       }
     }
 

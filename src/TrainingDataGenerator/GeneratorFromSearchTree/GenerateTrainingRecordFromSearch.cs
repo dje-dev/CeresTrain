@@ -84,7 +84,8 @@ namespace CeresTrain.TrainingDataGenerator
           EncodedPositionEvalMiscInfoV6 infoTraining = etp.PositionWithBoards.MiscInfo.InfoTraining;
 
           TrainingPositionWriterNonPolicyTargetInfo target = new();
-          target.ResultWDL = infoTraining.ResultWDL;
+          target.ResultDeblunderedWDL = infoTraining.ResultWDL;
+          target.ResultNonDeblunderedWDL = infoTraining.ResultWDL;
           target.BestWDL = infoTraining.BestWDL;
           target.IntermediateWDL = default;
           target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);

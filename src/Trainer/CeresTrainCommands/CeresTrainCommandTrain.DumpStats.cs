@@ -27,9 +27,13 @@ namespace CeresTrain.Trainer
     float lossMLHAdjRunning;
     float lossUNCAdjRunning;
 
+    float lossValue2AdjRunning;
+    float lossQDeviationLowerAdjRunning;
+    float lossQDeviationUpperAdjRunning;
+
     float thisLossAdjRunning;
 
-    private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, Tensor mlh, Tensor unc, ref long numRead)
+    private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, ref long numRead)
     {
       // Compare indices of max values to check if max value is at same index as in target.
       Tensor valueMatches = torch.max(value, 1).indexes.eq(torch.max(valueTarget, 1).indexes);
@@ -50,6 +54,11 @@ namespace CeresTrain.Trainer
       float lossMLHAdj = TrainingConfig.OptConfig.LossMLHMultiplier == 0 ? 0 : lossMLHBatch.ToSingle();
       float lossUNCAdj = TrainingConfig.OptConfig.LossUNCMultiplier == 0 ? 0 : lossUNCBatch.ToSingle();
 
+      float lossValue2Adj = TrainingConfig.OptConfig.LossValue2Multiplier == 0 ? 0 : lossValue2Batch.ToSingle();
+      float lossQDeviationLowerAdj = TrainingConfig.OptConfig.LossQDeviationMultiplier == 0 ? 0 : lossQDeviationLowerBatch.ToSingle();
+      float lossQDeviationUpperAdj = TrainingConfig.OptConfig.LossQDeviationMultiplier == 0 ? 0 : lossQDeviationUpperBatch.ToSingle();
+
+
       // update exponential averages
       const float WT_CUR = 0.15f; // smoothing to include decayed prior values
       const int NUM_SKIP = 10; // first few extremely large errors can create long tailed bias
@@ -67,13 +76,23 @@ namespace CeresTrain.Trainer
       lossMLHAdjRunning = SmoothedValue(lossMLHAdj, lossMLHAdjRunning);
       lossUNCAdjRunning = SmoothedValue(lossUNCAdj, lossUNCAdjRunning);
 
+      lossValue2AdjRunning = SmoothedValue(lossValue2Adj, lossValue2AdjRunning);
+      lossQDeviationLowerAdjRunning = SmoothedValue(lossQDeviationLowerAdj, lossQDeviationLowerAdjRunning);
+      lossQDeviationUpperAdjRunning = SmoothedValue(lossQDeviationUpperAdj, lossQDeviationUpperAdjRunning);
+
+
       numStatusLines++;
 
       double elapsedSec = (DateTime.Now - timeStartTraining).TotalSeconds;
       double curLR = optimizer.ParamGroups.FirstOrDefault().LearningRate;
 
-      thisLossAdjRunning = lossValueAdjRunning + lossPolicyAdjRunning
-                          + lossMLHAdjRunning + lossUNCAdjRunning;
+      thisLossAdjRunning = lossValueAdjRunning  * TrainingConfig.OptConfig.LossValueMultiplier
+                          + lossPolicyAdjRunning * TrainingConfig.OptConfig.LossPolicyMultiplier
+                          + lossMLHAdjRunning * TrainingConfig.OptConfig.LossMLHMultiplier
+                          + lossUNCAdjRunning * TrainingConfig.OptConfig.LossUNCMultiplier
+                          + lossValue2AdjRunning * TrainingConfig.OptConfig.LossValue2Multiplier
+                          + lossQDeviationLowerAdjRunning  * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                          + lossQDeviationUpperAdjRunning *  TrainingConfig.OptConfig.LossQDeviationMultiplier;
 
       // Write log statistics.
       tbWriter?.AddScalars((int)(numRead / 1024), // show in K to avoid overflow since must fit as int
@@ -83,6 +102,9 @@ namespace CeresTrain.Trainer
                            ("pol", lossPolicyAdjRunning),
                            ("mlh", lossMLHAdjRunning),
                            ("unc", lossUNCAdjRunning),
+                           ("val2", lossValue2AdjRunning),
+                           ("qDevL", lossQDeviationLowerAdjRunning),
+                           ("qDevU", lossQDeviationUpperAdjRunning),
                            ("acc", policyAccAdjRunning * 100));
 
       long positionsProcessed = batchId * OptimizationBatchSizeForward;
@@ -93,6 +115,7 @@ namespace CeresTrain.Trainer
       consoleStatusTable.UpdateInfo(DateTime.Now, configID, (float)elapsedSec, numRead, thisLossAdjRunning,
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, 
                                     lossMLHAdjRunning, lossUNCAdjRunning,
+                                    lossValue2AdjRunning, lossQDeviationLowerAdjRunning, lossQDeviationUpperAdjRunning,
                                     (float)curLR);
 
       // Save network if best seen so far (on total loss) unless very early in training.

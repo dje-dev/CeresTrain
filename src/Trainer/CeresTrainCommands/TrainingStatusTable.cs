@@ -33,6 +33,7 @@ namespace CeresTrain.Trainer
                                                      float ValueLoss, float ValueAcc,
                                                      float PolicyLoss, float PolicyAcc,
                                                      float MLHLoss, float UNCLoss,
+                                                     float Value2Loss, float QDeviationLowerLoss, float QDeviationUpperLoss,
                                                      float CurLR);
 
     const float INTERVAL_NEW_ROW_FIRST_HOUR = 60;       // New row very minute for first hour
@@ -108,11 +109,15 @@ namespace CeresTrain.Trainer
     /// <param name="policyAcc"></param>
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
+    /// <param name="value2Loss"></param>
+    /// <param name="qDeviationLowerLoss"></param>
+    /// <param name="qDeviationUpperLoss"></param>
     /// <param name="curLR"></param>
     public void UpdateInfo(DateTime time, string configID, float elapsedSecs, long numPositions,
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc,
                            float mlhLoss, float uncLoss,
+                           float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
                            float curLR)
     {
       lock (this)
@@ -126,6 +131,7 @@ namespace CeresTrain.Trainer
                                                  totalLoss, valueLoss, valueAcc,
                                                  policyLoss, policyAcc,
                                                  mlhLoss, uncLoss,
+                                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
                                                  curLR);
 
         int curRowNum = numRowsAdded - 1;
@@ -133,7 +139,9 @@ namespace CeresTrain.Trainer
         if (numRowsAdded > 0)
         {
           implementor.UpdateInfo(configID, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
-                                 valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, curLR);
+                                 valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
+                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                 curLR);
         }
 
         if (numRowsAdded == 0 || timeSinceNewRow > intervalBetweenRows)
@@ -145,7 +153,9 @@ namespace CeresTrain.Trainer
           }
 
           implementor.UpdateInfo(configID, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
-                                 valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, curLR);
+                                 valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
+                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                 curLR);
           TrainingStatusRecords.Add(currentRecord);
 
           lastTotalLoss = totalLoss;

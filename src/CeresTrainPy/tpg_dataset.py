@@ -85,7 +85,7 @@ class TPGDataset(Dataset):
   def item_generator(self):
     DTYPE = np.float32
     BATCH_SIZE = self.batch_size
-    BYTES_PER_POS = 9108 # fixed size of record structure (TPGRecord.TOTAL_BYTES)
+    BYTES_PER_POS = 9250 # fixed size of record structure (TPGRecord.TOTAL_BYTES)
     POS_PER_BLOCK = 24576//2 # read this many positions per loop iteration (somewhat arbitrary, each block about 115MB)
     BYTES_PER_BLOCK = POS_PER_BLOCK * BYTES_PER_POS
 
@@ -123,6 +123,10 @@ class TPGDataset(Dataset):
               offset = 0 # running offset of where we are within the record
 
               # Read sequence of fields (see TPGRecord.cs)
+
+              wdl2_result = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
+              offset+= 3 * 4
+
               wdl_result = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               if (self.wdl_smoothing > 0):
                 wdl_result = np.matmul(wdl_result, wdl_smoothing_transform)
@@ -134,9 +138,9 @@ class TPGDataset(Dataset):
 
               wdl_q = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
-
+             
               #ply_next_square_move = np.ascontiguousarray(this_batch[:, offset : offset + 64 * 1]).view(dtype=np.byte).reshape(-1, 64).astype(DTYPE)
-              offset+= 64 * 1 # not currently used
+              offset+= 64
 
               mlh = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               mlh = np.square(mlh / 0.1) # undo preprocessing
@@ -147,7 +151,16 @@ class TPGDataset(Dataset):
               uncertainty = np.abs(uncertainty)
               offset+= 1 * 4
 
-              offset+= 1 * 4 # unused
+              q_deviation_lower = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.float16).reshape(-1, 1)
+              offset+= 1 * 2
+              q_deviation_upper = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.float16).reshape(-1, 1)
+              offset+= 1 * 2
+ 
+              # IsWhiteToMove
+              offset+= 1
+
+              # UnusedByte1
+              offset+= 1;
 
               policies_indices = np.ascontiguousarray(this_batch[:, offset : offset + MAX_MOVES*2]).view(dtype=np.int16).reshape(-1, MAX_MOVES)
               # much faster, but tries to reinitialize CUDA and fails:
@@ -157,7 +170,7 @@ class TPGDataset(Dataset):
               policies_values = np.ascontiguousarray(this_batch[:, offset : offset + MAX_MOVES*2]).view(dtype=np.float16).reshape(-1, MAX_MOVES)
               offset+= MAX_MOVES * 2
 
-              SIZE_SQUARE = 135
+              SIZE_SQUARE = 137
               squares = np.ascontiguousarray(this_batch[:, offset : offset + 64 * SIZE_SQUARE * 1]).view(dtype=np.byte).reshape(-1, 64, SIZE_SQUARE).astype(DTYPE)
               DIVISOR = 100
               squares = np.divide(squares, DIVISOR).astype(DTYPE)
@@ -165,7 +178,8 @@ class TPGDataset(Dataset):
 
               assert(offset == BYTES_PER_POS)
 
-              yield  ((policies_indices, policies_values, wdl_result, wdl_q, mlh, uncertainty, squares))
+              yield  ((policies_indices, policies_values, wdl_result, wdl_q, mlh, uncertainty, 
+                       wdl2_result, q_deviation_lower, q_deviation_upper, squares))
 
 
   def __getitem__(self, idx):
@@ -176,7 +190,10 @@ class TPGDataset(Dataset):
     wdl_q = batch[3]
     mlh = batch[4]
     uncertainty = batch[5]
-    squares = batch[6]
+    wdl2_result = batch[6]
+    q_deviation_lower = batch[7]
+    q_deviation_upper = batch[8]
+    squares = batch[9]
     
     policies_indices = torch.tensor(policies_indices, dtype=torch.int64).reshape(self.batch_size, MAX_MOVES)
     policies_values  = torch.tensor(policies_values, dtype=torch.float16).reshape(self.batch_size, MAX_MOVES)
@@ -191,6 +208,9 @@ class TPGDataset(Dataset):
             'wdl_q': torch.tensor(wdl_q), 
             'mlh': torch.tensor(mlh), 
             'unc': torch.tensor(uncertainty), 
+            'wdl2_result': torch.tensor(wdl2_result), 
+            'q_deviation_lower': torch.tensor(q_deviation_lower).to(torch.float32),
+            'q_deviation_upper': torch.tensor(q_deviation_upper).to(torch.float32),
             'squares': torch.tensor(squares)}
 
 

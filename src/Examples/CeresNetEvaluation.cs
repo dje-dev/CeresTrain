@@ -47,6 +47,7 @@ using Ceres.Base.Math;
 using Ceres.Chess.LC0NetInference;
 using Chess.Ceres.NNEvaluators;
 using System.Runtime.InteropServices;
+using TorchSharp;
 
 #endregion 
 
@@ -222,10 +223,11 @@ namespace CeresTrain.Examples
     /// <returns></returns>
     public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
                                              ICeresNeuralNetDef netDef, int deviceID, in ConfigNetExecution execConfig,
-                                             string netFN, bool useBestValueRepetitionHeuristic)
+                                             string netFN, bool useBestValueRepetitionHeuristic,
+                                             object options)
     {
 
-      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], SaveNetwork1FileName = netFN });
+      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], SaveNetwork1FileName = netFN }, options:(NNEvaluatorTorchsharpOptions) options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -257,7 +259,8 @@ namespace CeresTrain.Examples
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        InstallCustomEvaluator(1, engineType, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory);
+        NNEvaluatorTorchsharpOptions options = null; // TO DO: fill this in
+        InstallCustomEvaluator(1, engineType, "cuda", 0, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory, options);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
       }
@@ -513,8 +516,10 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions, 
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDef, execConfig, netFN, posGenerator,
-                             lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory);
+      NNEvaluatorTorchsharpOptions options = null; // TO DO: fill this in
+
+      InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, "cuda", 0, netDef, execConfig, netFN, posGenerator,
+                             lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory, options);
       Ceres.Program.LaunchUCI(["network=CUSTOM1"], (ParamsSearch search) => { search.EnableTablebases = false; });
     }
 
@@ -554,26 +559,34 @@ namespace CeresTrain.Examples
     /// <param name="netFN"></param>
     /// <param name="posGenerator"></param>
     /// <param name="lc0NetToUseForUncoveredPositions"></param>
-    /// <param name="ceresDeviceSpec"></param>
+    /// <param name="lc0DeviceToUseForUncoveredPositions"></param>
     public static void InstallCustomEvaluator(int customEvaluatorIndex,
                                               NNEvaluatorInferenceEngineType engineType,
+                                              string deviceType,
+                                              int deviceIndex,
                                               ICeresNeuralNetDef netDef, 
                                               ConfigNetExecution execConfig, 
                                               string netFN, 
                                               PositionGenerator posGenerator,
                                               string lc0NetToUseForUncoveredPositions,
-                                              string ceresDeviceSpec,
-                                              bool useHistory)
+                                              string lc0DeviceToUseForUncoveredPositions,
+                                              bool useHistory,
+                                              NNEvaluatorTorchsharpOptions evaluatorOptions)
     {
       ArgumentNullException.ThrowIfNullOrEmpty(netFN);
 
+      execConfig = execConfig with { UseHistory = useHistory, 
+                                     ActivationMonitorDumpSkipCount = evaluatorOptions.MonitorActivations ? 1 : 0,
+                                     DeviceType = deviceType,
+                                     DeviceIDs = [deviceIndex]
+                                   };
       bool useBestValueRepetitionHeuristic = !useHistory;
       // Create evaluator for the specified trained neural network and also a fallback LC0 network.
       //      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
 
       NNEvaluator evaluatorCeres;
 
-      Func<int, NNEvaluator> getEvaluatorFunc = null;
+      Func<int, object, NNEvaluator> getEvaluatorFunc = null;
 
 
       if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
@@ -605,8 +618,9 @@ namespace CeresTrain.Examples
         }
         //CeresTrainingRunAnalyzer.DumpAndBenchmarkONNXNetInfo(onnxFN);
 
-        getEvaluatorFunc = (int gpuID) =>
+        getEvaluatorFunc = (int gpuID, object options) =>
         {
+          if (options != null ) throw new Exception("Net yet supported: options");
           return new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, 1024,
@@ -616,9 +630,9 @@ namespace CeresTrain.Examples
       }
       else
       {
-        getEvaluatorFunc = (int gpuID) =>
+        getEvaluatorFunc = (int gpuID, object options) =>
         {
-          return GetNNEvaluator(engineType, netDef, gpuID, execConfig with { UseHistory = useHistory }, netFN, useBestValueRepetitionHeuristic);
+          return GetNNEvaluator(engineType, netDef, gpuID, execConfig with { UseHistory = useHistory }, netFN, useBestValueRepetitionHeuristic, evaluatorOptions);
         };
       }
 
@@ -626,7 +640,7 @@ namespace CeresTrain.Examples
       {
         if (lc0NetToUseForUncoveredPositions != null)
         {
-          NNEvaluator evaluatorLC0 = NNEvaluator.FromSpecification(lc0NetToUseForUncoveredPositions, ceresDeviceSpec);
+          NNEvaluator evaluatorLC0 = NNEvaluator.FromSpecification(lc0NetToUseForUncoveredPositions, lc0DeviceToUseForUncoveredPositions);
 
           // Create a "dynamic" evaluator which will use the Ceres network for positions
           // with the specified pieces (for which net was trained), otherwise the LC0 network which can play all positions.
@@ -642,11 +656,13 @@ namespace CeresTrain.Examples
       // Install a handler to map the "CUSTOM<id>" evaluator to our evaluator for this network.
       if (customEvaluatorIndex == 1)
       {
-        NNEvaluatorFactory.Custom1Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator) => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID), gpuID);
+        NNEvaluatorFactory.Custom1Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options) 
+          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID, options), gpuID);
       }
       else if (customEvaluatorIndex == 2)
       {
-        NNEvaluatorFactory.Custom2Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator) => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID), gpuID);
+        NNEvaluatorFactory.Custom2Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options)
+          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID, options), gpuID);
       }
       else
       {
@@ -758,7 +774,8 @@ namespace CeresTrain.Examples
       byte[] squareBytesAll;
       byte[] moveBytesAll;
       short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
-      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE,
+      throw new NotImplementedException(); // Next line, need to somehow set qNegativeBlunders, qPositiveBlunders (last two arguments in next call)
+      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE, 0, 0,
                                                           out _, out squareBytesAll, out legalMoveIndices);
 
       // NOTE: unrolling loop here does not improve performance.

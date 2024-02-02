@@ -406,11 +406,11 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
         // Convert into TPG record format.
         TPGRecordConverter.ConvertToTPGRecord(in positions[i], includeHistory, in targetInfos[i], targetPolicyOverrides?[i],
                                               minLegalMoveProbability, ref tpgRecordsBuffer[i],
-                                              pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare, emitMoves);
+                                              pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare, emitMoves,
+                                              targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders);
 
       }
       return tpgRecordsBuffer;
-
     }
 
     [ThreadStatic]

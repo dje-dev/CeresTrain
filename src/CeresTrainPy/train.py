@@ -123,7 +123,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = torch.rand(256, NUM_TOKENS, 135 * (64 // NUM_TOKENS)).to(convert_type).to(m.device)
+    sample_inputs = torch.rand(256, NUM_TOKENS, (137) * (64 // NUM_TOKENS)).to(convert_type).to(m.device)
     if True:
       m_save = torch.jit.trace(m, sample_inputs)
     else:
@@ -133,7 +133,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     
     # below simpler method fails, probably due to use of .compile
     #BATCH_SIZE = 16
-    #test_inputs_pytorch = torch.rand(BATCH_SIZE, NUM_TOKENS, 135 * (64 // NUM_TOKENS)).to(torch.float32).device(m.device)
+    #test_inputs_pytorch = torch.rand(BATCH_SIZE, NUM_TOKENS, 137 * (64 // NUM_TOKENS)).to(torch.float32).device(m.device)
     #model.to_torchscript(file_path=SAVE_PATH, method='trace', example_inputs=test_inputs_pytorch)
     #print('done save TS', SAVE_PATH )
     #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
@@ -151,12 +151,15 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                     export_params=True,
                     opset_version=17,
                     input_names = ['squares'], 
-                    output_names = ['policy', 'value', 'mlh', 'inc'], 
+                    output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper'], 
                     dynamic_axes={'squares' : {0 : 'batch_size'},    
                                   'policy' : {0 : 'batch_size'},
                                   'value' : {0 : 'batch_size'},
                                   'mlh' : {0 : 'batch_size'},
-                                  'unc' : {0 : 'batch_size'}})
+                                  'unc' : {0 : 'batch_size'},
+                                  'value2' : {0 : 'batch_size'},
+                                  'q_deviation_lower' : {0 : 'batch_size'},
+                                  'q_deviation_upper': {0 : 'batch_size'}})
         print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
 
         if False:
@@ -209,6 +212,8 @@ def Train():
                    value_loss_weight= config.Opt_LossValueMultiplier, 
                    moves_left_loss_weight= config.Opt_LossMLHMultiplier, 
                    unc_loss_weight= config.Opt_LossUNCMultiplier,
+                   value2_loss_weight= config.Opt_LossValue2Multiplier,
+                   q_deviation_loss_weight= config.Opt_LossQDeviationMultiplier,                  
                    q_ratio=config.Data_FractionQ, optimizer='adamw', learning_rate=LR)
 
   if False:
@@ -252,16 +257,20 @@ def Train():
     exit(0)
 
     onnx_model = model.to_onnx(EXPORT_NAME + ".onnx", 
-      input_sample=[torch.zeros(1024, 64, 39 + (3 * 13)).to("cuda").to(torch.float32)], # TODO: 39 hardcoded
+      input_sample=[torch.zeros(1024, 64, 137).to("cuda").to(torch.float32)],
       export_params=True,
       opset_version=17,
       input_names = ['squares'], 
-      output_names = ['policy', 'value', 'mlh', 'inc'], 
+      output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper'], 
       dynamic_axes={'squares' : {0 : 'batch_size'},    
                     'policy' : {0 : 'batch_size'},
                     'value' : {0 : 'batch_size'},
                     'mlh' : {0 : 'batch_size'},
-                    'unc' : {0 : 'batch_size'}})
+                    'unc' : {0 : 'batch_size'},
+                    'value2' : {0 : 'batch_size'},
+                    'q_deviation_lower' : {0 : 'batch_size'},
+                    'q_deviation_upper': {0 : 'batch_size'}})
+    
     # Export FP16 version
     from onnxmltools.utils.float16_converter import convert_float_to_float16
     from onnxmltools.utils import load_model, save_model
@@ -339,11 +348,12 @@ def Train():
 
   def lr_lambda(epoch : int):
     global fraction_complete
-
+    global num_pos
+    
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
     FRAC_MIN = 0.075
 
-    if fraction_complete < 0.02:
+    if num_pos < 10000000 and (fraction_complete < 0.02 or num_pos < 500000):
         lr_scale = 0.1 # warmup
     elif fraction_complete < FRAC_START_DELAY:
         lr_scale = 1.0
@@ -367,14 +377,14 @@ def Train():
 
   # Use two concurrent dataset workers (if more than one training data file is available)
   count_zst_files = len(fnmatch.filter(os.listdir(TPG_TRAIN_DIR), '*.zst'))
-  NUM_DATASET_WORKERS = min(2, count_zst_files)
-  PREFETCH_FACTOR = 8 # to keep GPU busy
+  NUM_DATASET_WORKERS = min(1, count_zst_files)
+  PREFETCH_FACTOR = 4 # to keep GPU busy
 
   world_size = len(devices)
   rank = 0 if world_size == 1 else dist.get_rank()
   dataset = TPGDataset(TPG_TRAIN_DIR, batch_size_forward // len(devices), config.Data_WDLLabelSmoothing, rank, world_size, NUM_DATASET_WORKERS)
 
-  dataloader = DataLoader(dataset, batch_size=None, pin_memory=True, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
+  dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)
 
   if rank == 0:
@@ -414,8 +424,9 @@ def Train():
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
-      policy_out, value_out, moves_left_out, unc_out = model(batch['squares'])
+      policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(batch['squares'])
       loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
+                                value2_out, q_deviation_lower_out, q_deviation_upper_out,
                                 num_pos, scheduler.get_last_lr(), show_losses)
 
       fabric.backward(loss)
@@ -466,14 +477,25 @@ def Train():
         # Although incomplete, the resulting statistics should nevertheless be reasonably accurate.
         total_loss =  (config.Opt_LossPolicyMultiplier * loss_calc.LAST_POLICY_LOSS
                      + config.Opt_LossValueMultiplier * loss_calc.LAST_VALUE_LOSS
+                     + config.Opt_LossValue2Multiplier * loss_calc.LAST_VALUE2_LOSS
                      + config.Opt_LossMLHMultiplier * loss_calc.LAST_MLH_LOSS
-                     + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS)
+                     + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS
+                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_LOWER_LOSS       
+                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS)
         
-        print("TRAIN:", num_pos, ",", total_loss, ",", loss_calc.LAST_VALUE_LOSS, ",", loss_calc.LAST_POLICY_LOSS, ",", loss_calc.LAST_VALUE_ACC, ",", loss_calc.LAST_POLICY_ACC, ",", 
-               loss_calc.LAST_MLH_LOSS, ",",  loss_calc.LAST_UNC_LOSS, ",", 
-               scheduler.get_last_lr()[0], flush=True)
+        print("TRAIN:", num_pos, ",", total_loss, ",", 
+              loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_POLICY_LOSS if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_VALUE_ACC if config.Opt_LossValueMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_POLICY_ACC if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_MLH_LOSS if config.Opt_LossMLHMultiplier > 0 else 0, ",",  
+              loss_calc.LAST_UNC_LOSS if config.Opt_LossUNCMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_VALUE2_LOSS if config.Opt_LossValue2Multiplier > 0 else 0, ",", 
+              loss_calc.LAST_Q_DEVIATION_LOWER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_Q_DEVIATION_UPPER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+              scheduler.get_last_lr()[0], flush=True)
         loss_calc.reset_counters()
-        time_last_status_update =  datetime.datetime.now()
+        time_last_status_update = datetime.datetime.now()
 
   # final save and convert to Torchscript
   if (fabric.is_global_zero):

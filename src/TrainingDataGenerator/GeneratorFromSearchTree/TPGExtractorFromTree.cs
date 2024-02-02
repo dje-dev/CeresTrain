@@ -52,21 +52,22 @@ namespace CeresTrain.TrainingDataGenerator
 
       TrainingPositionWriterNonPolicyTargetInfo targetInfo = default;
       (float w, float d, float l) wdl = (targets.w, targets.d, targets.l);
-      targetInfo.ResultWDL = wdl;
+      targetInfo.ResultDeblunderedWDL = wdl;
+      targetInfo.ResultNonDeblunderedWDL = wdl;
       targetInfo.BestWDL = wdl;
 
       targetInfo.IntermediateWDL = default;// gameAnalyzer.intermediateBestWDL[i];
       targetInfo.MLH = TPGRecordEncoding.MLHEncoded(targets.m);
       targetInfo.DeltaQVersusV = targets.unc;
       targetInfo.DeltaQForwardAbs = float.NaN;// gameAnalyzer.deltaQIntermediateBestWDL[i];
-      targetInfo.Source = TPG.TPGGenerator.TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+      targetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
 
       // Construct TPG record from the above
       TPGRecord tpgRecord = default;
       TPGRecordConverter.ConvertToTPGRecord(in encodedPosToConvert, true, default, targetInfo, targets.policy,
                                            CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE,
                                            ref tpgRecord, default,
-                                           emitLastPlySinceSquare);
+                                           emitLastPlySinceSquare, 0, 0);
 
       return tpgRecord;
     }

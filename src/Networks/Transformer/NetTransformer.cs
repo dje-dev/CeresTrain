@@ -15,6 +15,7 @@
 
 using System;
 
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -25,14 +26,13 @@ using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 using TorchSharp.Modules;
 
+using Ceres.Base.Misc;
 using Ceres.Base.DataTypes;
+
 using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.TPG;
 using CeresTrain.Trainer;
-using Ceres.Base.Misc;
-using System.IO;
-using static CeresTrain.Networks.Transformer.NetTransformerDef;
 
 
 #endregion
@@ -73,8 +73,8 @@ namespace CeresTrain.Networks.Transformer
     int FINAL_MLH_FC1_SIZE => 32 * TransformerConfig.HeadWidthMultiplier;
     int FINAL_MLH_FC2_SIZE => 8 * TransformerConfig.HeadWidthMultiplier;
 
-    int FINAL_UNC_FC1_SIZE => 32 * TransformerConfig.HeadWidthMultiplier;
-    int FINAL_UNC_FC2_SIZE => 8 * TransformerConfig.HeadWidthMultiplier;
+    int FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE => 32 * TransformerConfig.HeadWidthMultiplier;
+    int FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE => 8 * TransformerConfig.HeadWidthMultiplier;
 
     internal NetTransformerLayerEmbedding layerEmbedding;
 
@@ -82,9 +82,12 @@ namespace CeresTrain.Networks.Transformer
     internal AltUpLayer[] altUpLayers;
 
     internal NetTransformerLayerHead layerValueHead;
+    internal NetTransformerLayerHead layerValue2Head;
     internal NetTransformerLayerHead layerPolicyHead;
     internal NetTransformerLayerHead layerMLHHead;
     internal NetTransformerLayerHead layerUNCHead;
+    internal NetTransformerLayerHead layerQDeviationLowerHead;
+    internal NetTransformerLayerHead layerQDeviationUpperHead;
 
     Linear layerHeadReduce;
 
@@ -102,8 +105,8 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="device"></param>
     /// <param name="overrideWeights"></param>
     public NetTransformer(ConfigNetExecution executionConfig,
-                               NetTransformerDef transformerNetDef,
-                               Dictionary<string, Tensor> overrideWeights = null) : base("CeresTransformer")
+                          NetTransformerDef transformerNetDef,
+                          Dictionary<string, Tensor> overrideWeights = null) : base("CeresTransformer")
     {
       TransformerConfig = transformerNetDef;
       ExecutionConfig = executionConfig;
@@ -194,13 +197,31 @@ namespace CeresTrain.Networks.Transformer
           layerMLHHead.LoadWeights(paramsToLoad, loadedParams, "mlhHeadPremap", "out_mlh_layer"); // reuse valueHeadPremap for MLH
         }
 
-        layerUNCHead = new NetTransformerLayerHead("head_unc", 64, TransformerConfig.ModelDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_UNC_FC1_SIZE, FINAL_UNC_FC2_SIZE, 1,
+        layerUNCHead = new NetTransformerLayerHead("head_unc", 64, TransformerConfig.ModelDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
                                                    TransformerConfig.HeadsActivationType, "RELU", false, false);
         layerUNCHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerUNCHead.LoadWeights(paramsToLoad, loadedParams, "uncHeadPremap", "out_unc_layer"); // reuse valueHeadPremap for MLH
         }
+
+        
+        layerQDeviationLowerHead = new NetTransformerLayerHead("head_qdeviation_lower", 64, TransformerConfig.ModelDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
+                                           TransformerConfig.HeadsActivationType, "RELU", false, false);
+        layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
+        if (paramsToLoad != null)
+        {
+          layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qDevLowerHeadPremap", "out_qdev_lower_layer"); 
+        }
+
+        layerQDeviationUpperHead = new NetTransformerLayerHead("head_qdeviation_upper", 64, TransformerConfig.ModelDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
+                                   TransformerConfig.HeadsActivationType, "RELU", false, false);
+        layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
+        if (paramsToLoad != null)
+        {
+          layerQDeviationUpperHead.LoadWeights(paramsToLoad, loadedParams, "qDevUpperHeadPremap", "out_qdev_upper_layer");
+        }
+
 
         if (paramsToLoad != null && TransformerConfig.SmolgenDimPerSquare > 0)
         {
@@ -223,10 +244,19 @@ namespace CeresTrain.Networks.Transformer
                                                      FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE, 3,
                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD, false);
         layerValueHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-
         if (paramsToLoad != null)
         {
           layerValueHead.LoadWeights(paramsToLoad, loadedParams, "valueHeadPremap", "out_value_layer");
+        }
+
+        layerValue2Head = new NetTransformerLayerHead("head_value2", 64, TransformerConfig.ModelDim, HEAD_PREMAP_DIVISOR_VALUE,
+                                             FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE, 3,
+                                             TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD, false);
+        layerValue2Head.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
+
+        if (paramsToLoad != null)
+        {
+          layerValue2Head.LoadWeights(paramsToLoad, loadedParams, "value2HeadPremap", "out_value2_layer");
         }
 
         if (ALT_UP)
@@ -360,7 +390,7 @@ namespace CeresTrain.Networks.Transformer
     public Tensor lastOutputTrunk;
 
 
-    public override (Tensor, Tensor, Tensor, Tensor) forward(Tensor inputBoardSquares)
+    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor inputBoardSquares)
     {
       Tensor flowCS = layerEmbedding.call(inputBoardSquares);
 
@@ -403,13 +433,17 @@ namespace CeresTrain.Networks.Transformer
       }
 
       Tensor flowValueHead = layerValueHead.call(flowCS);
+      Tensor flowValue2Head = layerValue2Head.call(flowCS);
       Tensor flowPolicyHead = layerPolicyHead.call(flowCS);
       Tensor flowMLHHead = layerMLHHead.call(flowCS);
       Tensor flowUNCHead = layerUNCHead.call(flowCS);
 
+      Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS);
+      Tensor flowQDeviationUpperHead = layerQDeviationUpperHead.call(flowCS);
+
       flowCS.Dispose();
 
-      return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead);
+      return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead, flowValue2Head, flowQDeviationLowerHead, flowQDeviationUpperHead);
     }
 
 
@@ -418,11 +452,13 @@ namespace CeresTrain.Networks.Transformer
       this.to(type);
     }
 
-    public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
+    public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
+                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+                    FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
     {
-      (Tensor p, Tensor v, Tensor m, Tensor u) = forward(inputSquares.to(ExecutionConfig.DataType));
+      (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU) = forward(inputSquares.to(ExecutionConfig.DataType));
 
-      return (v, p, m, u, null, null);
+      return (v, p, m, u, v2, qL, qU, null, null);
     }
   }
 }

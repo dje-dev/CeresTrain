@@ -29,6 +29,7 @@ using CeresTrain.PositionGenerators;
 using CeresTrain.Trainer;
 using CeresTrain.Examples;
 using CeresTrain.UserSettings;
+using CeresTrain.NNEvaluators;
 
 #endregion
 
@@ -328,7 +329,8 @@ namespace CeresTrain.TrainCommands
             throw new NotImplementedException();
           }
           string FN = sourceEPDOrPGNFileName;
-          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true);
+          NNEvaluatorTorchsharpOptions options = default; // TODO: fill in
+          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
           NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, "GPU:0");
           (float accuracyValue, float accuracyPolicy) = CeresNetEvaluation.TestAccuracyOnPositions(generator, FN, evaluator, compareLC0Evaluator, default, (int)numPos, verbose);
         }

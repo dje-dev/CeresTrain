@@ -45,10 +45,13 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("Loss").RightAligned());
       table.AddColumn(new TableColumn("PolicyLoss").RightAligned());
       table.AddColumn(new TableColumn("ValueLoss").RightAligned());
+      table.AddColumn(new TableColumn("Value2Loss").RightAligned());
       table.AddColumn(new TableColumn("MLHLoss").RightAligned());
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
       table.AddColumn(new TableColumn("PolicyAcc").RightAligned());
       table.AddColumn(new TableColumn("ValueAcc").RightAligned());
+      table.AddColumn(new TableColumn("QDevLow").RightAligned());
+      table.AddColumn(new TableColumn("QDevUp").RightAligned());
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
@@ -79,6 +82,7 @@ namespace CeresTrain.Trainer
                                     float totalLoss, float valueLoss, float valueAcc, 
                                     float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
+                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
                                     float curLR)
     {
 
@@ -99,8 +103,10 @@ namespace CeresTrain.Trainer
                            numPositions.ToString(),
                            MathF.Round(posPerSecond, 0).ToString(), MathF.Round(totalLoss, 3).ToString(),
                            MathF.Round(policyLoss, 3).ToString(), MathF.Round(valueLoss, 3).ToString(),
+                           MathF.Round(value2Loss, 3).ToString(),
                            MathF.Round(mlhLoss, 3).ToString(), MathF.Round(uncLoss, 3).ToString(),
                            MathF.Round(100*policyAcc, 2).ToString(), MathF.Round(100*valueAcc, 2).ToString(),
+                           MathF.Round(qDeviationLowerLoss, 3).ToString(), MathF.Round(qDeviationUpperLoss, 3).ToString(),
                            curLR.ToString()];
 
         int UPDATE_INTERVAL_SECS = numPositions > 10_000_000 ? 180 : 30;

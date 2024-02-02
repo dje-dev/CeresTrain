@@ -137,9 +137,14 @@ namespace CeresTrain.Trainer
     #region Loss multipliers
 
     /// <summary>
-    /// Scaling multiplier to be applied to value loss term.
+    /// Scaling multiplier to be applied to primary value loss term.
     /// </summary>
-    public readonly float LossValueMultiplier { get; init; } = 1.0f;
+    public readonly float LossValueMultiplier { get; init; } = 0.5f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to secondary value loss term.
+    /// </summary>
+    public readonly float LossValue2Multiplier { get; init; } = 0.0f;
 
     /// <summary>
     /// Scaling multiplier to be applied to policy loss term.
@@ -155,6 +160,11 @@ namespace CeresTrain.Trainer
     /// Scaling multiplier to be applied to UNC loss term.
     /// </summary>
     public readonly float LossUNCMultiplier { get; init; } = 0.0f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to estimates of lower and upper deviation bounds of forward Q.
+    /// </summary>
+    public readonly float LossQDeviationMultiplier { get; init; } = 0.0f;
 
     #endregion
 

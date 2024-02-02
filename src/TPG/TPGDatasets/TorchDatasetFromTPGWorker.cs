@@ -40,7 +40,7 @@ namespace CeresTrain.TPGDatasets
     /// <summary>
     /// Directory containing TPG files.
     /// </summary>
-    string TPGDirectory;
+    string SourceFileDirectory;
 
     /// <summary>
     /// Fraction of value target to be derived from Q (search results) rather than game outcome.
@@ -117,7 +117,7 @@ namespace CeresTrain.TPGDatasets
       Device = device;
       DataType = dataType;
       BatchSize = batchSize;
-      TPGDirectory = tpgDirectory;
+      SourceFileDirectory = tpgDirectory;
 
       this.totalNumReaders = totalNumReaders;
       this.indexThisReader = indexThisReader;
@@ -134,11 +134,14 @@ namespace CeresTrain.TPGDatasets
     /// <exception cref="Exception"></exception>
     void Reset()
     {
-      if (TPGDirectory != null)
+      // TODO: is some special treatment necessary for when usingTPG is false?  
+
+      bool usingTPG = overrideRecordEnumerator == null;
+      if (usingTPG && SourceFileDirectory != null)
       {
         // Get list of files and sort so different workers see files ordered the same
         // (for consistent modulus selection).
-        List<string> fileNames = Directory.GetFiles(TPGDirectory, "*.zst").ToList();
+        List<string> fileNames = Directory.GetFiles(SourceFileDirectory, "*.zst").ToList();
 
         // Sort fileNames based on name
         fileNames.Sort((a, b) => string.Compare(a, b, StringComparison.Ordinal));
@@ -155,7 +158,7 @@ namespace CeresTrain.TPGDatasets
 
         if (availableFiles.Count == 0)
         {
-          throw new Exception("No files available " + TPGDirectory + " moduloIndex " + indexThisReader);
+          throw new Exception("No files available " + SourceFileDirectory + " moduloIndex " + indexThisReader);
         }
       }
     }
@@ -183,7 +186,7 @@ namespace CeresTrain.TPGDatasets
 
           if (!availableFiles.TryDequeue(out thisFN))
           {
-            throw new Exception("Failure restarting processing of TPG files in " + TPGDirectory + " moduloIndex " + indexThisReader);
+            throw new Exception("Failure restarting processing of TPG files in " + SourceFileDirectory + " moduloIndex " + indexThisReader);
           }
         }
 
@@ -231,6 +234,7 @@ namespace CeresTrain.TPGDatasets
     {
       while (true)
       {
+        TPGRecord[] theseRecords = null;
         if (bagPendingDicts.Count >= NUM_DICTS_PRELOAD)
         {
           // Queue already full enough, wait a short while.
@@ -238,21 +242,33 @@ namespace CeresTrain.TPGDatasets
         }
         else
         {
-          if (availableFiles != null)
+          if (overrideRecordEnumerator != null)
           {
-            if (currentFileEnumerator == null)
+            overrideRecordEnumerator.MoveNext();
+            theseRecords = overrideRecordEnumerator.Current;
+          }
+          else
+          {
+            if (availableFiles != null)
             {
-              StartNextFile();
+              if (currentFileEnumerator == null)
+              {
+                StartNextFile();
+              }
+
+              while (!currentFileEnumerator.MoveNext())
+              {
+                StartNextFile();
+              }
             }
 
-            while (!currentFileEnumerator.MoveNext())
-            {
-              StartNextFile();
-            }
+            theseRecords = currentFileEnumerator.Current;
           }
 
-          TPGRecord[] theseRecords = currentFileEnumerator.Current;
+        }
 
+        if (theseRecords != null)
+        {
           bagPendingDicts.Enqueue((dictConverter.BuildTensorDictFromTPGRecords(theseRecords), theseRecords));
         }
       }

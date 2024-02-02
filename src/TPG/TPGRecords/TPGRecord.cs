@@ -107,10 +107,15 @@ namespace CeresTrain.TPG
     #region Data structure fields
 
     /// <summary>
-    /// Win/draw/loss training target as a 3-element array (derived from the game result).
+    /// Win/draw/loss game result (without deblundering) as a 3-element array.
+    /// TODO: this could be stored more simply as a single value (e.g. 0 = loss, 1 = draw, 2 = win).
     /// </summary>
-    public fixed float WDLResult[3];
+    public fixed float WDLResultNonDeblundered[3];
 
+    /// <summary>
+    /// Win/draw/loss game result (with deblundering) as a 3-element array.
+    /// </summary>
+    public fixed float WDLResultDeblundered[3];
 
     /// <summary>
     /// Win/draw/loss training target as a 3-element array (derived from the root node of search Q value).
@@ -135,14 +140,26 @@ namespace CeresTrain.TPG
     public float DeltaQVersusV;
 
     /// <summary>
+    /// Target forward Q deviation (lower bound).
+    /// </summary>
+    public Half QDeviationLower;
+
+    /// <summary>
+    /// Target forward Q deviation (upper bound).
+    /// </summary>
+    public Half QDeviationUpper;
+
+    /// <summary>
     /// Training input if white was to move.
     /// This is of secondary importance, since the training positions are 
     /// always from the perspective of the side to move.
     /// </summary>
     public byte IsWhiteToMove;
 
+    /// <summary>
+    /// Unusued field.
+    /// </summary>
     public byte UnusedByte1;
-    public Half UnusedHalf1;
 
     /// <summary>
     /// Policy training target with array of move indices having nozero probabilities.
@@ -158,9 +175,11 @@ namespace CeresTrain.TPG
 
 
     public readonly float SearchQ => WDLQ[0] - WDLQ[2];
-    public readonly float ResultQ => WDLResult[0] - WDLResult[2];
+    public readonly float ResultQDeblundered => WDLResultDeblundered[0] - WDLResultDeblundered[2];
+    public readonly float ResultQNonDeblundered => WDLResultNonDeblundered[0] - WDLResultNonDeblundered[2];
 
-    public readonly float[] WDLResultArray => new float[] { WDLResult[0], WDLResult[1], WDLResult[2] };
+    public readonly float[] WDLResultDeblunderedArray => new float[] { WDLResultDeblundered[0], WDLResultDeblundered[1], WDLResultDeblundered[2] };
+    public readonly float[] WDLResultNonDeblunderedArray => new float[] { WDLResultNonDeblundered[0], WDLResultNonDeblundered[1], WDLResultNonDeblundered[2] };
     public readonly float[] WDLQResultArray => new float[] { WDLQ[0], WDLQ[1], WDLQ[2] };
 
     public readonly EncodedMove MoveAtIndex(int i) => EncodedMove.FromNeuralNetIndex(i);
@@ -248,7 +267,7 @@ namespace CeresTrain.TPG
         Console.WriteLine("  " + HistoryPosition(7).FEN + " " + equalHistoryCounts[7]);
       }
 
-      Console.WriteLine($"WDL            {WDLResultArray[0]:6,2} {WDLResultArray[1]:6,2} {WDLResultArray[2]:6,2}");
+      Console.WriteLine($"WDL            {WDLResultDeblunderedArray[0]:6,2} {WDLResultDeblunderedArray[1]:6,2} {WDLResultDeblunderedArray[2]:6,2}");
       Console.WriteLine($"WDLQ           {WDLQResultArray[0]:6,2} {WDLQResultArray[1]:6,2} {WDLQResultArray[2]:6,2}");
       Console.WriteLine($"MLH / UNC      {MLH:6,2}  {DeltaQVersusV:6,2}");
 

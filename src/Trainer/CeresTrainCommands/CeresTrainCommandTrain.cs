@@ -61,7 +61,7 @@ namespace CeresTrain.Trainer
 
  
 
-  public partial class CeresTrainCommandTrain : CeresTrainCommandBase
+  public partial class CeresTrainCommandTrain : CeresTrainCommandBase, IDisposable
   {
     const TransformerTypeEnum TransformerType = TransformerTypeEnum.CeresTransformer;
 
@@ -77,11 +77,18 @@ namespace CeresTrain.Trainer
     Tensor valueTarget;
     Tensor policyTarget;
     Tensor maskedPolicyForLoss;
+    Tensor value2Target;
+    Tensor qDeviationLowerTarget;
+    Tensor qDeviationUpperTarget;
 
     Tensor lossValueBatch;
     Tensor lossPolicyBatch;
     Tensor lossMLHBatch;
     Tensor lossUNCBatch;
+
+    Tensor lossValue2Batch;
+    Tensor lossQDeviationLowerBatch;
+    Tensor lossQDeviationUpperBatch;
 
     Tensor lossTotal;
 
@@ -119,6 +126,9 @@ namespace CeresTrain.Trainer
                        Loss<Tensor, Tensor, Tensor> lossPolicy,
                        Loss<Tensor, Tensor, Tensor> lossMLH,
                        Loss<Tensor, Tensor, Tensor> lossUNC,
+                       Loss<Tensor, Tensor, Tensor> lossValue2,
+                       Loss<Tensor, Tensor, Tensor> lossQDeviationLower,
+                       Loss<Tensor, Tensor, Tensor> lossQDeviationUpper,
                        DataLoader dataLoader,
                        Dataset tpgDataset,
                        LRScheduler scheduler,
@@ -162,6 +172,9 @@ namespace CeresTrain.Trainer
           valueTarget = batch["wdl"].reshape(OptimizationBatchSizeForward, 3);
           policyTarget = batch["policy"].reshape(OptimizationBatchSizeForward, 1858);
 
+          value2Target = batch["wdl2"].reshape(OptimizationBatchSizeForward, 3);
+          qDeviationLowerTarget = batch["q_deviation_lower"].reshape(OptimizationBatchSizeForward, 1);
+          qDeviationUpperTarget = batch["q_deviation_upper"].reshape(OptimizationBatchSizeForward, 1);
 
           const bool RUN_INFERENCE_BENCHMARK = false;
           if (RUN_INFERENCE_BENCHMARK)
@@ -199,6 +212,10 @@ namespace CeresTrain.Trainer
           Tensor mlh;
           Tensor unc;
           Tensor policy1858;
+          Tensor value2;
+          Tensor qDeviationLower;
+          Tensor qDeviationUpper;
+
           FP16[] extraStats0;
           FP16[] extraStats1;
           if (model is IModuleNNEvaluator)
@@ -207,7 +224,7 @@ namespace CeresTrain.Trainer
 
             inputSquares = inputSquares.to(TrainingConfig.ExecConfig.DataType).div(ByteScaled.SCALING_FACTOR);
 
-            (value, policy, mlh, unc, extraStats0, extraStats1) = evaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
+            (value, policy, mlh, unc, value2, qDeviationLower, qDeviationUpper, extraStats0, extraStats1) = evaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
           }
           else
           {
@@ -224,22 +241,29 @@ namespace CeresTrain.Trainer
 
 
           // Mask illegal moves out of the policy vector.
-          const float MASK_POLICY_VALUE = -1E4f;
+          const float MASK_POLICY_VALUE = -1E5f;
           Tensor legalMoves = policyTarget.greater(0);
           Tensor illegalMaskValue = zeros_like(policy) + MASK_POLICY_VALUE;
           maskedPolicyForLoss = where(legalMoves, policy, illegalMaskValue);
 
           // TODO: Someday short circuit evaluation if weight is zero.
-          // N.B.  Caution this may case optimization to fail to make progress if does as shown below.       
-          lossValueBatch = TrainingConfig.OptConfig.LossValueMultiplier != -1 ? lossValue.call(value, valueTarget) * TrainingConfig.OptConfig.LossValueMultiplier : null;
-          lossPolicyBatch = TrainingConfig.OptConfig.LossPolicyMultiplier != -1 ? lossPolicy.call(maskedPolicyForLoss, policyTarget) * TrainingConfig.OptConfig.LossPolicyMultiplier : null;
-          lossMLHBatch = TrainingConfig.OptConfig.LossMLHMultiplier != -1 ? lossMLH.call(mlh, mlhTarget) * TrainingConfig.OptConfig.LossMLHMultiplier : null;
-          lossUNCBatch = TrainingConfig.OptConfig.LossUNCMultiplier != -1 ? lossUNC.call(unc, uncTarget) * TrainingConfig.OptConfig.LossUNCMultiplier : null;
+          lossValueBatch = lossValue.call(value, valueTarget);
+          lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
+          lossMLHBatch = lossMLH.call(mlh, mlhTarget);
+          lossUNCBatch = lossUNC.call(unc, uncTarget);
+          lossValue2Batch = lossValue2.call(value2, value2Target);
+
+          const float QDEV_LOSS_SCALE = 10.0f;
+          lossQDeviationLowerBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
+          lossQDeviationUpperBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
 
           lossTotal = lossPolicyBatch * TrainingConfig.OptConfig.LossPolicyMultiplier
-                           + lossValueBatch * TrainingConfig.OptConfig.LossValueMultiplier
-                           + lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
-                           + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier;
+                    + lossValueBatch * TrainingConfig.OptConfig.LossValueMultiplier
+                    + lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
+                    + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier
+                    + lossValue2Batch * TrainingConfig.OptConfig.LossValue2Multiplier
+                    + lossQDeviationLowerBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                    + lossQDeviationUpperBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
 
 
           lossTotal.backward();
@@ -265,7 +289,7 @@ namespace CeresTrain.Trainer
           if (numRead > MaxPositions)
           {
             // End training.Dump stats one last time and save final network.
-            DumpTrainingStatsToConsole("LOCAL", value, policy, mlh, unc, ref numRead);
+            DumpTrainingStatsToConsole("LOCAL", value, policy, ref numRead);
             SaveNetwork(model, optimizer, false);
 
             break;
@@ -273,7 +297,7 @@ namespace CeresTrain.Trainer
 
           if (dumpStatsThisBatch)
           {
-            DumpTrainingStatsToConsole("LOCAL", value, policy, mlh, unc, ref numRead);
+            DumpTrainingStatsToConsole("LOCAL", value, policy, ref numRead);
           }
 
           batchId++;
@@ -361,7 +385,7 @@ namespace CeresTrain.Trainer
       //Console.WriteLine("VALIDATION TESTS WILL BE OF SIZE " + NUM_VALIDATION_POS + " using " + TPGNetTests.VALIDATION_ZST_FN());
       //  DISABLED     validationTSEvaluator = new NNEvaluatorTorchsharp(model as ModelEmbeddingMHA, null, device.type, device.index, NetConfig.EmitPlySinceLastMovePerSquare, false);
 
-      Dataset tpgDataset = BuildDataSet();
+      Dataset tpgDataset = BuildDataSet(TrainingConfig.DataConfig.TARPositionSkipCount);
 
       using (DataLoader dataLoader = new DataLoader(tpgDataset, 1, device: TrainingConfig.ExecConfig.Device))
       {
@@ -373,8 +397,12 @@ namespace CeresTrain.Trainer
 
       TrainingLossSummary lossSummary = new(thisLossAdjRunning, lossValueAdjRunning, valueAccAdjRunning, 
                                             lossPolicyAdjRunning, policyAccAdjRunning,
-                                            lossMLHAdjRunning, lossUNCAdjRunning);
+                                            lossMLHAdjRunning, lossUNCAdjRunning,
+                                            lossValue2AdjRunning,
+                                            lossQDeviationLowerAdjRunning, lossQDeviationUpperAdjRunning);
 
+      tpgDataset.Dispose();
+      Dispose();
 
       return new TrainingResultSummary(Environment.MachineName, Environment.MachineName, TrainingConfig.ExecConfig.ID,
                                        DateTime.Now, "SUCCESS", NumParameters, DateTime.Now - timeStartTraining,
@@ -383,28 +411,30 @@ namespace CeresTrain.Trainer
     }
 
 
-    private Dataset BuildDataSet()
+    private Dataset BuildDataSet(int skipCount)
     {
+      Console.WriteLine("Generating training data from tablebase from  " + TrainingConfig.DataConfig.SourceType);
+
       Dataset tpgDataset;
       switch (TrainingConfig.DataConfig.SourceType)
       {
         case ConfigData.DataSourceType.PreprocessedFromTAR:
         case ConfigData.DataSourceType.DirectFromTPG:
           {
+
             IEnumerator<TPGRecord[]> enumerator = null;
             if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.PreprocessedFromTAR)
             {
               TPGGeneratorOptions.DeblunderType DEBLUNDER_TYPE = TPGGeneratorOptions.DeblunderType.PositionQ;
-              const int SKIP_COUNT = 20;
 
               enumerator = TPGTorchDatasetComboHelpers.GeneratorTPGRecordsViaGeneratorFromV6(TrainingConfig.DataConfig.TrainingFilesDirectory, null,
-                                                                                             long.MaxValue, TrainingConfig.OptConfig.BatchSizeForwardPass, 
+                                                                                             long.MaxValue, TrainingConfig.OptConfig.BatchSizeForwardPass,
                                                                                              DEBLUNDER_TYPE,
                                                                                              allowFilterOutRepeatedPositions: false,
                                                                                              rescoreTablebases: true,
-                                                                                             partiallyFilterObviousDrawsAndWins : false,
-                                                                                             verbose : true, 
-                                                                                             skipCount : SKIP_COUNT);
+                                                                                             partiallyFilterObviousDrawsAndWins: false,
+                                                                                             verbose: true,
+                                                                                             skipCount: skipCount);
             }
 
             // Using larger parallelism will:
@@ -526,7 +556,8 @@ namespace CeresTrain.Trainer
                                      float FRAC_START_DECAY = TrainingConfig.OptConfig.LRBeginDecayAtFractionComplete;
 
                                      float lrScale;
-                                     if (fractionComplete < 0.02)
+                                     if (numPositionsReadFromTraining < 10_000_000 && (fractionComplete < 0.02 
+                                                                                  || numPositionsReadFromTraining < 500_000))
                                      {
                                        lrScale = WARMUP_LR_SCALING;
                                      }
@@ -552,9 +583,12 @@ namespace CeresTrain.Trainer
       Console.WriteLine();
 
       CrossEntropyLoss valueLoss = CrossEntropyLoss();
+      CrossEntropyLoss value2Loss = CrossEntropyLoss();
       CrossEntropyLoss policyLoss = CrossEntropyLoss();
       var mlhLoss = new HuberLossScaled<Tensor, Tensor, Tensor>(Reduction.Mean, 0.5f, 5);
       var uncLoss = new HuberLossScaled<Tensor, Tensor, Tensor>(Reduction.Mean, 0.5f, 150);
+      MSELoss qDeviationLowerLoss = new MSELoss();
+      MSELoss qDeviationUpperLoss = new MSELoss();
 
       CeresTrainInitialization.PrepareToUseDevice(TrainingConfig.ExecConfig.Device);
 
@@ -566,7 +600,9 @@ namespace CeresTrain.Trainer
 
         consoleStatusTable.RunTraining(
           () => Train(TrainingConfig.ExecConfig.ID, model, optimizer, valueLoss,
-                      policyLoss, mlhLoss, uncLoss, train,
+                      policyLoss, mlhLoss, uncLoss, 
+                      value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                      train,
                       tpgDataset, scheduler, tbWriter,
                       TrainingConfig.OptConfig.NumTrainingPositions,
                       ref numPositionsReadFromTraining));
@@ -650,6 +686,29 @@ namespace CeresTrain.Trainer
 //      Console.WriteLine($"  no_decay: {pgNoWD.Parameters.Count()}");
       return [pgNoWD, pgWD];
     }
-  
+
+    public void Dispose()
+    {
+      Model.Dispose();
+      optimizer.Dispose();
+      mlhTarget?.Dispose();
+      uncTarget?.Dispose();
+      valueTarget?.Dispose();
+      policyTarget?.Dispose();
+      maskedPolicyForLoss?.Dispose();
+      value2Target?.Dispose();
+      qDeviationLowerTarget?.Dispose();
+      qDeviationUpperTarget?.Dispose();
+      lossValueBatch?.Dispose();
+      lossPolicyBatch?.Dispose();
+      lossMLHBatch?.Dispose();
+      lossUNCBatch?.Dispose();
+      lossValue2Batch?.Dispose();
+      lossQDeviationLowerBatch?.Dispose();
+      lossQDeviationUpperBatch?.Dispose();
+      lossTotal?.Dispose();
+    }
+
+
   }
 }

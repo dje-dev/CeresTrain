@@ -38,6 +38,8 @@ class CeresNet(pl.LightningModule):
     value_loss_weight,
     moves_left_loss_weight,
     unc_loss_weight,
+    value2_loss_weight,
+    q_deviation_loss_weight,
     q_ratio,
     optimizer,
     learning_rate
@@ -52,6 +54,8 @@ class CeresNet(pl.LightningModule):
         value_loss_weight: Weight for the value loss component.
         moves_left_loss_weight: Weight for the moves left loss component.
         unc_loss_weight: Weight for the uncertainty loss component.
+        value2_loss_weight: Weight for the secondary value loss component.
+        q_deviation_loss_weight: Weight for the Q deviation (lower and upper) loss components.
         q_ratio: Fraction of weight to be put on Q (search value results) versus game WDL result.
         optimizer: Optimizer to be used for training.
         learning_rate: Learning rate for the optimizer.
@@ -62,7 +66,7 @@ class CeresNet(pl.LightningModule):
     self.save_hyperparameters()
 
     self.MAX_MOVES = 1858
-    self.NUM_INPUT_BYTES_PER_SQUARE = 135 # N.B. also update in new.py
+    self.NUM_INPUT_BYTES_PER_SQUARE = 137 # N.B. also update in train.py
     self.NUM_TOKENS = 64 # N.B. ALSO UPDATE IN new.py
   
     self.DROPOUT_RATE = config.Exec_DropoutRate
@@ -102,12 +106,20 @@ class CeresNet(pl.LightningModule):
     self.HEAD_PREMAP_DIVISOR_VALUE = 8
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
     FINAL_VALUE_FC2_SIZE = 8 * HEAD_MULT
+
     self.valueHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
     self.out_value_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,out_features=FINAL_VALUE_FC1_SIZE)
-    self.relu_value1 = self.Activation
+    self.relu_value_1 = self.Activation
     self.out_value_layer2 = nn.Linear(in_features=FINAL_VALUE_FC1_SIZE, out_features=FINAL_VALUE_FC2_SIZE)
-    self.relu_value2 = self.Activation 
+    self.relu_value_2 = self.Activation 
     self.out_value_layer3 = nn.Linear(in_features=FINAL_VALUE_FC2_SIZE,out_features=3)
+
+    self.value2HeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
+    self.out_value2_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,out_features=FINAL_VALUE_FC1_SIZE)
+    self.relu_value2_1 = self.Activation
+    self.out_value2_layer2 = nn.Linear(in_features=FINAL_VALUE_FC1_SIZE, out_features=FINAL_VALUE_FC2_SIZE)
+    self.relu_value2_2 = self.Activation 
+    self.out_value2_layer3 = nn.Linear(in_features=FINAL_VALUE_FC2_SIZE,out_features=3)
 
     self.HEAD_PREMAP_DIVISOR_MLH = 16
     FINAL_MLH_FC1_SIZE = 32 * HEAD_MULT
@@ -116,9 +128,7 @@ class CeresNet(pl.LightningModule):
     self.out_mlh_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,out_features=FINAL_MLH_FC1_SIZE)
     self.relu_mlh = self.Activation
     self.out_mlh_layer2 = nn.Linear(in_features=FINAL_MLH_FC1_SIZE,out_features=FINAL_MLH_FC2_SIZE)
-    self.relu_mlh = self.Activation 
     self.out_mlh_layer3 = nn.Linear(in_features=FINAL_MLH_FC2_SIZE,out_features=1)
-
 
     self.HEAD_PREMAP_DIVISOR_UNC = 16
     FINAL_UNC_FC1_SIZE = 32 * HEAD_MULT
@@ -127,8 +137,24 @@ class CeresNet(pl.LightningModule):
     self.out_unc_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC,out_features=FINAL_UNC_FC1_SIZE)
     self.relu_unc = self.Activation
     self.out_unc_layer2 = nn.Linear(in_features=FINAL_UNC_FC1_SIZE,out_features=FINAL_UNC_FC2_SIZE)
-    self.relu_unc = self.Activation 
     self.out_unc_layer3 = nn.Linear(in_features=FINAL_UNC_FC2_SIZE,out_features=1)
+
+    self.HEAD_PREMAP_DIVISOR_QDEV = 16
+    FINAL_QDEV_FC1_SIZE = 32 * HEAD_MULT
+    FINAL_QDEV_FC2_SIZE = 8 * HEAD_MULT
+
+    self.qDevLowerHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    self.out_qdev_lower_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV,out_features=FINAL_QDEV_FC1_SIZE)
+    self.relu_qdev_lower = self.Activation
+    self.out_qdev_lower_layer2 = nn.Linear(in_features=FINAL_QDEV_FC1_SIZE,out_features=FINAL_QDEV_FC2_SIZE)
+    self.out_qdev_lower_layer3 = nn.Linear(in_features=FINAL_QDEV_FC2_SIZE,out_features=1)
+
+    self.qDevUpperHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    self.out_qdev_upper_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV,out_features=FINAL_QDEV_FC1_SIZE)
+    self.relu_qdev_upper = self.Activation
+    self.out_qdev_upper_layer2 = nn.Linear(in_features=FINAL_QDEV_FC1_SIZE,out_features=FINAL_QDEV_FC2_SIZE)
+    self.out_qdev_upper_layer3 = nn.Linear(in_features=FINAL_QDEV_FC2_SIZE,out_features=1)
+
 
     self.DEEPNORM = config.NetDef_DeepNorm
 
@@ -152,7 +178,7 @@ class CeresNet(pl.LightningModule):
     EPS = 1E-6
     
     if SMOLGEN_PER_SQUARE_DIM > 0:
-      self.smolgenPrepLayer = nn.Linear(self.NUM_HEADS * SMOLGEN_INTERMEDIATE_DIM, 64 * 64)
+      self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM, 64 * 64)
     else:
       self.smolgenPrepLayer = None
 
@@ -172,12 +198,14 @@ class CeresNet(pl.LightningModule):
     self.value_loss_weight = value_loss_weight
     self.moves_left_loss_weight = moves_left_loss_weight
     self.unc_loss_weight = unc_loss_weight
+    self.value2_loss_weight = value2_loss_weight
+    self.q_deviation_loss_weight = q_deviation_loss_weight
     self.q_ratio = q_ratio
     self.optimizer = optimizer
     self.learning_rate = learning_rate
 
 
-  def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+  def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(input_planes, list):
       # when saving/restoring from ONNX the input will appear as a list instead of sequence of arguments
       input_planes = input_planes[0]
@@ -203,10 +231,18 @@ class CeresNet(pl.LightningModule):
     value_out = self.valueHeadPremap(flow)
     value_out = value_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
     value_out = self.out_value_layer1(value_out)
-    value_out = self.relu_value1(value_out)
+    value_out = self.relu_value_1(value_out)
     value_out = self.out_value_layer2(value_out)
-    value_out = self.relu_value1(value_out)
+    value_out = self.relu_value_2(value_out)
     value_out = self.out_value_layer3(value_out)
+
+    value2_out = self.value2HeadPremap(flow)
+    value2_out = value2_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
+    value2_out = self.out_value2_layer1(value2_out)
+    value2_out = self.relu_value2_1(value2_out)
+    value2_out = self.out_value2_layer2(value2_out)
+    value2_out = self.relu_value2_2(value2_out)
+    value2_out = self.out_value2_layer3(value2_out)
 
     moves_left_out = self.mlhHeadPremap(flow)
     moves_left_out = moves_left_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
@@ -226,25 +262,54 @@ class CeresNet(pl.LightningModule):
     unc_out = self.out_unc_layer3(unc_out)
     unc_out = torch.nn.functional.relu(unc_out) # truncate at zero, can't be negative
 
-    return policy_out, value_out, moves_left_out, unc_out
+    q_deviation_lower_out = self.qDevLowerHeadPremap(flow)
+    q_deviation_lower_out = q_deviation_lower_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    q_deviation_lower_out = self.out_qdev_lower_layer1(q_deviation_lower_out)
+    q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
+    q_deviation_lower_out = self.out_qdev_lower_layer2(q_deviation_lower_out)
+    q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
+    q_deviation_lower_out = self.out_qdev_lower_layer3(q_deviation_lower_out)
+    q_deviation_lower_out = torch.nn.functional.relu(q_deviation_lower_out) # truncate at zero, can't be negative
+    
+    q_deviation_upper_out = self.qDevUpperHeadPremap(flow)
+    q_deviation_upper_out = q_deviation_upper_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    q_deviation_upper_out = self.out_qdev_upper_layer1(q_deviation_upper_out)
+    q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
+    q_deviation_upper_out = self.out_qdev_upper_layer2(q_deviation_upper_out)
+    q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
+    q_deviation_upper_out = self.out_qdev_upper_layer3(q_deviation_upper_out)
+    q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
+
+    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
 
 
-  def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out, num_pos, last_lr, log_stats):
+  def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
+                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, last_lr, log_stats):
     policy_target = batch['policies']
     wdl_target = batch['wdl_result']
     q_target = batch['wdl_q']
     moves_left_target = batch['mlh']
     unc_target = batch['unc']
+    wdl2_target = batch['wdl2_result']
+    q_deviation_lower_target = batch['q_deviation_lower']
+    q_deviation_upper_target = batch['q_deviation_upper']
 
     value_target = q_target * self.q_ratio + wdl_target * (1 - self.q_ratio)
     p_loss = loss_calc.policy_loss(policy_target, policy_out)
     v_loss = loss_calc.value_loss(value_target, value_out)
+    v2_loss = loss_calc.value2_loss(wdl2_target, value2_out)
     ml_loss = loss_calc.moves_left_loss(moves_left_target, moves_left_out)
     u_loss = loss_calc.unc_loss(unc_target, unc_out)
+    q_deviation_lower_loss = loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
+    q_deviation_upper_loss = loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
+    
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
         + self.moves_left_loss_weight * ml_loss
-        + self.unc_loss_weight * u_loss)
+        + self.unc_loss_weight * u_loss
+        + self.value2_loss_weight * v2_loss
+        + self.q_deviation_loss_weight * q_deviation_lower_loss
+        + self.q_deviation_loss_weight * q_deviation_upper_loss)
         
     if (log_stats):
         policy_accuracy = loss_calc.calc_accuracy(policy_target, policy_out, True)
@@ -256,7 +321,11 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("policy_acc",policy_accuracy,  step=num_pos)
         self.fabric.log("value_acc",value_accuracy,  step=num_pos)
         self.fabric.log("value_loss", v_loss,  step=num_pos)
+        self.fabric.log("value2_loss", v2_loss,  step=num_pos)
         self.fabric.log("moves_left_loss", ml_loss, step=num_pos)
         self.fabric.log("unc_loss", u_loss, step=num_pos)
+        self.fabric.log("q_deviation_lower_loss", q_deviation_lower_loss, step=num_pos)
+        self.fabric.log("q_deviation_upper_loss", q_deviation_upper_loss, step=num_pos)
+        
     return total_loss
 

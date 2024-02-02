@@ -6,17 +6,12 @@ using TorchSharp;
 using static TorchSharp.torch;
 
 using Ceres.Base.DataTypes;
+
 using CeresTrain.Utils;
 using CeresTrain.Networks;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
-using Ceres.Chess.LC0NetInference;
-using Ceres.Chess.NNEvaluators.Defs;
-using Ceres.Chess.NNEvaluators;
-using Chess.Ceres.NNEvaluators;
-using Ceres.Chess.LC0.Batches;
-using CeresTrain.TPG;
-using System.Runtime.InteropServices;
+
 
 #endregion
 
@@ -53,7 +48,7 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// The loaded Torchscript module.
     /// </summary>
-    jit.ScriptModule<Tensor, (Tensor, Tensor, Tensor, Tensor)> module;
+    jit.ScriptModule<Tensor, Tensor[]> module;
 
 
     /// <summary>
@@ -91,12 +86,12 @@ namespace CeresTrain.NNEvaluators
       else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
         // NOTE: better to move to device first so type conversion can happen on potentially faster device
-        module = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
+        module = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor[]>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
         //      module = torch.jit.load<Tensor, (Tensor, Tensor, Tensor, Tensor)>(fileNameTorchscript, Device.type, Device.index).to(dataType);
 
         //module = TorchscriptUtils. TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(tsFileName1, tsFileName2, device, dataType);
         //      module = module.to(dataType).to(device);
-        module.eval();
+       module.eval();
       }
       else
       {
@@ -145,7 +140,9 @@ namespace CeresTrain.NNEvaluators
     /// <param name="inputMoves"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public (Tensor value, Tensor policy, Tensor mlh, Tensor unc, FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves)
+    public (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
+            Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+            FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves)
     {
       if (inputMoves is not null)
       {
@@ -161,11 +158,12 @@ namespace CeresTrain.NNEvaluators
         {
           lock (this)
           {
-            (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc) ret = default;
+            (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc, Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper) ret = default;
 
             if (module != null)
             {
-              ret = module.call(inputSquares); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
+              Tensor [] rawRet = module.call(inputSquares); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
+              ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6]);
             }
             else
             {
@@ -183,6 +181,9 @@ namespace CeresTrain.NNEvaluators
                     ret.policy1858.MoveToOuterDisposeScope(),
                     ret.mlh.MoveToOuterDisposeScope(),
                     ret.unc.MoveToOuterDisposeScope(),
+                    ret.value2.MoveToOuterDisposeScope(),
+                    ret.qDeviationLower.MoveToOuterDisposeScope(),
+                    ret.qDeviationUpper.MoveToOuterDisposeScope(),
                     extraStats0, null);
           }
         }
