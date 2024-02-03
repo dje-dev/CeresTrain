@@ -556,7 +556,7 @@ namespace CeresTrain.Trainer
                                      float FRAC_START_DECAY = TrainingConfig.OptConfig.LRBeginDecayAtFractionComplete;
 
                                      float lrScale;
-                                     if (numPositionsReadFromTraining < 10_000_000 && (fractionComplete < 0.02 
+                                     if (numPositionsReadFromTraining < 20_000_000 && (fractionComplete < 0.02 
                                                                                   || numPositionsReadFromTraining < 500_000))
                                      {
                                        lrScale = WARMUP_LR_SCALING;
