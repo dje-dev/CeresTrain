@@ -7,6 +7,7 @@ using Ceres.Base.DataTypes;
 using Ceres.Base.Benchmarking;
 using System.Runtime.InteropServices;
 
+using TorchSharp;
 using static TorchSharp.torch;
 
 using Ceres.Base.DataType;
@@ -24,31 +25,12 @@ using Ceres.MCTS.MTCSNodes.Annotation;
 using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
-using TorchSharp;
 using CeresTrain.TrainCommands;
 
 #endregion
 
 namespace CeresTrain.NNEvaluators
 {
-  public record class NNEvaluatorTorchsharpOptions
-  {
-    public readonly float QNegativeBlunders;
-    public readonly float QPositiveBlunders;
-    public readonly float FractionUndeblunderedValueHead;
-    public readonly bool MonitorActivations;
-
-    public NNEvaluatorTorchsharpOptions(float qNegativeBlunders, float qPositiveBlunders, float fractionUndeblunderedValueHead, 
-                                        bool monitorActivations = false)
-    {
-      QNegativeBlunders = qNegativeBlunders;
-      QPositiveBlunders = qPositiveBlunders;
-      FractionUndeblunderedValueHead = fractionUndeblunderedValueHead;
-      MonitorActivations = monitorActivations;
-    }
-  }
-
-
   /// <summary>
   /// Subclass of NNEvaluator which uses CeresTrain networks.
   /// </summary>
@@ -167,10 +149,26 @@ namespace CeresTrain.NNEvaluators
 
     public override bool IsEquivalentTo(NNEvaluator evaluator)
     {
-      throw new NotImplementedException();
-      //      return evaluator is NNEvaluatorTorchsharp && PytorchNetFileName
-      //        == (evaluator as NNEvaluatorTorchsharp).PytorchNetFileName;
+      NNEvaluatorTorchsharp evalTS = evaluator as NNEvaluatorTorchsharp;
+
+      ModuleNNEvaluatorFromTorchScript evalTSModule = PytorchForwardEvaluator as ModuleNNEvaluatorFromTorchScript;
+      ModuleNNEvaluatorFromTorchScript evalTSModuleOther = evalTS.PytorchForwardEvaluator as ModuleNNEvaluatorFromTorchScript;
+
+      if (evalTS == null)
+      {
+        return false;
+      }
+
+      // TODO: Are there other things that need to be checked, e.g. within the ModuleNNEvaluatorFromTorchScript.
+      return (DataType == evalTS.DataType && Device == evalTS.Device
+          && EngineType == evalTS.EngineType
+          && IncludeHistory == evalTS.IncludeHistory
+          && LastMovePliesEnabled == evalTS.LastMovePliesEnabled
+          && evalTSModule.TorchscriptFileName1  == evalTSModuleOther.TorchscriptFileName1
+          && evalTSModule.TorchscriptFileName2 == evalTSModuleOther.TorchscriptFileName2);
     }
+
+
 
     const int MAX_BATCH_SIZE = 1024;
     public override int MaxBatchSize => MAX_BATCH_SIZE;
@@ -459,16 +457,21 @@ namespace CeresTrain.NNEvaluators
           }
           squareBytesAll[64 * TPGRecord.BYTES_PER_SQUARE_RECORD + 1] = 33;
         }
-        // Create a Tensor of bytes still on CPU.
-        Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
 
-//        long ja = 0;
-//        for (int i=0;i<1*64* TPGRecord.BYTES_PER_SQUARE_RECORD;i++)
-//          ja+= (squareBytesAll[i] * i) % 377;
-//        Console.WriteLine(ja); System.Environment.Exit(3);
+        // Create a Tensor of bytes still on CPU.
+
+        //        long ja = 0;
+        //        for (int i=0;i<1*64* TPGRecord.BYTES_PER_SQUARE_RECORD;i++)
+        //          ja+= (squareBytesAll[i] * i) % 377;
+        //        Console.WriteLine(ja); System.Environment.Exit(3);
 
         // Move Tensor to the desired device and data type.
+        Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
         Tensor inputSquares = cpuTensor.to(Device).to(DataType);
+
+        // *** NOTE: The following alternate methods should be faster, but actually much slower!
+// best:  Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
+//        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
 
         // Apply scaling factor to TPG square inputs.
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
@@ -476,21 +479,22 @@ namespace CeresTrain.NNEvaluators
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
           predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
-          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);//, inputMoves.to(DeviceType, DeviceIndex));
+          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
       }
 
+
       using (var _ = NewDisposeScope())
       {
-        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2);
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature);
 
-        if (Options?.FractionUndeblunderedValueHead != 0)
+        if (Options?.FractionValueHead2 != 0)
         {
-          float fraction1 = 1.0f - Options.FractionUndeblunderedValueHead;
-          float fractionNonDeblundered = Options.FractionUndeblunderedValueHead;
+          float fraction1 = 1.0f - Options.FractionValueHead2;
+          float fractionNonDeblundered = Options.FractionValueHead2;
 
           for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
           {
@@ -604,14 +608,17 @@ namespace CeresTrain.NNEvaluators
       }
     }
 
-    private static Span<Half> ExtractValueWDL(Tensor predictionValue)
+
+    private static Span<Half> ExtractValueWDL(Tensor predictionValue, float? temperature)
     {
-      // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
+      // Extract logits and possibly apply temperature if specified.
       Tensor valueFloat = predictionValue.to(ScalarType.Float32);
+      if (temperature.HasValue && temperature != 1)
+      {
+        valueFloat /= temperature;
+      }
 
-      //        float[] valueOnCPURAW = predictionValue.cpu().FloatArray();
-      //Console.WriteLine("RAWVAL " + valueOnCPURAW[0] + " " + valueOnCPURAW[1] + " " + valueOnCPURAW[2]);
-
+      // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
       Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
       Tensor exp_logits = torch.exp(valueFloat - max_logits);
 
@@ -621,6 +628,7 @@ namespace CeresTrain.NNEvaluators
       Span<Half> wdlProbabilitiesCPU = MemoryMarshal.Cast<byte, Half>(wdlProbabilities.to(ScalarType.Float16).cpu().bytes);
       return wdlProbabilitiesCPU;
     }
+
 
     static void InitPolicyProbabilities(int i,
                                         Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
