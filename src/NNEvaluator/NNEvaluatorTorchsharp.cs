@@ -388,12 +388,36 @@ namespace CeresTrain.NNEvaluators
     [ThreadStatic] static FP16[] extraStats1;
 
 
+    /// <summary>
+    /// Returns exponentiated logits (after subtracting max to avoid overflow) as a Span of floats.
+    /// Note that any unused slots will have been filled with copies of the last element.
+    /// Therefore it is not correct to apply summation here (but max operator is safe).
+    /// </summary>
+    /// <param name="policies"></param>
+    /// <param name="temperature"></param>
+    /// <returns></returns>
+    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float? temperature)
+    {
+      // Extract logits and possibly apply temperature if specified.
+      Tensor valueFloat = policies.to(ScalarType.Float32);
+      if (temperature.HasValue && temperature != 1)
+      {
+        valueFloat /= temperature;
+      }
+
+      // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
+      Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
+      Tensor exp_logits = torch.exp(valueFloat - max_logits);
+
+      return MemoryMarshal.Cast<byte, float>(exp_logits.to(ScalarType.Float32).cpu().bytes);
+    }
+
 
     public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
-                                                                 int numPositions,
-                                                                 Func<int, MGPosition> getMGPosAtIndex,
-                                                                 byte[] squareBytesAll,
-                                                                 short[] legalMovesIndices = null)
+                                                                int numPositions,
+                                                                Func<int, MGPosition> getMGPosAtIndex,
+                                                                byte[] squareBytesAll,
+                                                                short[] legalMovesIndices = null)
     {
       if (w == null)
       {
@@ -470,8 +494,9 @@ namespace CeresTrain.NNEvaluators
         Tensor inputSquares = cpuTensor.to(Device).to(DataType);
 
         // *** NOTE: The following alternate methods should be faster, but actually much slower!
-// best:  Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
-//        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
+        // best:  Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
+        //        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
+        //.copy_(squareBytesAll, 0, 0, numPositions * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
 
         // Apply scaling factor to TPG square inputs.
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
@@ -517,8 +542,8 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
-        ReadOnlySpan<Half> predictionsPolicy = null;
-        ReadOnlySpan<Half> predictionsPolicyMasked = null;
+        //ReadOnlySpan<Half> predictionsPolicy = null;
+        ReadOnlySpan<float> predictionsPolicyMasked = null;
         Tensor gatheredLegalMoveProbs = default;
         if (legalMovesIndices != null)
         {
@@ -527,11 +552,17 @@ namespace CeresTrain.NNEvaluators
           Tensor indices = tensor(legalMovesIndices, ScalarType.Int64, predictionPolicy.device)
                                 .reshape([numPositions, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST]);
           gatheredLegalMoveProbs = predictionPolicy.gather(1, indices);
-          predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
+          
+          //predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
+          
+          // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
+          float? POLICY_TEMPERATURE = null;
+          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, POLICY_TEMPERATURE);
         }
         else
         {
-          predictionsPolicy = MemoryMarshal.Cast<byte, Half>(predictionPolicy.to(ScalarType.Float16).cpu().bytes);
+          throw new NotImplementedException();
+          //predictionsPolicy = MemoryMarshal.Cast<byte, Half>(predictionPolicy.to(ScalarType.Float16).cpu().bytes);
         }
 
         // Create a result batch to receive results.
@@ -555,6 +586,8 @@ namespace CeresTrain.NNEvaluators
           }
           else
           {
+            throw new Exception("this code should be retested");
+#if NOT
             // ########### 1858 init
             int startIndex1858 = i * EncodedPolicyVector.POLICY_VECTOR_LENGTH;
             ReadOnlySpan<Half> spanPolicies1858 = predictionsPolicy.Slice(startIndex1858, EncodedPolicyVector.POLICY_VECTOR_LENGTH);
@@ -570,6 +603,7 @@ namespace CeresTrain.NNEvaluators
             }
 
             InitPolicyProbabilities(i, probs, getMGPosAtIndex, getMoveListAtIndex, spanPolicies1858, policiesToReturn);
+#endif
           }
 
           w[i] = (FP16)(float)wdlProbabilitiesCPU[i * 3];
@@ -633,16 +667,13 @@ namespace CeresTrain.NNEvaluators
     static void InitPolicyProbabilities(int i,
                                         Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
                                         short[] legalMoveIndices,
-                                        ReadOnlySpan<Half> spanPoliciesMasked,
+                                        ReadOnlySpan<float> spanPoliciesMaskedAndExponentiated,
                                         CompressedPolicyVector[] policiesToReturn)
     {
       // TODO: Use Span2D from performance tools NuGet package
       int baseIndex = i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST;
 
-      // Compute max probability (and also number of used slots).
-      float maxProb = float.MinValue;
       int numUsedSlots = 0;
-
       for (int m = 0; m < TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST; m++)
       {
         int index = legalMoveIndices[baseIndex + m];
@@ -654,16 +685,10 @@ namespace CeresTrain.NNEvaluators
           break;
         }
 
-        maxProb = MathF.Max(maxProb, (float)spanPoliciesMasked[baseIndex + m]);
+        //  float probAdjusted = MathF.Exp((float)spanPoliciesMasked[baseIndex + m] - maxProb);
+        float thisProb = spanPoliciesMaskedAndExponentiated[baseIndex + m];  
+        probs[m] = new PolicyVectorCompressedInitializerFromProbs.ProbEntry((short)index, thisProb);
         numUsedSlots++;
-      }
-
-      for (int m = 0; m < numUsedSlots; m++)
-      {
-        int index = legalMoveIndices[baseIndex + m];
-
-        float probAdjusted = MathF.Exp((float)spanPoliciesMasked[baseIndex + m] - maxProb);
-        probs[m] = new PolicyVectorCompressedInitializerFromProbs.ProbEntry((short)index, probAdjusted);
       }
 
       PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i],
