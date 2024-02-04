@@ -626,7 +626,7 @@ namespace CeresTrain.Examples
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
-                                           evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2);
+                                           true, evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2);
         };
       }
       else
