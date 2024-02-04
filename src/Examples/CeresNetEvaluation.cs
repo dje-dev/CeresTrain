@@ -47,7 +47,6 @@ using Ceres.Base.Math;
 using Ceres.Chess.LC0NetInference;
 using Chess.Ceres.NNEvaluators;
 using System.Runtime.InteropServices;
-using TorchSharp;
 
 #endregion 
 
@@ -596,8 +595,10 @@ namespace CeresTrain.Examples
         )
       {
         EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
-        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, f1, f2);
-        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, f1, f2) => TPGConvertersToFlat.ConvertToFlatTPG(o, history, f1, f2);
+        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1, f2)
+          => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, f1, f2);
+        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, f1, f2) 
+          => TPGConvertersToFlat.ConvertToFlatTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, history, f1, f2);
 
         NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
                                       || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
@@ -620,12 +621,12 @@ namespace CeresTrain.Examples
 
         getEvaluatorFunc = (int gpuID, object options) =>
         {
-          if (options != null ) throw new Exception("Net yet supported: options");
           return new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
-                                           ONNXRuntimeExecutor.NetTypeEnum.TPG, 1024,
+                                           ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, "policy", "value", "mlh", "unc", true,
-                                           false, ENABLE_PROFILING, false, useHistory);
+                                           false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
+                                           evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2);
         };
       }
       else
@@ -714,7 +715,7 @@ namespace CeresTrain.Examples
     /// <param name="flatValuesSecondary"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public static int ConvertToFlatTPGFromTPG(object records, byte[] flatValuesPrimary, byte[] flatValuesSecondary)
+    public static int ConvertToFlatTPGFromTPG(object records, float qNegativeBlunders, float qPositiveBlunders, byte[] flatValuesPrimary, byte[] flatValuesSecondary)
     {
       // TODO: Requiring the converter to take a materialized array could be inefficient, can we use Memory instead?
       TPGRecord[] tpgRecords = records as TPGRecord[];
@@ -752,7 +753,8 @@ namespace CeresTrain.Examples
     /// <param name="flatValuesPrimary"></param>
     /// <param name="flatValuesSecondary"></param>
     /// <exception cref="NotImplementedException"></exception>
-    public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch, bool includeHistory, float[] flatValuesPrimary, float[] flatValuesSecondary)
+    public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch,
+      float qNegativeBlunders, float qPositiveBlunders, bool includeHistory, float[] flatValuesPrimary, float[] flatValuesSecondary)
     {
       if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
       {
@@ -774,8 +776,8 @@ namespace CeresTrain.Examples
       byte[] squareBytesAll;
       byte[] moveBytesAll;
       short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
-      throw new NotImplementedException(); // Next line, need to somehow set qNegativeBlunders, qPositiveBlunders (last two arguments in next call)
-      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE, 0, 0,
+       TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE, 
+                                                           qNegativeBlunders, qPositiveBlunders,
                                                           out _, out squareBytesAll, out legalMoveIndices);
 
       // NOTE: unrolling loop here does not improve performance.

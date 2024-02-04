@@ -82,6 +82,9 @@ namespace CeresTrain.TrainCommands
       // CUDA lazy loading improves startup time, and potentially reduces memory usage.
       Environment.SetEnvironmentVariable("CUDA_MODULE_LOADING", "LAZY");
 
+      // ONNX runtime enable flash attention.
+      Environment.SetEnvironmentVariable("ORTMODULE_USE_FLASH_ATTENTION", "1");
+
       // Load the JSON file with configured hosts, if it exists.
       string hostsConfigFileName = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "CeresTrainHosts.json");
       if (File.Exists(hostsConfigFileName))

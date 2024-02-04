@@ -169,8 +169,11 @@ namespace CeresTrain.NNEvaluators
     }
 
 
+    /// <summary>
+    /// Maximum supported batch size.
+    /// </summary>
+    public const int MAX_BATCH_SIZE = 1024;
 
-    const int MAX_BATCH_SIZE = 1024;
     public override int MaxBatchSize => MAX_BATCH_SIZE;
 
     public override bool PolicyReturnedSameOrderMoveList => false;
