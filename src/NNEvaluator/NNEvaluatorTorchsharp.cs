@@ -416,9 +416,10 @@ namespace CeresTrain.NNEvaluators
     }
 
 
+
     public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
                                                                 int numPositions,
-                                                                Func<int, MGPosition> getMGPosAtIndex,
+                                                               Func<int, MGPosition> getMGPosAtIndex,
                                                                 byte[] squareBytesAll,
                                                                 short[] legalMovesIndices = null)
     {
@@ -519,20 +520,7 @@ namespace CeresTrain.NNEvaluators
         Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
         Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature);
 
-        if (Options?.FractionValueHead2 != 0)
-        {
-          float fraction1 = 1.0f - Options.FractionValueHead2;
-          float fractionNonDeblundered = Options.FractionValueHead2;
-
-          for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
-          {
-            float avg = (float)wdlProbabilitiesCPU[i] * fraction1
-                      + (float)wdl2ProbabilitiesCPU[i] * fractionNonDeblundered;
-            wdlProbabilitiesCPU[i] = (Half)avg;
-          }
-
-        }
-
+ 
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
@@ -544,6 +532,24 @@ namespace CeresTrain.NNEvaluators
         //        ReadOnlySpan<Half> predictionsValue = MemoryMarshal.Cast<byte, Half>(predictionValue.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
+
+
+        if (Options?.FractionValueHead2 != 0)
+        {
+          float fraction1 = 1.0f - Options.FractionValueHead2;
+          float fractionNonDeblundered = Options.FractionValueHead2;
+
+          for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
+          {
+
+            float avg = (float)wdlProbabilitiesCPU[i] * fraction1
+                      + (float)wdl2ProbabilitiesCPU[i] * fractionNonDeblundered;
+
+//            avg = CalculateWeightedAverage((float)wdlProbabilitiesCPU[i], (float)wdl2ProbabilitiesCPU[i], (float)predictionsUncertaintyV[i/3]);
+            wdlProbabilitiesCPU[i] = (Half)avg;
+          }
+
+        }
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
         ReadOnlySpan<float> predictionsPolicyMasked = null;
