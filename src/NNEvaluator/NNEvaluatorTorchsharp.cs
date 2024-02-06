@@ -520,7 +520,7 @@ namespace CeresTrain.NNEvaluators
         Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
         Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature);
 
- 
+
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
@@ -534,22 +534,50 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
 
-        if (Options?.FractionValueHead2 != 0)
+        static float WtdPowerMean(float a, float b, float w1, float w2, float p)
         {
-          float fraction1 = 1.0f - Options.FractionValueHead2;
-          float fractionNonDeblundered = Options.FractionValueHead2;
+          float sum = w1 * MathF.Pow(a, p)
+                    + w2 * MathF.Pow(b, p);
+          sum /= (w1 + w2);
+          return MathF.Pow(sum, 1.0f / p);
+        }
+
+        float fraction1 = 1.0f - Options.FractionValueHead2;
+        float fractionNonDeblundered = Options.FractionValueHead2;
+
+        if (Options.ValueHeadAveragePowerMeanOrder == 1)
+        {
 
           for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
           {
-
             float avg = (float)wdlProbabilitiesCPU[i] * fraction1
                       + (float)wdl2ProbabilitiesCPU[i] * fractionNonDeblundered;
-
-//            avg = CalculateWeightedAverage((float)wdlProbabilitiesCPU[i], (float)wdl2ProbabilitiesCPU[i], (float)predictionsUncertaintyV[i/3]);
             wdlProbabilitiesCPU[i] = (Half)avg;
           }
-
         }
+        else
+        {
+          // TODO: improve efficiency
+          for (int i = 0; i < wdlProbabilitiesCPU.Length; i += 3)
+          {
+            // Geometric mean is value as PowerMean appraches with order 0.
+            // Avoid need of special-case logic, map to a value very close to 0.
+            float pToUse = Options.ValueHeadAveragePowerMeanOrder == 0 ? 0.001f
+                                                                       : Options.ValueHeadAveragePowerMeanOrder;
+
+            float w = WtdPowerMean((float)wdlProbabilitiesCPU[i], (float)wdl2ProbabilitiesCPU[i], fraction1, fractionNonDeblundered, pToUse);
+            float d = WtdPowerMean((float)wdlProbabilitiesCPU[i + 1], (float)wdl2ProbabilitiesCPU[i + 1], fraction1, fractionNonDeblundered, pToUse);
+            float l = WtdPowerMean((float)wdlProbabilitiesCPU[i + 2], (float)wdl2ProbabilitiesCPU[i + 2], fraction1, fractionNonDeblundered, pToUse);
+
+            float sum = w + d + l;
+
+            wdlProbabilitiesCPU[i] = (Half)(w / sum);
+            wdlProbabilitiesCPU[i + 1] = (Half)(d / sum);
+            wdlProbabilitiesCPU[i + 2] = (Half)(l / sum);
+          }
+        }
+      
+        
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
         ReadOnlySpan<float> predictionsPolicyMasked = null;
@@ -669,9 +697,60 @@ namespace CeresTrain.NNEvaluators
       Tensor sum_exp_logits = torch.sum(exp_logits, dim: 1, keepdim: true);
       Tensor wdlProbabilities = (exp_logits / sum_exp_logits);
       Span<Half> wdlProbabilitiesCPU = MemoryMarshal.Cast<byte, Half>(wdlProbabilities.to(ScalarType.Float16).cpu().bytes);
+
+      if (false)
+      {
+        for (int i = 0; i < wdlProbabilitiesCPU.Length; i += 3)
+        {
+          float TEMPERATURE = 2.2f;
+          (float, float, float) redo = Rebuild(TEMPERATURE,
+            (float)wdlProbabilitiesCPU[i], (float)wdlProbabilitiesCPU[i + 1],
+            (float)wdlProbabilitiesCPU[i + 2]);
+
+          wdlProbabilitiesCPU[i] = (Half)redo.Item1;
+          wdlProbabilitiesCPU[i + 1] = (Half)redo.Item2;
+          wdlProbabilitiesCPU[i + 2] = (Half)redo.Item3;
+        }
+      }
+
       return wdlProbabilitiesCPU;
     }
 
+    static (float, float, float) Rebuild(float temperature, float winPRaw, float drawPRaw, float lossPRaw)
+    {
+
+      if (winPRaw < 0.5 && lossPRaw < 0.5)
+      {
+        return (winPRaw, drawPRaw, lossPRaw);
+      } 
+
+      (float winPRawLogit, float drawPRawLogit, float lossPRawLogit) = (MathF.Log(winPRaw) / temperature, MathF.Log(drawPRaw) / temperature, MathF.Log(lossPRaw) / temperature);
+      (float winPAdj, float drawPAdj, float lossPAdj) = (MathF.Exp(winPRawLogit), MathF.Exp(drawPRawLogit), MathF.Exp(lossPRawLogit));
+      float sum = winPAdj + drawPAdj + lossPAdj;
+
+      (winPAdj, drawPAdj, lossPAdj) = (winPAdj / sum, drawPAdj / sum, lossPAdj / sum);
+
+      if (winPAdj > drawPAdj && winPAdj > lossPAdj)
+      {
+        float toDistribute = winPRaw - winPAdj;
+
+        drawPAdj += 0.80f * toDistribute;
+        lossPAdj += 0.20f * toDistribute;
+      }
+      else if (lossPAdj > winPAdj && lossPAdj > drawPAdj)
+      {
+        float toDistribute = lossPRaw - lossPAdj;
+
+        drawPAdj += 0.80f * toDistribute;
+        winPAdj += 0.20f * toDistribute;
+      }
+      else
+      {
+      }
+ 
+      return (winPAdj, drawPAdj, lossPAdj); 
+
+    }
 
     static void InitPolicyProbabilities(int i,
                                         Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,

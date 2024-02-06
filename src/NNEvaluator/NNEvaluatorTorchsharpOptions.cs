@@ -41,6 +41,12 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly float ValueHead2Temperature;
 
+    /// <summary>
+    /// The order of the power mean used to combine the value heads.
+    /// Default value of 1 corresponds to the arithmetic mean (0 for geometric).
+    /// </summary>
+    public readonly float ValueHeadAveragePowerMeanOrder = 1;
+
 
     /// <summary>
     /// Constructor.
@@ -56,7 +62,8 @@ namespace CeresTrain.NNEvaluators
                                         float fractionUndeblunderedValueHead = 0,
                                         bool monitorActivations = false,
                                         float valueHead1Temperature = 1,
-                                        float valueHead2Temperature = 1)
+                                        float valueHead2Temperature = 1,
+                                        float valueHeadAveragePowerMeanOrder = 1)
     {
       if (valueHead1Temperature <= 0 || valueHead2Temperature <= 0)
       {
@@ -69,6 +76,7 @@ namespace CeresTrain.NNEvaluators
       MonitorActivations = monitorActivations;
       ValueHead1Temperature = valueHead1Temperature;      
       ValueHead2Temperature = valueHead2Temperature;
+      ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
     }
   }
 
