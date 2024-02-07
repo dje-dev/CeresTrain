@@ -577,6 +577,13 @@ namespace CeresTrain.NNEvaluators
           }
         }
       
+        if (Options.ShrinkExtremes)
+        {
+          for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
+          {
+            wdlProbabilitiesCPU[i] = (Half)DoShrinkExtremes((float)wdlProbabilitiesCPU[i]);
+          } 
+        }
         
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
@@ -676,6 +683,35 @@ namespace CeresTrain.NNEvaluators
         predictionPolicy.Dispose();
 
         return resultBatch;
+      }
+    }
+
+
+    static float DoShrinkExtremes(float value)
+    {
+      if (Math.Abs(value) <= 0.65f)
+      {
+        // Identity range
+        return value;
+      }
+      else if (Math.Abs(value) > 1f)
+      {
+        // Clamping range
+        return Math.Sign(value) * 1f;
+      }
+      else
+      {
+        // Compression range
+
+        // Calculate slope (m) of the line between points (0.65, 0.65) and (1, 0.80)
+        float m = (0.80f - 0.65f) / (1f - 0.65f);
+
+        // Use the line equation y = mx + b to calculate the new value, where b is the y-intercept
+        float b = 0.80f - m * 1f; // y = mx + b => b = y - mx
+        float compressedValue = m * Math.Abs(value) + b;
+
+        // Preserve the sign of the original value
+        return Math.Sign(value) * compressedValue;
       }
     }
 

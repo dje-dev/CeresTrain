@@ -47,6 +47,12 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly float ValueHeadAveragePowerMeanOrder = 1;
 
+    /// <summary>
+    /// If extreme values (near -1 or 1) 
+    /// </summary>
+    public readonly bool ShrinkExtremes;
+
+
 
     /// <summary>
     /// Constructor.
@@ -55,15 +61,17 @@ namespace CeresTrain.NNEvaluators
     /// <param name="qPositiveBlunders"></param>
     /// <param name="fractionUndeblunderedValueHead"></param>
     /// <param name="monitorActivations"></param>
-    /// <param name="valueHead1Temperature"></param>
     /// <param name="valueHead2Temperature"></param>
+    /// <param name="valueHead1Temperature"></param>
+    /// <param name="shrinkExtremes"></param>
     /// <exception cref="ArgumentException"></exception>
     public NNEvaluatorTorchsharpOptions(float qNegativeBlunders = 0, float qPositiveBlunders = 0, 
                                         float fractionUndeblunderedValueHead = 0,
                                         bool monitorActivations = false,
                                         float valueHead1Temperature = 1,
                                         float valueHead2Temperature = 1,
-                                        float valueHeadAveragePowerMeanOrder = 1)
+                                        float valueHeadAveragePowerMeanOrder = 1,
+                                        bool shrinkExtremes = false)
     {
       if (valueHead1Temperature <= 0 || valueHead2Temperature <= 0)
       {
@@ -77,6 +85,7 @@ namespace CeresTrain.NNEvaluators
       ValueHead1Temperature = valueHead1Temperature;      
       ValueHead2Temperature = valueHead2Temperature;
       ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
+      ShrinkExtremes = shrinkExtremes;
     }
   }
 
