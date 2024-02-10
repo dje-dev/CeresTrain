@@ -416,12 +416,11 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-
     public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
-                                                                int numPositions,
-                                                               Func<int, MGPosition> getMGPosAtIndex,
-                                                                byte[] squareBytesAll,
-                                                                short[] legalMovesIndices = null)
+                                                                 int numPositions,
+                                                                 Func<int, MGPosition> getMGPosAtIndex,
+                                                                 byte[] squareBytesAll,
+                                                                 short[] legalMovesIndices = null)
     {
       if (w == null)
       {
@@ -581,7 +580,7 @@ namespace CeresTrain.NNEvaluators
         {
           for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
           {
-            wdlProbabilitiesCPU[i] = (Half)DoShrinkExtremes((float)wdlProbabilitiesCPU[i]);
+            wdlProbabilitiesCPU[i] = (Half)DoShrinkExtremes((float)wdlProbabilitiesCPU[i], 0.70f, 0.85f);
           } 
         }
         
@@ -687,9 +686,10 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    static float DoShrinkExtremes(float value)
+    static float DoShrinkExtremes(float value, float start = 0.70f, float max = 0.85f)
     {
-      if (Math.Abs(value) <= 0.65f)
+
+      if (Math.Abs(value) <= start)
       {
         // Identity range
         return value;
@@ -703,11 +703,11 @@ namespace CeresTrain.NNEvaluators
       {
         // Compression range
 
-        // Calculate slope (m) of the line between points (0.65, 0.65) and (1, 0.80)
-        float m = (0.80f - 0.65f) / (1f - 0.65f);
+        // Calculate slope
+        float m = (max - start) / (1f - start);
 
         // Use the line equation y = mx + b to calculate the new value, where b is the y-intercept
-        float b = 0.80f - m * 1f; // y = mx + b => b = y - mx
+        float b = max - m * 1f; // y = mx + b => b = y - mx
         float compressedValue = m * Math.Abs(value) + b;
 
         // Preserve the sign of the original value
