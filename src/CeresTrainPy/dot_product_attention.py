@@ -44,7 +44,8 @@ class DotProductAttention(torch.nn.Module):
               layernorm_eps : float, attention_multiplier : int = 1,
               smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
               smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
-              smolgen_activation_type : str = 'None') -> None:
+              smolgen_activation_type : str = 'None',
+              test : bool = False) -> None:
     super().__init__()
 
     self.num_heads = num_attention_heads
@@ -54,6 +55,7 @@ class DotProductAttention(torch.nn.Module):
     self.d_k = kv_channels
     self.softmax = torch.nn.Softmax(-1)
     self.smolgen_head_divisor = smolgen_head_divisor
+    self.test = test    
     
     if (smolgen_activation_type == 'None'):
       self.smolgen_activation_fn = torch.nn.Identity()
@@ -104,7 +106,7 @@ class DotProductAttention(torch.nn.Module):
 
     smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
     scores = scores + smolgen_logits_repeated
-
+     
     A = self.softmax(scores)
 
     # Get the weighted average of the values

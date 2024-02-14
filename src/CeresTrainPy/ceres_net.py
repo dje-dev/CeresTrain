@@ -193,7 +193,8 @@ class CeresNet(pl.LightningModule):
                                                                 smolgen_head_divisor = config.NetDef_SmolgenToHeadDivisor,
                                                                 smolgenPrepLayer = self.smolgenPrepLayer, 
                                                                 smolgen_activation_type = config.NetDef_SmolgenActivationType,
-                                                                alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE)
+                                                                alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
+                                                                test = config.Exec_TestFlag)
                                                   for i in range(self.NUM_LAYERS)])
       
     self.policy_loss_weight = policy_loss_weight

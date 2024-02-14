@@ -29,7 +29,8 @@ class EncoderLayer(torch.nn.Module):
                 smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                 smolgen_activation_type : str = 'None',
                 attention_multiplier : int = 1, smoe_mode : str = 'None', smoe_num_experts : int = 0,
-                alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0):
+                alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0,
+                test : bool = False):
     super().__init__()
 
     assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish')
@@ -44,7 +45,7 @@ class EncoderLayer(torch.nn.Module):
     self.dropout_rate = dropout_rate
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
     self.attention = DotProductAttention(num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, attention_multiplier, 
-                                         smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type)
+                                         smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, test)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dropout_rate > 0:
