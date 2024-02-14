@@ -102,8 +102,9 @@ namespace CeresTrain.NNEvaluators
                                  IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorTorchsharpOptions options = default)
+                                 NNEvaluatorTorchsharpOptions options = null)
     {
+      ArgumentNullException.ThrowIfNull(options);
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
 
       IncludeHistory = includeHistory;
@@ -503,6 +504,17 @@ namespace CeresTrain.NNEvaluators
 
         // Apply scaling factor to TPG square inputs.
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
+
+#if NOT
+        while (true)
+        {
+          using (new TimingBlock("xx"))
+          {
+            for (int i = 0; i < 100; i++)
+              (_, _, _, _, _, _, _, _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
+          }
+        }
+#endif
 
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
