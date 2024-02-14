@@ -53,7 +53,8 @@ class DotProductAttention(torch.nn.Module):
     self.d_output = num_attention_heads * kv_channels
     self.d_k = kv_channels
     self.softmax = torch.nn.Softmax(-1)
-
+    self.smolgen_head_divisor = smolgen_head_divisor
+    
     if (smolgen_activation_type == 'None'):
       self.smolgen_activation_fn = torch.nn.Identity()
     elif (smolgen_activation_type == 'ReLU'):
