@@ -163,7 +163,8 @@ namespace CeresTrain.Networks.Transformer
 
         if (TransformerConfig.SmolgenDimPerSquare > 0)
         {
-          smLinearShared = Linear(TransformerConfig.SmolgenDim, 64 * 64, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+          smLinearShared = Linear(TransformerConfig.SmolgenDim / TransformerConfig.SmolgenToHeadDivisor, 
+                                  64 * 64, true, ExecutionConfig.Device, ExecutionConfig.DataType);
         }
 
         // ENCODER LAYERS
@@ -177,6 +178,7 @@ namespace CeresTrain.Networks.Transformer
                                                 alpha, ExecutionConfig.DropoutRate, ExecutionConfig.DropoutDuringInference,
                                                 0, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
                                                 TransformerConfig.SmolgenDimPerSquare, TransformerConfig.SmolgenDim,
+                                                TransformerConfig.SmolgenToHeadDivisor, TransformerConfig.SmolgenActivationType,
                                                 TransformerConfig.SoftMoEConfig, ExecutionConfig.MonitorActivationStats, ref smLinearShared);
           teCS = teCS.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
           if (paramsToLoad != null)

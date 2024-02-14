@@ -106,8 +106,10 @@ class Configuration:
     self.NetDef_FFNActivationType = config_net_def.get('FFNActivationType', 'ReLUSquared')
     self.NetDef_HeadsActivationType = config_net_def.get('HeadsActivationType', 'ReLU')      
     self.NetDef_DeepNorm = config_net_def.get('DeepNorm', False) 
-    self.NetDef_SmolgenDimPerSquare = config_net_def.get('SmolgenDimPerSquare', 8)
-    self.NetDef_SmolgenDim = config_net_def.get('SmolgenDim', 64)
+    self.NetDef_SmolgenDimPerSquare = config_net_def.get('SmolgenDimPerSquare', 32)
+    self.NetDef_SmolgenDim = config_net_def.get('SmolgenDim', 512)
+    self.NetDef_SmolgenToHeadDivisor = config_net_def.get('SmolgenToHeadDivisor', 2)
+    self.NetDef_SmolgenActivationType = config_net_def.get('SmolgenActivationType', 'None')
     self.NetDef_HeadWidthMultiplier = config_net_def.get('HeadWidthMultiplier', 4)
     self.NetDef_TestValue = config_net_def.get('TestValue', 0)
 

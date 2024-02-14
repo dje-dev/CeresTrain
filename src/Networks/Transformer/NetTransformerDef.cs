@@ -51,6 +51,11 @@ namespace CeresTrain.Networks.Transformer
     public enum ActivationType
     {
       /// <summary>
+      /// No activation (identify function).
+      /// </summary>
+      None,
+
+      /// <summary>
       /// Rectified linear unit.
       /// </summary>
       ReLU,
@@ -118,8 +123,10 @@ namespace CeresTrain.Networks.Transformer
 
       if (extraFeatures.HasFlag(TransformerFeatures.Smolgen))
       {
-        SmolgenDimPerSquare = 16;
-        SmolgenDim = 128;
+        SmolgenDimPerSquare = 32;
+        SmolgenDim = 512;
+        SmolgenActivationType = ActivationType.None;
+        SmolgenToHeadDivisor = 2;
       }
 
       if (extraFeatures.HasFlag(TransformerFeatures.SoftMoE))
@@ -209,6 +216,17 @@ namespace CeresTrain.Networks.Transformer
     /// Invented by Ergodice, see: https://github.com/Ergodice/lczero-training.
     /// </summary>
     public readonly int SmolgenDim { get; init; } = 0;
+
+    /// <summary>
+    /// Divisor applied SmolgenDim for to per-head sizing of prep layers in Smolgen (mapping to 64x64 attention).
+    /// </summary>
+    public readonly int SmolgenToHeadDivisor { get; init; } = 1;
+
+    /// <summary>
+    /// Type of activation to use for Smolgen layers.
+    /// </summary>
+    public readonly ActivationType SmolgenActivationType { get; init; } = ActivationType.None;
+
 
     /// <summary>
     /// Multiplier applied to the width of the default size of each layers in the output heads.

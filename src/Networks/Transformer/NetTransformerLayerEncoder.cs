@@ -92,6 +92,16 @@ namespace CeresTrain.Networks.Transformer
     public readonly int SmolgenIntermediateDim;
 
     /// <summary>
+    /// Divisor applied to SmolgenIntermediateDim when projecting to attention heads.
+    /// </summary>
+    public readonly int SmolgenToHeadDivisor;
+
+    /// <summary>
+    /// Activation function to use in Smolgen.
+    /// </summary>
+    readonly NetTransformerDef.ActivationType SmolgenActivation;
+
+    /// <summary>
     /// Fraction of units to drop out.
     /// </summary>
     public readonly float DropoutRate;
@@ -185,7 +195,8 @@ namespace CeresTrain.Networks.Transformer
                                       int attentionMultiplier, int ffnMult, NetTransformerDef.ActivationType ffnActivation,
                                       float alpha, float dropoutRate, bool dropoutDuringInference, float clipLevel,
                                       bool monitorCosineSimilarity,
-                                      int smolgenPerSquareDim, int smolgenIntermediateDim,
+                                      int smolgenPerSquareDim, int smolgenIntermediateDim, 
+                                      int smolgenToHeadDivisor, NetTransformerDef.ActivationType smolgenActivation,  
                                       SoftMoEParams softMoEParams, bool monitorMoEActivationStats, ref Linear smLinearShared)
       : base($"transformer_layer.{layerNum}")
     {
@@ -211,6 +222,8 @@ namespace CeresTrain.Networks.Transformer
       SoftMoEParams = softMoEParams;
       SmolgenPerSquareDim = smolgenPerSquareDim;
       SmolgenIntermediateDim = smolgenIntermediateDim;
+      SmolgenToHeadDivisor = smolgenToHeadDivisor;
+      SmolgenActivation = smolgenActivation;
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: false);
@@ -269,6 +282,7 @@ namespace CeresTrain.Networks.Transformer
       RegisterComponents();
     }
 
+
     /// <summary>
     /// Create a normalization layer of the appropriate type.
     /// </summary>
@@ -311,8 +325,8 @@ namespace CeresTrain.Networks.Transformer
         smolgenLinear1 = Linear(DimModel, SmolgenPerSquareDim);
         smolgenLinear2 = Linear(64 * SmolgenPerSquareDim, SmolgenIntermediateDim);
         smLN1 = MakeNormalizationLayer(SmolgenIntermediateDim);
-        smolgenLinear3 = Linear(SmolgenIntermediateDim, NumHeads * SmolgenIntermediateDim);
-        smLN2 = MakeNormalizationLayer(NumHeads * SmolgenIntermediateDim);
+        smolgenLinear3 = Linear(SmolgenIntermediateDim, NumHeads * SmolgenIntermediateDim / SmolgenToHeadDivisor);
+        smLN2 = MakeNormalizationLayer(NumHeads * SmolgenIntermediateDim / SmolgenToHeadDivisor);
         smolgenLinearShared = new(sm4Shared);
       }
     }
@@ -330,10 +344,12 @@ namespace CeresTrain.Networks.Transformer
         x = smolgenLinear1.call(x); // --> (64, 32) = (batch, S, SM_PER_SQUARE)
         x = x.reshape(-1, 64 * SmolgenPerSquareDim); // --> 2048 = (batch, 64 * SM_PER_SQUARE)
         x = smolgenLinear2.call(x); // --> 256 = (batch, SM_INTERMEDIATE)
+        x = TorchSharpUtils.WithActivation(x, SmolgenActivation);
         x = smLN1.call(x);
         x = smolgenLinear3.call(x); // --> 256 * H (batch, H * SM_INTERMEDIATE)
+        x = TorchSharpUtils.WithActivation(x, SmolgenActivation);
         x = smLN2.call(x);
-        x = x.reshape(-1, NumHeads, SmolgenIntermediateDim);
+        x = x.reshape(-1, NumHeads, SmolgenIntermediateDim / SmolgenToHeadDivisor);
         x = smolgenLinearShared.Linear.call(x); // --> 64 * 64 = (batch, H, S, S)
         x = x.reshape(-1, NumHeads, 64, 64);
 #if DEBUG

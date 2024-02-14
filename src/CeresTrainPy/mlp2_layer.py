@@ -26,7 +26,9 @@ class MLP2Layer(torch.nn.Module):
     if activation_type == 'SwiGLU':
       self.linear3 = torch.nn.Linear(model_dim, ffn_inner_dim, bias=False) 
 
-    if (activation_type == 'ReLU'):
+    if (activation_type == 'None'):
+      self.activation_fn = torch.nn.Identity()
+    elif (activation_type == 'ReLU'):
       self.activation_fn = torch.nn.ReLU()
     elif (activation_type == 'ReLUSquared'):
       self.activation_fn = ReLUSquared()

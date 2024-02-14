@@ -105,6 +105,7 @@ namespace CeresTrain.Utils
     {
       return activation switch
       {
+        NetTransformerDef.ActivationType.None => x,
         NetTransformerDef.ActivationType.ReLUSquared => functional.relu(x).square(),
         NetTransformerDef.ActivationType.ReLU => functional.relu(x),
         NetTransformerDef.ActivationType.Swish => x * functional.sigmoid(x),

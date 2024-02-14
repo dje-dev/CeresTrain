@@ -25,7 +25,9 @@ from dot_product_attention import DotProductAttention
 class EncoderLayer(torch.nn.Module):
   def __init__(self, num_layers: int, hidden_size: int, ffn_hidden_size: int, 
                 num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5, 
-                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, smolgenPrepLayer = None,
+                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
+                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
+                smolgen_activation_type : str = 'None',
                 attention_multiplier : int = 1, smoe_mode : str = 'None', smoe_num_experts : int = 0,
                 alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0):
     super().__init__()
@@ -41,7 +43,8 @@ class EncoderLayer(torch.nn.Module):
     self.attention_multiplier = attention_multiplier
     self.dropout_rate = dropout_rate
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
-    self.attention = DotProductAttention(num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, attention_multiplier, smolgen_per_square_dim, smolgen_intermediate_dim, smolgenPrepLayer)
+    self.attention = DotProductAttention(num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, attention_multiplier, 
+                                         smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dropout_rate > 0:

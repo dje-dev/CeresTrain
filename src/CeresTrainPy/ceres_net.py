@@ -178,7 +178,7 @@ class CeresNet(pl.LightningModule):
     EPS = 1E-6
     
     if SMOLGEN_PER_SQUARE_DIM > 0:
-      self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM, 64 * 64)
+      self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM // config.NetDef_SmolgenToHeadDivisor, 64 * 64)
     else:
       self.smolgenPrepLayer = None
 
@@ -190,7 +190,9 @@ class CeresNet(pl.LightningModule):
                                                                 smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
                                                                 smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
                                                                 smolgen_intermediate_dim = SMOLGEN_INTERMEDIATE_DIM, 
+                                                                smolgen_head_divisor = config.NetDef_SmolgenToHeadDivisor,
                                                                 smolgenPrepLayer = self.smolgenPrepLayer, 
+                                                                smolgen_activation_type = config.NetDef_SmolgenActivationType,
                                                                 alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE)
                                                   for i in range(self.NUM_LAYERS)])
       
