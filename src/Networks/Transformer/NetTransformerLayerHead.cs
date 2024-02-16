@@ -34,12 +34,17 @@ namespace CeresTrain.Networks.Transformer
   /// 
   /// Based on assumption of 3 linear layers, with activation functions after 2 or 3 of them.
   /// </summary>
-  public class NetTransformerLayerHead : Module<Tensor, Tensor>
+  public class NetTransformerLayerHead : Module<Tensor, Tensor, Tensor>
   {
     /// <summary>
     /// Input model dimension (embedding dimension).
     /// </summary>
-    public int ModelDim;
+    public readonly int ModelDim;
+
+    /// <summary>
+    /// Width of global stream (if any).
+    /// </summary>
+    public readonly int GlobalStreamDim;
 
     /// <summary>
     /// Number of input square (sequence length).
@@ -111,6 +116,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="name"></param>
     /// <param name="numSquares"></param>
     /// <param name="modelDim"></param>
+    /// <param name="dimGlobalStream"></param>
     /// <param name="premapDimDivisor"></param>
     /// <param name="dim1"></param>
     /// <param name="dim2"></param>
@@ -121,17 +127,20 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="reduceSquaresAlreadyApplied"></param>
     /// <exception cref="NotImplementedException"></exception>
     public NetTransformerLayerHead(string name, int numSquares,
-                                     int modelDim, int premapDimDivisor,
-                                     int dim1, int dim2, int dim3,
-                                     NetTransformerDef.ActivationType activation,
-                                     string finalActivation,
-                                     bool saveIntermediateActivations,
-                                     bool reduceSquaresAlreadyApplied) : base(name)
+                                   int modelDim,
+                                   int dimGlobalStream,
+                                   int premapDimDivisor,
+                                   int dim1, int dim2, int dim3,
+                                   NetTransformerDef.ActivationType activation,
+                                   string finalActivation,
+                                   bool saveIntermediateActivations,
+                                   bool reduceSquaresAlreadyApplied) : base(name)
     {
       NumSquares = numSquares;
       Activation = activation;
       FinalActivation = finalActivation;
       ModelDim = modelDim;
+      GlobalStreamDim = dimGlobalStream; ;
       PremapDimDivisor = premapDimDivisor;
       Dim1 = dim1;
       Dim2 = dim2;
@@ -157,7 +166,7 @@ namespace CeresTrain.Networks.Transformer
         }
       }
 
-      Linear1 = Linear(NumSquares * modelDim / premapDimDivisor, dim1, hasBias: true);
+      Linear1 = Linear(GlobalStreamDim + NumSquares * modelDim / premapDimDivisor, dim1, hasBias: true);
       Linear2 = Linear(dim1, dim2, hasBias: true);
       Linear3 = Linear(dim2, dim3, hasBias: true);
 
@@ -181,7 +190,7 @@ namespace CeresTrain.Networks.Transformer
 
 
 
-    public override Tensor forward(Tensor x)
+    public override Tensor forward(Tensor x, Tensor state)
     {
       using (DisposeScope disposeScopeEval = NewDisposeScope())
       {
@@ -199,7 +208,12 @@ namespace CeresTrain.Networks.Transformer
           }
         }
 
-        x = x.reshape(-1, NumSquares * (ModelDim / PremapDimDivisor));
+        x = x.reshape(-1,  NumSquares * (ModelDim / PremapDimDivisor));
+
+        if (GlobalStreamDim > 0)
+        {
+          x = torch.concat([x, state], 1);
+        }
 
         Tensor x1 = Linear1.call(x);
         x.Dispose();

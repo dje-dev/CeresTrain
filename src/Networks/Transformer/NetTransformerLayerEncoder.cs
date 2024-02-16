@@ -26,6 +26,7 @@ using CeresTrain.Networks.SoftMoE;
 using CeresTrain.Networks.MiscModules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.Utils;
+using TorchSharp;
 
 #endregion
 
@@ -34,8 +35,11 @@ namespace CeresTrain.Networks.Transformer
   /// <summary>
   /// Encoder layer used in CeresTransformerEncoder.
   /// </summary>
-  internal class NetTransformerLayerEncoder : Module<Tensor, Tensor>, IModuleReceivesMonitoringStatusInfo
+  internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, Tensor>, IModuleReceivesMonitoringStatusInfo
   {
+    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 32;
+    public const bool ATTENTION_USE_GLOBAL_STREAM = true;
+
     /// <summary>
     /// Epsilon used for normalization. 
     /// </summary>
@@ -55,6 +59,11 @@ namespace CeresTrain.Networks.Transformer
     /// Model embedding dimension.
     /// </summary>
     public readonly int DimModel;
+
+    /// <summary>
+    /// Dimension of the global stream (not per-token) if any (else 0).
+    /// </summary>
+    public readonly int DimGlobalStream;
 
     /// <summary>
     /// Number of attention heads.
@@ -176,6 +185,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="layerNum"></param>
     /// <param name="dim"></param>
     /// <param name="numHeads"></param>
+    /// <param name="dimGlobalStream"></param>
     /// <param name="preNorm"></param>
     /// <param name="attentionMultiplier"></param>
     /// <param name="ffnMult"></param>
@@ -190,7 +200,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="monitorMoEActivationStats"></param>
     /// <param name="smLinearShared"></param>
     /// <exception cref="ArgumentException"></exception>
-    public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, bool preNorm,
+    public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, int dimGlobalStream, bool preNorm,
                                       NetTransformerDef.NormalizationType normType,
                                       int attentionMultiplier, int ffnMult, NetTransformerDef.ActivationType ffnActivation,
                                       float alpha, float dropoutRate, bool dropoutDuringInference, float clipLevel,
@@ -209,6 +219,7 @@ namespace CeresTrain.Networks.Transformer
       LayerNum = layerNum;
       DimModel = dim;
       NumHeads = numHeads;
+      DimGlobalStream = dimGlobalStream;
       Alpha = alpha;
       FFNMult = ffnMult;
       NormType = normType;
@@ -226,7 +237,7 @@ namespace CeresTrain.Networks.Transformer
       SmolgenActivation = smolgenActivation;
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
-      attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: false);
+      attentionQKV = Linear(dim + (ATTENTION_USE_GLOBAL_STREAM ? DimGlobalStream : 0), dim * attentionMultiplier * 3, hasBias: false);
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
 
       bool useSoftMoE = (softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.None 
@@ -352,14 +363,22 @@ namespace CeresTrain.Networks.Transformer
         x = x.reshape(-1, NumHeads, SmolgenIntermediateDim / SmolgenToHeadDivisor);
         x = smolgenLinearShared.Linear.call(x); // --> 64 * 64 = (batch, H, S, S)
         x = x.reshape(-1, NumHeads, 64, 64);
-#if DEBUG
-        if (float.IsNaN(x.sum().to(ScalarType.Float32).cpu().item<float>()))
-          throw new Exception("Null smolgen");
-#endif
+
         return x.MoveToOuterDisposeScope();
       }
     }
 
+
+    static void DumpTensorStats(Tensor t, string desc)
+    {
+      // Retrieve Tensor as float32 onto cpu, compute mean and standard deviation
+      float mean = t.mean().to(ScalarType.Float32).cpu().item<float>();
+      float std = t.std().to(ScalarType.Float32).cpu().item<float>();
+      Console.WriteLine(desc + " " + mean + " " + std);
+    }
+
+
+    static int count = 0;
 
     /// <summary>
     /// Computes the scaled dot product attention.
@@ -375,12 +394,14 @@ namespace CeresTrain.Networks.Transformer
       using (NewDisposeScope())
       {
         Tensor scores = matmul(Q, K.transpose(2, 3));
+//if (count++ % 100 == 0)DumpTensorStats(scores, "scores");
         scores.div_(MathF.Sqrt(DimPerHead));
 
         if (SmolgenPerSquareDim > 0)
         {
-          Tensor smolgenLogitsRepeated = smolgenLogits.reshape(smolgenLogits.shape[0], NumHeads, 64, 64);
-          scores += smolgenLogitsRepeated;
+//if (count % 100 == 0) DumpTensorStats(smolgenLogitsRepeated, "smolgen");
+
+          scores += smolgenLogits;
         }
 
         Tensor A = functional.softmax(scores, dim: -1);
@@ -413,14 +434,24 @@ namespace CeresTrain.Networks.Transformer
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     /// <exception cref="NotImplementedException"></exception>
-    public override Tensor forward(Tensor x)
+    public override Tensor forward(Tensor x, Tensor state)
     {
       bool isEval = !training;
       using (NewDisposeScope())
       {
         int batch_size = (int)x.size(0);
 
-        Tensor attentionInput = PreNorm ? norm1.call(x) : x;
+       
+        // Repeate state 64 times
+        if (DimGlobalStream > 0 && ATTENTION_USE_GLOBAL_STREAM)
+        {
+          // Concatenate x and state
+          state = state.repeat(1, 64).reshape([-1, 64, DimGlobalStream]);
+        } 
+
+        Tensor qkv_x = (DimGlobalStream == 0 || !ATTENTION_USE_GLOBAL_STREAM) ? x : torch.cat([x, state ], 2);
+
+        Tensor attentionInput = PreNorm ? norm1.call(qkv_x) : qkv_x;
 
         Tensor qkv = attentionQKV.call(attentionInput);
 

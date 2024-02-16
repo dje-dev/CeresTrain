@@ -109,12 +109,16 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="numHeads"></param>
     /// <param name="ffnMultiplier"></param>
     /// <param name="extraFeatures"></param>
-    public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures)
+    /// <param name="dimGlobalStream"></param>
+    public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures, 
+                             int dimGlobalStream = 0)
     {
       ModelDim = modelDim;
       NumLayers = numLayers;
       NumHeads = numHeads;
       FFNMultiplier = ffnMultiplier;
+      NormType = NormalizationType.RMSNorm;
+      GlobalStreamDim = dimGlobalStream;
 
       if (extraFeatures.HasFlag(TransformerFeatures.Attention2x))
       {
@@ -124,9 +128,9 @@ namespace CeresTrain.Networks.Transformer
       if (extraFeatures.HasFlag(TransformerFeatures.Smolgen))
       {
         SmolgenDimPerSquare = 32;
-        SmolgenDim = 512;
+        SmolgenDim = 256; // tried 512 here, with head divisor 2, but many more parameters and at most 12 Elo better
         SmolgenActivationType = ActivationType.None;
-        SmolgenToHeadDivisor = 2;
+        SmolgenToHeadDivisor = 1;
       }
 
       if (extraFeatures.HasFlag(TransformerFeatures.SoftMoE))
@@ -160,6 +164,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly int ModelDim { get; init; } = 256;
 
     /// <summary>
+    /// Dimension of the global stream (not per-token) if any (else 0).
+    /// </summary>
+    public readonly int GlobalStreamDim { get; init; } = 0;
+
+    /// <summary>
     /// Number of layers in the model.
     /// </summary>
     public readonly int NumLayers { get; init; } = 8;
@@ -177,7 +186,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Type of normalization to be applied within Encoder blocks.
     /// </summary>
-    public readonly NormalizationType NormType { get; init; } = NormalizationType.LayerNorm;
+    public readonly NormalizationType NormType { get; init; } = NormalizationType.RMSNorm;
 
     /// <summary>
     /// Multiplier for the attention heads (dimensionality upscaled by this factor before being split into heads).
