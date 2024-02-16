@@ -109,16 +109,16 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="numHeads"></param>
     /// <param name="ffnMultiplier"></param>
     /// <param name="extraFeatures"></param>
-    /// <param name="dimGlobalStream"></param>
+    /// <param name="globalStreamDim"></param>
     public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures, 
-                             int dimGlobalStream = 0)
+                             int globalStreamDim = 0)
     {
       ModelDim = modelDim;
       NumLayers = numLayers;
       NumHeads = numHeads;
       FFNMultiplier = ffnMultiplier;
       NormType = NormalizationType.RMSNorm;
-      GlobalStreamDim = dimGlobalStream;
+      GlobalStreamDim = globalStreamDim;
 
       if (extraFeatures.HasFlag(TransformerFeatures.Attention2x))
       {
