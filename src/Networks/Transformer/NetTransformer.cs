@@ -469,12 +469,15 @@ namespace CeresTrain.Networks.Transformer
             }
 
             // Flow the state
-            Tensor flowStateNext = layersGlobalStreamFFN1[layerNum].call(flowStateInput);
-            flowStateNext = functional.relu(flowStateNext);
-            flowStateNext = layersGlobalStreamFFN2[layerNum].call(flowStateNext);
-//            flowStateNext = functional.relu(flowStateNext);
-            flowState.Dispose();
-            flowState = flowStateNext.MoveToOuterDisposeScope();
+            if (layersGlobalStreamFFN1 != null)
+            {
+              Tensor flowStateNext = layersGlobalStreamFFN1[layerNum].call(flowStateInput);
+              flowStateNext = functional.relu(flowStateNext);
+              flowStateNext = layersGlobalStreamFFN2[layerNum].call(flowStateNext);
+              //            flowStateNext = functional.relu(flowStateNext);
+              flowState.Dispose();
+              flowState = flowStateNext.MoveToOuterDisposeScope();
+            }
 
           }
         }

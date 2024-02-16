@@ -37,7 +37,7 @@ namespace CeresTrain.Networks.Transformer
   /// </summary>
   internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, Tensor>, IModuleReceivesMonitoringStatusInfo
   {
-    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 32;
+    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16;
     public const bool ATTENTION_USE_GLOBAL_STREAM = true;
 
     /// <summary>
