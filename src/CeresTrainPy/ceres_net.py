@@ -88,8 +88,10 @@ class CeresNet(pl.LightningModule):
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
 
-    self.embedding_layer = nn.Linear(in_features=self.NUM_INPUT_BYTES_PER_SQUARE, out_features=self.EMBEDDING_DIM )
-
+    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM )
+    self.embedding_layer_global = nn.Linear(64 * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim)
+    self.global_dim = config.NetDef_GlobalStreamDim
+    
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
     self.HEAD_PREMAP_DIVISOR_POLICY = 8
@@ -97,7 +99,7 @@ class CeresNet(pl.LightningModule):
     FINAL_POLICY_FC2_SIZE = 64 * HEAD_MULT
     self.policyHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
 
-    self.fcPolicyFinal1 = nn.Linear(self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY, FINAL_POLICY_FC1_SIZE)
+    self.fcPolicyFinal1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY, FINAL_POLICY_FC1_SIZE)
     self.fcPolicyRELU1 = self.Activation
     self.fcPolicyFinal2 = nn.Linear(FINAL_POLICY_FC1_SIZE, FINAL_POLICY_FC2_SIZE)
     self.fcPolicyRELU2 = self.Activation
@@ -108,52 +110,52 @@ class CeresNet(pl.LightningModule):
     FINAL_VALUE_FC2_SIZE = 8 * HEAD_MULT
 
     self.valueHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
-    self.out_value_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,out_features=FINAL_VALUE_FC1_SIZE)
+    self.out_value_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,FINAL_VALUE_FC1_SIZE)
     self.relu_value_1 = self.Activation
-    self.out_value_layer2 = nn.Linear(in_features=FINAL_VALUE_FC1_SIZE, out_features=FINAL_VALUE_FC2_SIZE)
+    self.out_value_layer2 = nn.Linear(FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE)
     self.relu_value_2 = self.Activation 
-    self.out_value_layer3 = nn.Linear(in_features=FINAL_VALUE_FC2_SIZE,out_features=3)
+    self.out_value_layer3 = nn.Linear(FINAL_VALUE_FC2_SIZE, 3)
 
     self.value2HeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
-    self.out_value2_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,out_features=FINAL_VALUE_FC1_SIZE)
+    self.out_value2_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,FINAL_VALUE_FC1_SIZE)
     self.relu_value2_1 = self.Activation
-    self.out_value2_layer2 = nn.Linear(in_features=FINAL_VALUE_FC1_SIZE, out_features=FINAL_VALUE_FC2_SIZE)
+    self.out_value2_layer2 = nn.Linear(FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE)
     self.relu_value2_2 = self.Activation 
-    self.out_value2_layer3 = nn.Linear(in_features=FINAL_VALUE_FC2_SIZE,out_features=3)
+    self.out_value2_layer3 = nn.Linear(FINAL_VALUE_FC2_SIZE,3)
 
     self.HEAD_PREMAP_DIVISOR_MLH = 16
     FINAL_MLH_FC1_SIZE = 32 * HEAD_MULT
     FINAL_MLH_FC2_SIZE = 8 * HEAD_MULT
     self.mlhHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
-    self.out_mlh_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,out_features=FINAL_MLH_FC1_SIZE)
+    self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,FINAL_MLH_FC1_SIZE)
     self.relu_mlh = self.Activation
-    self.out_mlh_layer2 = nn.Linear(in_features=FINAL_MLH_FC1_SIZE,out_features=FINAL_MLH_FC2_SIZE)
-    self.out_mlh_layer3 = nn.Linear(in_features=FINAL_MLH_FC2_SIZE,out_features=1)
+    self.out_mlh_layer2 = nn.Linear(FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE)
+    self.out_mlh_layer3 = nn.Linear(FINAL_MLH_FC2_SIZE, 1)
 
     self.HEAD_PREMAP_DIVISOR_UNC = 16
     FINAL_UNC_FC1_SIZE = 32 * HEAD_MULT
     FINAL_UNC_FC2_SIZE = 8 * HEAD_MULT
     self.uncHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC)
-    self.out_unc_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC,out_features=FINAL_UNC_FC1_SIZE)
+    self.out_unc_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC,FINAL_UNC_FC1_SIZE)
     self.relu_unc = self.Activation
-    self.out_unc_layer2 = nn.Linear(in_features=FINAL_UNC_FC1_SIZE,out_features=FINAL_UNC_FC2_SIZE)
-    self.out_unc_layer3 = nn.Linear(in_features=FINAL_UNC_FC2_SIZE,out_features=1)
+    self.out_unc_layer2 = nn.Linear(FINAL_UNC_FC1_SIZE, FINAL_UNC_FC2_SIZE)
+    self.out_unc_layer3 = nn.Linear(FINAL_UNC_FC2_SIZE, 1)
 
     self.HEAD_PREMAP_DIVISOR_QDEV = 16
     FINAL_QDEV_FC1_SIZE = 32 * HEAD_MULT
     FINAL_QDEV_FC2_SIZE = 8 * HEAD_MULT
 
     self.qDevLowerHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    self.out_qdev_lower_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV,out_features=FINAL_QDEV_FC1_SIZE)
+    self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
     self.relu_qdev_lower = self.Activation
-    self.out_qdev_lower_layer2 = nn.Linear(in_features=FINAL_QDEV_FC1_SIZE,out_features=FINAL_QDEV_FC2_SIZE)
-    self.out_qdev_lower_layer3 = nn.Linear(in_features=FINAL_QDEV_FC2_SIZE,out_features=1)
+    self.out_qdev_lower_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE,FINAL_QDEV_FC2_SIZE)
+    self.out_qdev_lower_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
     self.qDevUpperHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    self.out_qdev_upper_layer1 = nn.Linear(in_features=self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV,out_features=FINAL_QDEV_FC1_SIZE)
+    self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
     self.relu_qdev_upper = self.Activation
-    self.out_qdev_upper_layer2 = nn.Linear(in_features=FINAL_QDEV_FC1_SIZE,out_features=FINAL_QDEV_FC2_SIZE)
-    self.out_qdev_upper_layer3 = nn.Linear(in_features=FINAL_QDEV_FC2_SIZE,out_features=1)
+    self.out_qdev_upper_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE, FINAL_QDEV_FC2_SIZE)
+    self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
 
     self.DEEPNORM = config.NetDef_DeepNorm
@@ -182,7 +184,8 @@ class CeresNet(pl.LightningModule):
     else:
       self.smolgenPrepLayer = None
 
-    self.transformer_layer = torch.nn.Sequential(*[EncoderLayer(self.NUM_LAYERS, self.EMBEDDING_DIM, self.FFN_MULT*self.EMBEDDING_DIM, self.NUM_HEADS, 
+    self.transformer_layer = torch.nn.Sequential(*[EncoderLayer(self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
+                                                                self.FFN_MULT*self.EMBEDDING_DIM, self.NUM_HEADS, 
                                                                 ffn_activation_type = config.NetDef_FFNActivationType, 
                                                                 norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
                                                                 attention_multiplier = ATTENTION_MULTIPLIER,
@@ -196,6 +199,17 @@ class CeresNet(pl.LightningModule):
                                                                 alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
                                                                 test = config.Exec_TestFlag)
                                                   for i in range(self.NUM_LAYERS)])
+
+    if config.NetDef_GlobalStreamDim > 0:
+      NUM_GLOBAL_INNER = 512
+      self.global_ffn1 = torch.nn.Sequential(*[nn.Linear(config.NetDef_GlobalStreamDim + 64 * 16, NUM_GLOBAL_INNER) for i in range(self.NUM_LAYERS)])
+      self.global_ffn2 = torch.nn.Sequential(*[nn.Linear(NUM_GLOBAL_INNER, config.NetDef_GlobalStreamDim)for i in range(self.NUM_LAYERS)])
+
+      # translate next 2 lines         
+#            layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformer
+#                                                     LayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), 1024, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+#            layersGlobalStreamFFN2[layerNum] = Linear(1024, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+          
       
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight
@@ -219,12 +233,34 @@ class CeresNet(pl.LightningModule):
     flow = flow.reshape(-1, self.NUM_TOKENS, (64 * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS)
     flow = self.embedding_layer(flow)
 
-    # Main transformer body.
-    flow = self.transformer_layer(flow)
+    flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
+    flow_global = self.embedding_layer_global(flow_global)
+    
+    # Main transformer body (stack of encoder layers)
+    for i in range(self.NUM_LAYERS):
+      flow, global_update = self.transformer_layer[i](flow, flow_global)
+ 
+      # Update state based on the output of the encoder layer. 
+      if self.global_dim > 0:# &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)  
+        global_update = global_update.reshape(-1, 64 * 16)     
+ 
+        flow_state_input = torch.cat([flow_global, global_update], 1)  
+      else:
+        flow_state_input = flow
+        
+      if self.global_dim > 0:
+        flow_global = self.global_ffn1[i](flow_state_input)
+        flow_global = torch.nn.functional.relu(flow_global)
+        #flow_global = self.Activation(flow_global)
+        flow_global = self.global_ffn2[i](flow_global)
+      
 
     # Heads.
     headOut = self.policyHeadPremap(flow)
     flattenedPolicy = headOut.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
+    if self.global_dim > 0:
+      flattenedPolicy = torch.concat([flattenedPolicy, flow_global], 1);       
+
     ff1Policy = self.fcPolicyFinal1(flattenedPolicy)
     ff1RELUPolicy = self.fcPolicyRELU1(ff1Policy)
     ff2Policy = self.fcPolicyFinal2(ff1RELUPolicy)
@@ -233,6 +269,8 @@ class CeresNet(pl.LightningModule):
 
     value_out = self.valueHeadPremap(flow)
     value_out = value_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
+    if self.global_dim > 0:
+      value_out = torch.concat([value_out, flow_global], 1);       
     value_out = self.out_value_layer1(value_out)
     value_out = self.relu_value_1(value_out)
     value_out = self.out_value_layer2(value_out)
@@ -241,6 +279,8 @@ class CeresNet(pl.LightningModule):
 
     value2_out = self.value2HeadPremap(flow)
     value2_out = value2_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
+    if self.global_dim > 0:
+      value2_out = torch.concat([value2_out, flow_global], 1);       
     value2_out = self.out_value2_layer1(value2_out)
     value2_out = self.relu_value2_1(value2_out)
     value2_out = self.out_value2_layer2(value2_out)
@@ -249,6 +289,8 @@ class CeresNet(pl.LightningModule):
 
     moves_left_out = self.mlhHeadPremap(flow)
     moves_left_out = moves_left_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
+    if self.global_dim > 0:
+      moves_left_out = torch.concat([moves_left_out, flow_global], 1);       
     moves_left_out = self.out_mlh_layer1(moves_left_out)
     moves_left_out = self.relu_mlh(moves_left_out)
     moves_left_out = self.out_mlh_layer2(moves_left_out)
@@ -258,6 +300,8 @@ class CeresNet(pl.LightningModule):
 
     unc_out = self.uncHeadPremap(flow)
     unc_out = unc_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC)
+    if self.global_dim > 0:
+      unc_out = torch.concat([unc_out, flow_global], 1);       
     unc_out = self.out_unc_layer1(unc_out)
     unc_out = self.relu_unc(unc_out)
     unc_out = self.out_unc_layer2(unc_out)
@@ -267,6 +311,8 @@ class CeresNet(pl.LightningModule):
 
     q_deviation_lower_out = self.qDevLowerHeadPremap(flow)
     q_deviation_lower_out = q_deviation_lower_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    if self.global_dim > 0:
+      q_deviation_lower_out = torch.concat([q_deviation_lower_out, flow_global], 1);       
     q_deviation_lower_out = self.out_qdev_lower_layer1(q_deviation_lower_out)
     q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
     q_deviation_lower_out = self.out_qdev_lower_layer2(q_deviation_lower_out)
@@ -276,6 +322,8 @@ class CeresNet(pl.LightningModule):
     
     q_deviation_upper_out = self.qDevUpperHeadPremap(flow)
     q_deviation_upper_out = q_deviation_upper_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+    if self.global_dim > 0:
+      q_deviation_upper_out = torch.concat([q_deviation_upper_out, flow_global], 1);       
     q_deviation_upper_out = self.out_qdev_upper_layer1(q_deviation_upper_out)
     q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
     q_deviation_upper_out = self.out_qdev_upper_layer2(q_deviation_upper_out)

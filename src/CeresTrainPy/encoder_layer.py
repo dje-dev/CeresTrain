@@ -21,9 +21,11 @@ from soft_moe_batched_dual import SoftMoEBatchedDual
 from mlp2_layer import MLP2Layer
 from dot_product_attention import DotProductAttention
 
+PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16
+
 
 class EncoderLayer(torch.nn.Module):
-  def __init__(self, num_layers: int, hidden_size: int, ffn_hidden_size: int, 
+  def __init__(self, num_layers: int, hidden_size: int, global_stream_dim : int, ffn_hidden_size: int, 
                 num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5, 
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                 smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
@@ -38,13 +40,14 @@ class EncoderLayer(torch.nn.Module):
 
     self.layerNum = layerNum   
     self.numLayers = num_layers 
+    self.global_stream_dim = global_stream_dim
     self.alpha = alpha
     self.num_attention_heads = num_attention_heads
     self.dim_per_head = hidden_size // num_attention_heads
     self.attention_multiplier = attention_multiplier
     self.dropout_rate = dropout_rate
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
-    self.attention = DotProductAttention(num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, attention_multiplier, 
+    self.attention = DotProductAttention(global_stream_dim, num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, attention_multiplier, 
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, test)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
@@ -69,9 +72,12 @@ class EncoderLayer(torch.nn.Module):
 
     self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, activation_type=ffn_activation_type) 
 
+    if global_stream_dim > 0:
+      self.to_global_v = torch.nn.Linear(ffn_hidden_size, PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM, bias = False);
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    attn_output = self.attention.forward(x, x, x, x)
+
+  def forward(self, x: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
+    attn_output = self.attention.forward(x, x, x, x, global_state)
         
     if (self.dropout_rate > 0):
       attn_output = self.dropout_attn(attn_output)
@@ -95,7 +101,13 @@ class EncoderLayer(torch.nn.Module):
 
     out2 = self.ln2(out1 * self.alpha + mlp_output)
 
-    return out2
+    if self.global_stream_dim > 0:
+      assert not self.moe, "Global stream not yet supported with Mixture of Experts"
+      global_v = self.to_global_v(mlp_before_linear2)
+    else:
+      global_v = None
+      
+    return out2, global_v
 
     # FUNCTIONAL postnorm emultaes C# with 28% faster and slightly better accuracy out to 
     res = x
@@ -106,7 +118,7 @@ class EncoderLayer(torch.nn.Module):
     q, k, v = torch.split(qkv, qkv.size(3) // 3, dim=3)
 
     # mha        
-    x = self.attention(q, k, v)
+    x = self.attention(q, k, v, global_state)
 #        x = self.ln2(x)
     x = self.projection(x)
     

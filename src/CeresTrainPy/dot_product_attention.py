@@ -40,7 +40,7 @@ class DotProductAttention(torch.nn.Module):
       smolgen_intermediate_dim (int, optional): Intermediate dimensionality for Smolgen processing. Defaults to 0.
       smolgenPrepLayer: Optional layer for preprocessing in the Smolgen context.
   """
-  def __init__(self, num_attention_heads: int, kv_channels: int, norm_type : str, 
+  def __init__(self, global_stream_dim : int, num_attention_heads: int, kv_channels: int, norm_type : str, 
               layernorm_eps : float, attention_multiplier : int = 1,
               smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
               smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
@@ -48,6 +48,7 @@ class DotProductAttention(torch.nn.Module):
               test : bool = False) -> None:
     super().__init__()
 
+    self.global_stream_dim = global_stream_dim
     self.num_heads = num_attention_heads
     self.attention_multiplier = attention_multiplier
     self.d_model = num_attention_heads * kv_channels
@@ -75,7 +76,7 @@ class DotProductAttention(torch.nn.Module):
     USE_BIAS = False
 
     # Fused Q, K, and V linear projection for improved efficiency.
-    self.qkv = torch.nn.Linear(self.d_model, 3*self.d_model * self.attention_multiplier, bias=USE_BIAS)
+    self.qkv = torch.nn.Linear(self.d_model + global_stream_dim, 3*self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
@@ -115,11 +116,18 @@ class DotProductAttention(torch.nn.Module):
     return H, A
   
 
-  def forward(self, x:torch.Tensor, query: torch.Tensor,  key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+  def forward(self, x:torch.Tensor, query: torch.Tensor,  key: torch.Tensor, value: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
     batch_size = query.size(0)
 
+    if self.global_stream_dim > 0:
+      # append the global state to the query
+      global_state = global_state.repeat(1,64).reshape([-1, 64, self.global_stream_dim])
+      qkv_x = torch.cat([query, global_state], 2)
+    else:
+      qkv_x = query    
+
     # Linear projections (Q, K, V jointly).
-    qkv = self.qkv(query)
+    qkv = self.qkv(qkv_x)
 
     # Split apart Q, K, V (with heads on the left)
     qkv = qkv.reshape(batch_size, 64, self.num_heads, 3*self.d_k)
