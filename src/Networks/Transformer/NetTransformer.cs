@@ -188,8 +188,9 @@ namespace CeresTrain.Networks.Transformer
         {
           if (TransformerConfig.GlobalStreamDim > 0)
           {
-            layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), 1024, true, ExecutionConfig.Device, ExecutionConfig.DataType);
-            layersGlobalStreamFFN2[layerNum] = Linear(1024, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+            const int GLOBAL_INNER_DIM = 512;
+            layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), GLOBAL_INNER_DIM, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+            layersGlobalStreamFFN2[layerNum] = Linear(GLOBAL_INNER_DIM, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
           }
 
           if (paramsToLoad != null)  Console.WriteLine("layersEncodersArray not yet coded");
@@ -433,7 +434,7 @@ namespace CeresTrain.Networks.Transformer
           using (NewDisposeScope())
           {
             Tensor thisSub = flowCS[TensorIndex.Colon, TensorIndex.Colon, jStar, TensorIndex.Colon];
-            Tensor flowCSNext = layersEncodersArray[layerNum].call(thisSub, null);
+            (Tensor flowCSNext, Tensor globalUpdate) = layersEncodersArray[layerNum].call(thisSub, null);
 
             flowCSNext = altUpLayers[layerNum].forward(flowCS, flowCSNext);
 
@@ -451,17 +452,17 @@ namespace CeresTrain.Networks.Transformer
         {
           using (NewDisposeScope())
           {
-            Tensor flowCSNext = layersEncodersArray[layerNum].call(flowCS, flowState);
+            (Tensor flowCSNext, Tensor globalUpdate) = layersEncodersArray[layerNum].call(flowCS, flowState);
             flowCS.Dispose();
             flowCS = flowCSNext.MoveToOuterDisposeScope();
 
             // Update state based on the output of the encoder layer. 
             Tensor flowStateInput;
-            if (NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)
+            if (layersGlobalStreamFFN1 != null &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)
             {
-              Tensor tFlowReduced = tFlowReduce.call(flowCS);
-              tFlowReduced = tFlowReduced.reshape(-1, 64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM);
-              flowStateInput = torch.concat([flowState, tFlowReduced], 1);
+              //              Tensor tFlowReduced = tFlowReduce.call(flowCS);
+              globalUpdate = globalUpdate.reshape(-1, 64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM);
+              flowStateInput = torch.concat([flowState, globalUpdate], 1);
             }
             else
             {

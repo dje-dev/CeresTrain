@@ -140,7 +140,7 @@ namespace CeresTrain.Networks.Transformer
       Activation = activation;
       FinalActivation = finalActivation;
       ModelDim = modelDim;
-      GlobalStreamDim = dimGlobalStream; ;
+      GlobalStreamDim = dimGlobalStream;
       PremapDimDivisor = premapDimDivisor;
       Dim1 = dim1;
       Dim2 = dim2;
@@ -166,7 +166,7 @@ namespace CeresTrain.Networks.Transformer
         }
       }
 
-      Linear1 = Linear(GlobalStreamDim + NumSquares * modelDim / premapDimDivisor, dim1, hasBias: true);
+      Linear1 = Linear(GlobalStreamDim + NumSquares * modelDim / premapDimDivisor, dim1, hasBias: true);     
       Linear2 = Linear(dim1, dim2, hasBias: true);
       Linear3 = Linear(dim2, dim3, hasBias: true);
 

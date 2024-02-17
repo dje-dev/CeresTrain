@@ -17,6 +17,7 @@ using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 
+using TorchSharp;
 using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
@@ -26,7 +27,6 @@ using CeresTrain.Networks.SoftMoE;
 using CeresTrain.Networks.MiscModules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.Utils;
-using TorchSharp;
 
 #endregion
 
@@ -35,9 +35,9 @@ namespace CeresTrain.Networks.Transformer
   /// <summary>
   /// Encoder layer used in CeresTransformerEncoder.
   /// </summary>
-  internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, Tensor>, IModuleReceivesMonitoringStatusInfo
+  internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>, IModuleReceivesMonitoringStatusInfo
   {
-    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16;
+    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16;//was 16
     public const bool ATTENTION_USE_GLOBAL_STREAM = true;
 
     /// <summary>
@@ -159,6 +159,8 @@ namespace CeresTrain.Networks.Transformer
     Linear mlpLinear2;
     Linear mlpLinear3;
 
+    Linear toGlobalV;
+
     Module<Tensor, Tensor> norm1;
     Module<Tensor, Tensor> norm2;
     ReLU relu;
@@ -272,6 +274,11 @@ namespace CeresTrain.Networks.Transformer
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
       {
         mlpLinear3 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
+      }
+
+      if (DimGlobalStream > 0)
+      {
+        toGlobalV = Linear(dim * ffnMult, PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM, hasBias: false);
       }
 
       norm1 = MakeNormalizationLayer(DimModel);
@@ -434,7 +441,7 @@ namespace CeresTrain.Networks.Transformer
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     /// <exception cref="NotImplementedException"></exception>
-    public override Tensor forward(Tensor x, Tensor state)
+    public override (Tensor, Tensor) forward(Tensor x, Tensor state)
     {
       bool isEval = !training;
       using (NewDisposeScope())
@@ -442,7 +449,7 @@ namespace CeresTrain.Networks.Transformer
         int batch_size = (int)x.size(0);
 
        
-        // Repeate state 64 times
+        // Repeat state 64 times
         if (DimGlobalStream > 0 && ATTENTION_USE_GLOBAL_STREAM)
         {
           // Concatenate x and state
@@ -514,6 +521,7 @@ namespace CeresTrain.Networks.Transformer
         // MLP
         Tensor mlpOutput;
         Tensor mlpInput = PreNorm ? norm2.call(out1) : out1;
+        Tensor toGlobal = null;
 
         if (moe == null || SoftMoEParams.NumExperts == 0)
         {
@@ -524,6 +532,10 @@ namespace CeresTrain.Networks.Transformer
             beforeLinear2 *= mlpLinear3.call(afterLinear1);
           }
           mlpOutput = mlpLinear2.call(beforeLinear2);
+          if (DimGlobalStream > 0)
+          {
+            toGlobal = toGlobalV.call(beforeLinear2);
+          }
         }
         else
         {
@@ -582,7 +594,7 @@ namespace CeresTrain.Networks.Transformer
           out2 = norm2.call(out2);
         }
 
-        return out2.MoveToOuterDisposeScope();
+        return (out2.MoveToOuterDisposeScope(), DimGlobalStream > 0 ? toGlobal.MoveToOuterDisposeScope() : null); 
       }
     }
 
