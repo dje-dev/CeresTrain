@@ -109,15 +109,13 @@ class CeresNet(pl.LightningModule):
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
     FINAL_VALUE_FC2_SIZE = 8 * HEAD_MULT
 
-    self.valueHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
-    self.out_value_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,FINAL_VALUE_FC1_SIZE)
+    self.out_value_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_VALUE_FC1_SIZE)
     self.relu_value_1 = self.Activation
     self.out_value_layer2 = nn.Linear(FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE)
     self.relu_value_2 = self.Activation 
     self.out_value_layer3 = nn.Linear(FINAL_VALUE_FC2_SIZE, 3)
 
-    self.value2HeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
-    self.out_value2_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE,FINAL_VALUE_FC1_SIZE)
+    self.out_value2_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_VALUE_FC1_SIZE)
     self.relu_value2_1 = self.Activation
     self.out_value2_layer2 = nn.Linear(FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE)
     self.relu_value2_2 = self.Activation 
@@ -126,8 +124,7 @@ class CeresNet(pl.LightningModule):
     self.HEAD_PREMAP_DIVISOR_MLH = 16
     FINAL_MLH_FC1_SIZE = 32 * HEAD_MULT
     FINAL_MLH_FC2_SIZE = 8 * HEAD_MULT
-    self.mlhHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
-    self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,FINAL_MLH_FC1_SIZE)
+    self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_MLH_FC1_SIZE)
     self.relu_mlh = self.Activation
     self.out_mlh_layer2 = nn.Linear(FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE)
     self.out_mlh_layer3 = nn.Linear(FINAL_MLH_FC2_SIZE, 1)
@@ -135,8 +132,7 @@ class CeresNet(pl.LightningModule):
     self.HEAD_PREMAP_DIVISOR_UNC = 16
     FINAL_UNC_FC1_SIZE = 32 * HEAD_MULT
     FINAL_UNC_FC2_SIZE = 8 * HEAD_MULT
-    self.uncHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC)
-    self.out_unc_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC,FINAL_UNC_FC1_SIZE)
+    self.out_unc_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_UNC_FC1_SIZE)
     self.relu_unc = self.Activation
     self.out_unc_layer2 = nn.Linear(FINAL_UNC_FC1_SIZE, FINAL_UNC_FC2_SIZE)
     self.out_unc_layer3 = nn.Linear(FINAL_UNC_FC2_SIZE, 1)
@@ -145,14 +141,12 @@ class CeresNet(pl.LightningModule):
     FINAL_QDEV_FC1_SIZE = 32 * HEAD_MULT
     FINAL_QDEV_FC2_SIZE = 8 * HEAD_MULT
 
-    self.qDevLowerHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
+    self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)
     self.relu_qdev_lower = self.Activation
     self.out_qdev_lower_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE,FINAL_QDEV_FC2_SIZE)
     self.out_qdev_lower_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
-    self.qDevUpperHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
+    self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)
     self.relu_qdev_upper = self.Activation
     self.out_qdev_upper_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE, FINAL_QDEV_FC2_SIZE)
     self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
@@ -267,64 +261,40 @@ class CeresNet(pl.LightningModule):
     ff2RELUPolicy = self.fcPolicyRELU2(ff2Policy)
     policy_out = self.fcPolicyFinal3(ff2RELUPolicy)
 
-    value_out = self.valueHeadPremap(flow)
-    value_out = value_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
-    if self.global_dim > 0:
-      value_out = torch.concat([value_out, flow_global], 1);       
-    value_out = self.out_value_layer1(value_out)
+    value_out = self.out_value_layer1(flow_global)
     value_out = self.relu_value_1(value_out)
     value_out = self.out_value_layer2(value_out)
     value_out = self.relu_value_2(value_out)
     value_out = self.out_value_layer3(value_out)
 
-    value2_out = self.value2HeadPremap(flow)
-    value2_out = value2_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
-    if self.global_dim > 0:
-      value2_out = torch.concat([value2_out, flow_global], 1);       
-    value2_out = self.out_value2_layer1(value2_out)
+    value2_out = self.out_value2_layer1(flow_global)
     value2_out = self.relu_value2_1(value2_out)
     value2_out = self.out_value2_layer2(value2_out)
     value2_out = self.relu_value2_2(value2_out)
     value2_out = self.out_value2_layer3(value2_out)
 
-    moves_left_out = self.mlhHeadPremap(flow)
-    moves_left_out = moves_left_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
-    if self.global_dim > 0:
-      moves_left_out = torch.concat([moves_left_out, flow_global], 1);       
-    moves_left_out = self.out_mlh_layer1(moves_left_out)
+    moves_left_out = self.out_mlh_layer1(flow_global)
     moves_left_out = self.relu_mlh(moves_left_out)
     moves_left_out = self.out_mlh_layer2(moves_left_out)
     moves_left_out = self.relu_mlh(moves_left_out)
     moves_left_out = self.out_mlh_layer3(moves_left_out)
     moves_left_out = torch.nn.functional.relu(moves_left_out) # truncate at zero, can't be negative
 
-    unc_out = self.uncHeadPremap(flow)
-    unc_out = unc_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_UNC)
-    if self.global_dim > 0:
-      unc_out = torch.concat([unc_out, flow_global], 1);       
-    unc_out = self.out_unc_layer1(unc_out)
+    unc_out = self.out_unc_layer1(flow_global)
     unc_out = self.relu_unc(unc_out)
     unc_out = self.out_unc_layer2(unc_out)
     unc_out = self.relu_unc(unc_out)
     unc_out = self.out_unc_layer3(unc_out)
     unc_out = torch.nn.functional.relu(unc_out) # truncate at zero, can't be negative
 
-    q_deviation_lower_out = self.qDevLowerHeadPremap(flow)
-    q_deviation_lower_out = q_deviation_lower_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    if self.global_dim > 0:
-      q_deviation_lower_out = torch.concat([q_deviation_lower_out, flow_global], 1);       
-    q_deviation_lower_out = self.out_qdev_lower_layer1(q_deviation_lower_out)
+    q_deviation_lower_out = self.out_qdev_lower_layer1(flow_global)
     q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
     q_deviation_lower_out = self.out_qdev_lower_layer2(q_deviation_lower_out)
     q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
     q_deviation_lower_out = self.out_qdev_lower_layer3(q_deviation_lower_out)
     q_deviation_lower_out = torch.nn.functional.relu(q_deviation_lower_out) # truncate at zero, can't be negative
     
-    q_deviation_upper_out = self.qDevUpperHeadPremap(flow)
-    q_deviation_upper_out = q_deviation_upper_out.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-    if self.global_dim > 0:
-      q_deviation_upper_out = torch.concat([q_deviation_upper_out, flow_global], 1);       
-    q_deviation_upper_out = self.out_qdev_upper_layer1(q_deviation_upper_out)
+    q_deviation_upper_out = self.out_qdev_upper_layer1(flow_global)
     q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
     q_deviation_upper_out = self.out_qdev_upper_layer2(q_deviation_upper_out)
     q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)

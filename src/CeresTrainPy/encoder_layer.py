@@ -84,6 +84,7 @@ class EncoderLayer(torch.nn.Module):
 
     out1 = self.ln1(x * self.alpha + attn_output)
     if self.moe and self.smoe_mode == 'ReplaceLinear':
+      assert not self.moe, "Global stream not yet supported with SoftMoE ReplaceLinear mode"
       assert self.ffn_activation_type in ('ReLUSquared') # SoftMoEBatchedDual currently only supports ReLUSquared
       mlp_output = self.moe(out1)
     else:
@@ -102,7 +103,6 @@ class EncoderLayer(torch.nn.Module):
     out2 = self.ln2(out1 * self.alpha + mlp_output)
 
     if self.global_stream_dim > 0:
-      assert not self.moe, "Global stream not yet supported with Mixture of Experts"
       global_v = self.to_global_v(mlp_before_linear2)
     else:
       global_v = None
