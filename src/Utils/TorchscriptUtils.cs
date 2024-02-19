@@ -61,13 +61,11 @@ namespace CeresTrain.Utils
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// <typeparam name="TResult"></typeparam>
-    /// <param name="tsFileName1"></param>
-    /// <param name="tsFileName2"></param>
+    /// <param name="tsFileNames"></param>
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <returns></returns>
-    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(
-        string[] tsFileNames, float[] tsWeights, Device device, ScalarType dataType)
+    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string[] tsFileNames, float[] tsWeights, Device device, ScalarType dataType)
     {
       if (tsFileNames == null || tsFileNames.Length == 0)
       {
@@ -82,6 +80,12 @@ namespace CeresTrain.Utils
       if (tsFileNames.Any(fn => string.IsNullOrEmpty(fn)))
       {
         throw new ArgumentException("One or more provided file names are null or empty.", nameof(tsFileNames));
+      }
+
+      bool allFileNamesAreSame = tsFileNames.All(fn => fn == tsFileNames[0]);
+      if (allFileNamesAreSame)
+      {
+        return load<T, TResult>(tsFileNames[0], device.type, device.index).to(dataType);
       }
 
       // Load each file as a module
