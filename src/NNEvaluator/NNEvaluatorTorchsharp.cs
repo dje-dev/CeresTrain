@@ -26,6 +26,7 @@ using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
+using CeresTrain.Utils;
 
 #endregion
 
@@ -68,6 +69,15 @@ namespace CeresTrain.NNEvaluators
 
     public NNEvaluatorTorchsharpOptions Options;
 
+    public override EvaluatorInfo Info => 
+      getNumModelParams == null ? null : new EvaluatorInfo(getNumModelParams());  
+
+    /// <summary>
+    /// Function to get the number of model parameters.
+    /// Only called if required to avoid overhead of computing this value.
+    /// </summary>
+    Func<long> getNumModelParams = null;
+
 
 
     /// <summary>
@@ -86,6 +96,7 @@ namespace CeresTrain.NNEvaluators
              (NetTransformerDef)ceresTransformerNetDef),
              configNetExec.Device, configNetExec.DataType, configNetExec.UseHistory, lastMovePliesEnabled, options)
     {
+      getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
     }
 
 

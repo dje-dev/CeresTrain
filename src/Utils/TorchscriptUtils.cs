@@ -172,6 +172,28 @@ namespace CeresTrain.Utils
     }
 
 
+
+    /// <summary>
+    /// Returns the number of parameters in the model.
+    /// 
+    /// NOTE: this is inefficient, requires loading net into memory.
+    /// </summary>
+    /// <param name="module"></param>
+    /// <returns></returns>
+    public static long NumParameters(string tsFileName)
+    {
+      ScriptModule<Tensor, Tensor> module = load<Tensor, Tensor>(tsFileName, DeviceType.CPU, 0);
+      long numParams = 0;
+      foreach (Parameter parameter in module.parameters())
+      {
+        numParams += parameter.numel();
+      }
+      module.Dispose();
+
+      return numParams;
+    }
+
+
   }
 
 }
