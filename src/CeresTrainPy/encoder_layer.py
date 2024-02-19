@@ -70,7 +70,7 @@ class EncoderLayer(torch.nn.Module):
     else:
       self.moe = None
 
-    self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, activation_type=ffn_activation_type) 
+    self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
 
     if global_stream_dim > 0:
       self.to_global_v = torch.nn.Linear(ffn_hidden_size, PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM, bias = False);

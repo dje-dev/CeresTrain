@@ -27,6 +27,7 @@ from activation_functions import Swish, ReLUSquared
 from losses import LossCalculator
 from encoder_layer import EncoderLayer
 from config import Configuration
+from mlp2_layer import MLP2Layer
 
    
 class CeresNet(pl.LightningModule):
@@ -89,7 +90,7 @@ class CeresNet(pl.LightningModule):
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
 
     self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM )
-    self.embedding_layer_global = nn.Linear(64 * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim)
+    self.embedding_layer_global = nn.Linear(64 * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim) if config.NetDef_GlobalStreamDim > 0 else None
     self.global_dim = config.NetDef_GlobalStreamDim
     
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
@@ -195,9 +196,9 @@ class CeresNet(pl.LightningModule):
                                                   for i in range(self.NUM_LAYERS)])
 
     if config.NetDef_GlobalStreamDim > 0:
-      NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier
-      self.global_ffn1 = torch.nn.Sequential(*[nn.Linear(config.NetDef_GlobalStreamDim + 64 * 16, NUM_GLOBAL_INNER) for i in range(self.NUM_LAYERS)])
-      self.global_ffn2 = torch.nn.Sequential(*[nn.Linear(NUM_GLOBAL_INNER, config.NetDef_GlobalStreamDim)for i in range(self.NUM_LAYERS)])
+      PER_SQUARE_DIM = 16
+      NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier * config.NetDef_GlobalStreamDim
+      self.mlp_global = torch.nn.Sequential(*[MLP2Layer(model_dim=config.NetDef_GlobalStreamDim + 64 * PER_SQUARE_DIM, ffn_inner_dim=NUM_GLOBAL_INNER, out_dim = config.NetDef_GlobalStreamDim, activation_type=config.NetDef_FFNActivationType) for i in range(self.NUM_LAYERS)])
       
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight
@@ -230,18 +231,13 @@ class CeresNet(pl.LightningModule):
  
       # Update state based on the output of the encoder layer. 
       if self.global_dim > 0:# &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)  
-        global_update = global_update.reshape(-1, 64 * 16)     
- 
+        global_update = global_update.reshape(-1, 64 * 16)      
         flow_state_input = torch.cat([flow_global, global_update], 1)  
       else:
         flow_state_input = flow
         
       if self.global_dim > 0:
-        flow_global = self.global_ffn1[i](flow_state_input)
-        flow_global = torch.nn.functional.relu(flow_global)
-        #flow_global = self.Activation(flow_global)
-        flow_global = self.global_ffn2[i](flow_global)
-      
+        (_, flow_global) = self.mlp_global[i](flow_state_input)    
 
     # Heads.
     headOut = self.policyHeadPremap(flow)
