@@ -195,15 +195,9 @@ class CeresNet(pl.LightningModule):
                                                   for i in range(self.NUM_LAYERS)])
 
     if config.NetDef_GlobalStreamDim > 0:
-      NUM_GLOBAL_INNER = 512
+      NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier
       self.global_ffn1 = torch.nn.Sequential(*[nn.Linear(config.NetDef_GlobalStreamDim + 64 * 16, NUM_GLOBAL_INNER) for i in range(self.NUM_LAYERS)])
       self.global_ffn2 = torch.nn.Sequential(*[nn.Linear(NUM_GLOBAL_INNER, config.NetDef_GlobalStreamDim)for i in range(self.NUM_LAYERS)])
-
-      # translate next 2 lines         
-#            layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformer
-#                                                     LayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), 1024, true, ExecutionConfig.Device, ExecutionConfig.DataType);
-#            layersGlobalStreamFFN2[layerNum] = Linear(1024, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
-          
       
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight

@@ -28,6 +28,7 @@ using CeresTrain.Networks.MiscModules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.Utils;
 
+
 #endregion
 
 namespace CeresTrain.Networks.Transformer
@@ -647,6 +648,11 @@ namespace CeresTrain.Networks.Transformer
       if (moe != null)
       {
         moe.LoadWeights(weightsSource, weightsLoaded, LayerNum);
+      }
+
+      if (DimGlobalStream > 0)
+      {
+        LinearLoad(weightsSource, weightsLoaded, toGlobalV, $"transformer_layer.{LayerNum}.to_global_v.weight", null);
       }
 
       if (SmolgenPerSquareDim > 0)

@@ -29,6 +29,7 @@ using TorchSharp.Modules;
 using Ceres.Base.Misc;
 using Ceres.Base.DataTypes;
 
+using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.TPG;
@@ -77,7 +78,7 @@ namespace CeresTrain.Networks.Transformer
     int FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE => 8 * TransformerConfig.HeadWidthMultiplier;
 
     internal NetTransformerLayerEmbedding layerEmbedding;
-    internal Linear stateEmbedding;
+    internal Linear globalStateEmbedding;
     internal Linear tFlowReduce;
 
     internal NetTransformerLayerEncoder[] layersEncodersArray;
@@ -159,12 +160,17 @@ namespace CeresTrain.Networks.Transformer
         layerEmbedding = new NetTransformerLayerEmbedding("embedding", TPGRecord.BYTES_PER_SQUARE_RECORD, embeddingWidth);
         layerEmbedding.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         
-        stateEmbedding =Linear(64* TPGRecord.BYTES_PER_SQUARE_RECORD, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType); 
+        globalStateEmbedding =Linear(64* TPGRecord.BYTES_PER_SQUARE_RECORD, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType); 
 
         // Load weights, if provided.
         if (paramsToLoad != null)
         {
           layerEmbedding.LoadWeights(paramsToLoad, loadedParams);
+
+          if (TransformerConfig.GlobalStreamDim > 0)
+          {
+            LinearLoad(paramsToLoad, loadedParams, globalStateEmbedding, "embedding_layer_global.weight", "embedding_layer_global.bias"); 
+          }
         }
 
         if (TransformerConfig.SmolgenDimPerSquare > 0)
@@ -188,12 +194,16 @@ namespace CeresTrain.Networks.Transformer
         {
           if (TransformerConfig.GlobalStreamDim > 0)
           {
-            const int GLOBAL_INNER_DIM = 512;
+            int GLOBAL_INNER_DIM = TransformerConfig.GlobalStreamFFNMultiplier;
             layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), GLOBAL_INNER_DIM, true, ExecutionConfig.Device, ExecutionConfig.DataType);
             layersGlobalStreamFFN2[layerNum] = Linear(GLOBAL_INNER_DIM, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
-          }
 
-          if (paramsToLoad != null)  Console.WriteLine("layersEncodersArray not yet coded");
+            if (paramsToLoad != null)
+            {
+              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN1[layerNum], $"global_ffn1.{layerNum}.weight", $"global_ffn1.{layerNum}.bias");
+              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN2[layerNum], $"global_ffn2.{layerNum}.weight", $"global_ffn2.{layerNum}.bias");
+            }
+          }
 
           NetTransformerLayerEncoder teCS = new(TransformerConfig.NumLayers, layerNum, TransformerConfig.ModelDim,
                                                 TransformerConfig.NumHeads, TransformerConfig.GlobalStreamDim, TransformerConfig.PreNorm,
@@ -243,7 +253,7 @@ namespace CeresTrain.Networks.Transformer
         layerQDeviationUpperHead = new NetTransformerLayerHead("head_qdeviation_upper", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
                                    TransformerConfig.HeadsActivationType, "RELU", false, false);
         layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
+        if (paramsToLoad != null && !TransformerConfig.HeadsNonPolicyGlobalStreamOnly)
         {
           layerQDeviationUpperHead.LoadWeights(paramsToLoad, loadedParams, "qDevUpperHeadPremap", "out_qdev_upper_layer");
         }
@@ -418,10 +428,12 @@ namespace CeresTrain.Networks.Transformer
     public Tensor lastOutputTrunk;
 
 
+    public Tensor globalStreamLayer8 = null;
+
     public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor inputBoardSquares)
     {
       Tensor flowCS = layerEmbedding.call(inputBoardSquares);
-      Tensor flowState = stateEmbedding.call(inputBoardSquares.reshape([-1,64* TPGRecord.BYTES_PER_SQUARE_RECORD]));
+      Tensor flowState = globalStateEmbedding.call(inputBoardSquares.reshape([-1,64* TPGRecord.BYTES_PER_SQUARE_RECORD]));
 
 
       if (ALT_UP)
@@ -478,6 +490,11 @@ namespace CeresTrain.Networks.Transformer
               //            flowStateNext = functional.relu(flowStateNext);
               flowState.Dispose();
               flowState = flowStateNext.MoveToOuterDisposeScope();
+
+              if (layerNum == 7)
+              {
+                globalStreamLayer8 = globalUpdate.clone();
+              }
             }
 
           }

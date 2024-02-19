@@ -111,7 +111,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="extraFeatures"></param>
     /// <param name="globalStreamDim"></param>
     public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures, 
-                             int globalStreamDim = 0)
+                             int globalStreamDim = 0, int globalStreamMultiplierFFN = 2)
     {
       ModelDim = modelDim;
       NumLayers = numLayers;
@@ -119,6 +119,7 @@ namespace CeresTrain.Networks.Transformer
       FFNMultiplier = ffnMultiplier;
       NormType = NormalizationType.RMSNorm;
       GlobalStreamDim = globalStreamDim;
+      GlobalStreamFFNMultiplier = globalStreamMultiplierFFN;
 
       if (extraFeatures.HasFlag(TransformerFeatures.Attention2x))
       {
@@ -167,6 +168,11 @@ namespace CeresTrain.Networks.Transformer
     /// Dimension of the global stream (not per-token) if any (else 0).
     /// </summary>
     public readonly int GlobalStreamDim { get; init; } = 0;
+
+    /// <summary>
+    /// Expansion factor for the inner layer of the global stream (if any).
+    /// </summary>
+    public readonly int GlobalStreamFFNMultiplier { get; init; } = 2;
 
     /// <summary>
     /// Number of layers in the model.
@@ -235,6 +241,12 @@ namespace CeresTrain.Networks.Transformer
     /// Type of activation to use for Smolgen layers.
     /// </summary>
     public readonly ActivationType SmolgenActivationType { get; init; } = ActivationType.None;
+
+
+    /// <summary>
+    /// If network heads (except policy) should receive inputs exclusively from global stream.
+    /// </summary>
+    public readonly bool HeadsNonPolicyGlobalStreamOnly { get; init; } = false;
 
 
     /// <summary>
