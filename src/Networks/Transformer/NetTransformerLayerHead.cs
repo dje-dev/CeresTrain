@@ -103,6 +103,11 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly Linear Linear3;
 
+    /// <summary>
+    /// If only the global stream should be fed into th head.
+    /// </summary>
+    public bool UseGlobalStreamOnly;
+
     bool SaveIntermediateActivations;
 
     bool PremapAlreadyApplied;
@@ -129,6 +134,7 @@ namespace CeresTrain.Networks.Transformer
     public NetTransformerLayerHead(string name, int numSquares,
                                    int modelDim,
                                    int dimGlobalStream,
+                                   bool useGlobalStreamOnly,
                                    int premapDimDivisor,
                                    int dim1, int dim2, int dim3,
                                    NetTransformerDef.ActivationType activation,
@@ -147,6 +153,7 @@ namespace CeresTrain.Networks.Transformer
       Dim3 = dim3;
       SaveIntermediateActivations = saveIntermediateActivations;
       PremapAlreadyApplied = reduceSquaresAlreadyApplied;
+      UseGlobalStreamOnly = useGlobalStreamOnly;
 
       if (saveIntermediateActivations)
       {
@@ -160,13 +167,14 @@ namespace CeresTrain.Networks.Transformer
 
       if (!reduceSquaresAlreadyApplied)
       {
-        if (premapDimDivisor > 1)
+        if (premapDimDivisor > 1 && !useGlobalStreamOnly)
         {
           LinearPremap = Linear(modelDim, modelDim / premapDimDivisor, hasBias: true);
         }
       }
 
-      Linear1 = Linear(GlobalStreamDim + NumSquares * modelDim / premapDimDivisor, dim1, hasBias: true);     
+      int inputWidth = GlobalStreamDim + (useGlobalStreamOnly ? 0 : NumSquares * modelDim / premapDimDivisor);
+      Linear1 = Linear(inputWidth, dim1, hasBias: true);     
       Linear2 = Linear(dim1, dim2, hasBias: true);
       Linear3 = Linear(dim2, dim3, hasBias: true);
 
@@ -178,7 +186,7 @@ namespace CeresTrain.Networks.Transformer
                             HashSet<string> weightsLoaded,
                             string premapLayerName, string linearBaseName)
     {
-      if (PremapDimDivisor > 1)
+      if (PremapDimDivisor > 1 && !UseGlobalStreamOnly)
       {
         LinearLoad(weightsSource, weightsLoaded, LinearPremap, premapLayerName + ".weight", premapLayerName + ".bias");
       }
@@ -196,7 +204,7 @@ namespace CeresTrain.Networks.Transformer
       {
         if (!PremapAlreadyApplied)
         {
-          if (PremapDimDivisor > 1)
+          if (PremapDimDivisor > 1 && !UseGlobalStreamOnly)
           {
             x = LinearPremap.call(x);
 
@@ -205,18 +213,17 @@ namespace CeresTrain.Networks.Transformer
             {
               lastOutputTrunk = x.clone().DetachFromDisposeScope();
             }
+
+            x = x.reshape(-1, NumSquares * (ModelDim / PremapDimDivisor));
           }
         }
 
-        x = x.reshape(-1,  NumSquares * (ModelDim / PremapDimDivisor));
-
         if (GlobalStreamDim > 0)
         {
-          x = torch.concat([x, state], 1);
+          x = UseGlobalStreamOnly ? state : torch.cat([x, state], 1);  
         }
 
         Tensor x1 = Linear1.call(x);
-        x.Dispose();
 
         x1 = TorchSharpUtils.WithActivation(x1, Activation);
         Tensor x2 = Linear2.call(x1);

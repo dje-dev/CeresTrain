@@ -226,7 +226,8 @@ class CeresNet(pl.LightningModule):
     if config.NetDef_GlobalStreamDim > 0:
       PER_SQUARE_DIM = 16
       NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier * config.NetDef_GlobalStreamDim
-      self.mlp_global = torch.nn.Sequential(*[MLP2Layer(model_dim=config.NetDef_GlobalStreamDim + 64 * PER_SQUARE_DIM, ffn_inner_dim=NUM_GLOBAL_INNER, out_dim = config.NetDef_GlobalStreamDim, activation_type=config.NetDef_FFNActivationType) for i in range(self.NUM_LAYERS)])
+      GLOBAL_FFN_ACTIVATION_TYPE = 'ReLU' # Note that squared RelU may cause training instabilities (?)
+      self.mlp_global = torch.nn.Sequential(*[MLP2Layer(model_dim=config.NetDef_GlobalStreamDim + 64 * PER_SQUARE_DIM, ffn_inner_dim=NUM_GLOBAL_INNER, out_dim = config.NetDef_GlobalStreamDim, activation_type=GLOBAL_FFN_ACTIVATION_TYPE) for i in range(self.NUM_LAYERS)])
       
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight

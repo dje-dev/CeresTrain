@@ -22,6 +22,8 @@ using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
+using Ceres.Base.Math;
+
 using CeresTrain.NNIntrospection;
 using CeresTrain.Networks.SoftMoE;
 using CeresTrain.Networks.MiscModules;
@@ -377,12 +379,13 @@ namespace CeresTrain.Networks.Transformer
     }
 
 
-    static void DumpTensorStats(Tensor t, string desc)
+    void DumpTensorStats(Tensor t, string desc)
     {
       // Retrieve Tensor as float32 onto cpu, compute mean and standard deviation
-      float mean = t.mean().to(ScalarType.Float32).cpu().item<float>();
-      float std = t.std().to(ScalarType.Float32).cpu().item<float>();
-      Console.WriteLine(desc + " " + mean + " " + std);
+      float[] vals = t.max(3).values.to(ScalarType.Float32).cpu().FloatArray();
+      float mean = StatUtils.Average(vals);
+      double std = StatUtils.StdDev(vals);
+      Console.WriteLine(desc + this.LayerNum + " " + mean + " " + std);
     }
 
 
@@ -402,7 +405,6 @@ namespace CeresTrain.Networks.Transformer
       using (NewDisposeScope())
       {
         Tensor scores = matmul(Q, K.transpose(2, 3));
-//if (count++ % 100 == 0)DumpTensorStats(scores, "scores");
         scores.div_(MathF.Sqrt(DimPerHead));
 
         if (SmolgenPerSquareDim > 0)
@@ -413,6 +415,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         Tensor A = functional.softmax(scores, dim: -1);
+//if (count++ % 29 == 0) DumpTensorStats(A, "scores");
 
         if (clipGamma != 0)
         {

@@ -159,8 +159,11 @@ namespace CeresTrain.Networks.Transformer
         int embeddingWidth = TransformerConfig.ModelDim * (ALT_UP ? AltUpK : 1);
         layerEmbedding = new NetTransformerLayerEmbedding("embedding", TPGRecord.BYTES_PER_SQUARE_RECORD, embeddingWidth);
         layerEmbedding.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        
-        globalStateEmbedding =Linear(64* TPGRecord.BYTES_PER_SQUARE_RECORD, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType); 
+
+        if (TransformerConfig.GlobalStreamDim > 0)
+        {
+          globalStateEmbedding = Linear(64 * TPGRecord.BYTES_PER_SQUARE_RECORD, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
+        }
 
         // Load weights, if provided.
         if (paramsToLoad != null)
@@ -194,14 +197,14 @@ namespace CeresTrain.Networks.Transformer
         {
           if (TransformerConfig.GlobalStreamDim > 0)
           {
-            int GLOBAL_INNER_DIM = TransformerConfig.GlobalStreamFFNMultiplier;
+            int GLOBAL_INNER_DIM = TransformerConfig.GlobalStreamDim * TransformerConfig.GlobalStreamFFNMultiplier;
             layersGlobalStreamFFN1[layerNum] = Linear(TransformerConfig.GlobalStreamDim + (64 * NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM), GLOBAL_INNER_DIM, true, ExecutionConfig.Device, ExecutionConfig.DataType);
             layersGlobalStreamFFN2[layerNum] = Linear(GLOBAL_INNER_DIM, TransformerConfig.GlobalStreamDim, true, ExecutionConfig.Device, ExecutionConfig.DataType);
 
             if (paramsToLoad != null)
             {
-              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN1[layerNum], $"global_ffn1.{layerNum}.weight", $"global_ffn1.{layerNum}.bias");
-              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN2[layerNum], $"global_ffn2.{layerNum}.weight", $"global_ffn2.{layerNum}.bias");
+              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN1[layerNum], $"mlp_global.{layerNum}.linear1.weight", null);
+              LinearLoad(paramsToLoad, loadedParams, layersGlobalStreamFFN2[layerNum], $"mlp_global.{layerNum}.linear2.weight", null);
             }
           }
 
@@ -225,7 +228,9 @@ namespace CeresTrain.Networks.Transformer
 
         const bool SAVE_INTERMEDIATE_FOR_MLH_HEAD = false;
 
-        layerMLHHead = new NetTransformerLayerHead("head_mlh", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_MLH, FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE, 1,
+        layerMLHHead = new NetTransformerLayerHead("head_mlh", 64, TransformerConfig.ModelDim, 
+                                                   TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly, 
+                                                   HEAD_PREMAP_DIVISOR_MLH, FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE, 1,
                                                    TransformerConfig.HeadsActivationType, "RELU", SAVE_INTERMEDIATE_FOR_MLH_HEAD, false);
         layerMLHHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -233,7 +238,9 @@ namespace CeresTrain.Networks.Transformer
           layerMLHHead.LoadWeights(paramsToLoad, loadedParams, "mlhHeadPremap", "out_mlh_layer"); // reuse valueHeadPremap for MLH
         }
 
-        layerUNCHead = new NetTransformerLayerHead("head_unc", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
+        layerUNCHead = new NetTransformerLayerHead("head_unc", 64, TransformerConfig.ModelDim, 
+                                                   TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly, 
+                                                   HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
                                                    TransformerConfig.HeadsActivationType, "RELU", false, false);
         layerUNCHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -242,18 +249,22 @@ namespace CeresTrain.Networks.Transformer
         }
 
         
-        layerQDeviationLowerHead = new NetTransformerLayerHead("head_qdeviation_lower", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
-                                           TransformerConfig.HeadsActivationType, "RELU", false, false);
+        layerQDeviationLowerHead = new NetTransformerLayerHead("head_qdeviation_lower", 64, TransformerConfig.ModelDim, 
+                                                                TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly, 
+                                                                HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
+                                                                TransformerConfig.HeadsActivationType, "RELU", false, false);
         layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qDevLowerHeadPremap", "out_qdev_lower_layer"); 
         }
 
-        layerQDeviationUpperHead = new NetTransformerLayerHead("head_qdeviation_upper", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
-                                   TransformerConfig.HeadsActivationType, "RELU", false, false);
+        layerQDeviationUpperHead = new NetTransformerLayerHead("head_qdeviation_upper", 64, TransformerConfig.ModelDim, 
+                                                               TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly, 
+                                                               HEAD_PREMAP_DIVISOR_UNC, FINAL_SUPPLEMENTAL_HEAD_FC1_SIZE, FINAL_SUPPLEMENTAL_HEAD_FC2_SIZE, 1,
+                                                               TransformerConfig.HeadsActivationType, "RELU", false, false);
         layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null && !TransformerConfig.HeadsNonPolicyGlobalStreamOnly)
+        if (paramsToLoad != null)
         {
           layerQDeviationUpperHead.LoadWeights(paramsToLoad, loadedParams, "qDevUpperHeadPremap", "out_qdev_upper_layer");
         }
@@ -265,8 +276,10 @@ namespace CeresTrain.Networks.Transformer
         }
 
         // POLICY HEAD
-        layerPolicyHead = new NetTransformerLayerHead("head_policy", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, HEAD_PREMAP_DIVISOR_POLICY, FINAL_POLICY_FC1_SIZE, FINAL_POLICY_FC2_SIZE, 1858,
-                                                       TransformerConfig.HeadsActivationType, null, false, false);
+        layerPolicyHead = new NetTransformerLayerHead("head_policy", 64, TransformerConfig.ModelDim, 
+                                                      TransformerConfig.GlobalStreamDim, false,
+                                                      HEAD_PREMAP_DIVISOR_POLICY, FINAL_POLICY_FC1_SIZE, FINAL_POLICY_FC2_SIZE, 1858,
+                                                      TransformerConfig.HeadsActivationType, null, false, false);
         layerPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
@@ -276,7 +289,8 @@ namespace CeresTrain.Networks.Transformer
         // VALUE HEAD
         const bool SAVE_INTERMEDIATE_FOR_VALUE_HEAD = false;
 
-        layerValueHead = new NetTransformerLayerHead("head_value", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim, 
+        layerValueHead = new NetTransformerLayerHead("head_value", 64, TransformerConfig.ModelDim, 
+                                                     TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly,
                                                      HEAD_PREMAP_DIVISOR_VALUE,
                                                      FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE, 3,
                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD, false);
@@ -286,10 +300,11 @@ namespace CeresTrain.Networks.Transformer
           layerValueHead.LoadWeights(paramsToLoad, loadedParams, "valueHeadPremap", "out_value_layer");
         }
 
-        layerValue2Head = new NetTransformerLayerHead("head_value2", 64, TransformerConfig.ModelDim, TransformerConfig.GlobalStreamDim,
-                                             HEAD_PREMAP_DIVISOR_VALUE,
-                                             FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE, 3,
-                                             TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD, false);
+        layerValue2Head = new NetTransformerLayerHead("head_value2", 64, TransformerConfig.ModelDim, 
+                                                      TransformerConfig.GlobalStreamDim, TransformerConfig.HeadsNonPolicyGlobalStreamOnly,
+                                                      HEAD_PREMAP_DIVISOR_VALUE,
+                                                      FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE, 3,
+                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD, false);
         layerValue2Head.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
 
         if (paramsToLoad != null)
@@ -433,7 +448,7 @@ namespace CeresTrain.Networks.Transformer
     public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor inputBoardSquares)
     {
       Tensor flowCS = layerEmbedding.call(inputBoardSquares);
-      Tensor flowState = globalStateEmbedding.call(inputBoardSquares.reshape([-1,64* TPGRecord.BYTES_PER_SQUARE_RECORD]));
+      Tensor flowState = this.TransformerConfig.GlobalStreamDim > 0 ? globalStateEmbedding.call(inputBoardSquares.reshape([-1, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD])) : null;
 
 
       if (ALT_UP)
@@ -464,10 +479,11 @@ namespace CeresTrain.Networks.Transformer
         {
           using (NewDisposeScope())
           {
+            // Run encoder.
             (Tensor flowCSNext, Tensor globalUpdate) = layersEncodersArray[layerNum].call(flowCS, flowState);
             flowCS.Dispose();
             flowCS = flowCSNext.MoveToOuterDisposeScope();
-
+            
             // Update state based on the output of the encoder layer. 
             Tensor flowStateInput;
             if (layersGlobalStreamFFN1 != null &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)
@@ -484,16 +500,18 @@ namespace CeresTrain.Networks.Transformer
             // Flow the state
             if (layersGlobalStreamFFN1 != null)
             {
+              // NOTE: Use of ReLU squared may cause training instabilties (?).
+              const NetTransformerDef.ActivationType GLOBAL_STREAM_ACTIVATION = NetTransformerDef.ActivationType.ReLU;
+
               Tensor flowStateNext = layersGlobalStreamFFN1[layerNum].call(flowStateInput);
-              flowStateNext = functional.relu(flowStateNext);
+              flowStateNext = TorchSharpUtils.WithActivation(flowStateNext, GLOBAL_STREAM_ACTIVATION);
               flowStateNext = layersGlobalStreamFFN2[layerNum].call(flowStateNext);
-              //            flowStateNext = functional.relu(flowStateNext);
               flowState.Dispose();
               flowState = flowStateNext.MoveToOuterDisposeScope();
 
               if (layerNum == 7)
               {
-                globalStreamLayer8 = globalUpdate.clone();
+//                globalStreamLayer8 = globalUpdate.clone();
               }
             }
 
