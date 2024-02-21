@@ -28,6 +28,7 @@ from losses import LossCalculator
 from encoder_layer import EncoderLayer
 from config import Configuration
 from mlp2_layer import MLP2Layer
+from rms_norm import RMSNorm
 
    
 class CeresNet(pl.LightningModule):
@@ -202,7 +203,7 @@ class CeresNet(pl.LightningModule):
       
     EPS = 1E-6
     
-    if SMOLGEN_PER_SQUARE_DIM > 0:
+    if SMOLGEN_PER_SQUARE_DIM > 0 and SMOLGEN_INTERMEDIATE_DIM > 0:
       self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM // config.NetDef_SmolgenToHeadDivisor, 64 * 64)
     else:
       self.smolgenPrepLayer = None
@@ -228,7 +229,8 @@ class CeresNet(pl.LightningModule):
       NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier * config.NetDef_GlobalStreamDim
       GLOBAL_FFN_ACTIVATION_TYPE = 'ReLU' # Note that squared RelU may cause training instabilities (?)
       self.mlp_global = torch.nn.Sequential(*[MLP2Layer(model_dim=config.NetDef_GlobalStreamDim + 64 * PER_SQUARE_DIM, ffn_inner_dim=NUM_GLOBAL_INNER, out_dim = config.NetDef_GlobalStreamDim, activation_type=GLOBAL_FFN_ACTIVATION_TYPE) for i in range(self.NUM_LAYERS)])
-      
+      self.ln_global = torch.nn.LayerNorm(model_dim=config.NetDef_GlobalStreamDim, eps=1e-5) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(config.NetDef_GlobalStreamDim, eps=1e-5)
+
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight
     self.moves_left_loss_weight = moves_left_loss_weight
@@ -238,7 +240,8 @@ class CeresNet(pl.LightningModule):
     self.q_ratio = q_ratio
     self.optimizer = optimizer
     self.learning_rate = learning_rate
-
+    self.test = config.Exec_TestFlag
+    
 
   def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(input_planes, list):
@@ -266,7 +269,8 @@ class CeresNet(pl.LightningModule):
         flow_state_input = flow
         
       if self.global_dim > 0:
-        (_, flow_global) = self.mlp_global[i](flow_state_input)    
+        (_, flow_global) = self.mlp_global[i](flow_state_input)   
+        flow_global = self.ln_global(flow_global)
 
     # Heads.
     headOut = self.policyHeadPremap(flow)

@@ -58,6 +58,8 @@ class DotProductAttention(torch.nn.Module):
     self.smolgen_head_divisor = smolgen_head_divisor
     self.test = test    
     
+    self.DIM_GLOBAL_TO_ATTN = 64 if test else 32  
+    
     if (smolgen_activation_type == 'None'):
       self.smolgen_activation_fn = torch.nn.Identity()
     elif (smolgen_activation_type == 'ReLU'):
@@ -74,9 +76,9 @@ class DotProductAttention(torch.nn.Module):
 
     # Implementations often but not always use no bias
     USE_BIAS = False
-
+    
     # Fused Q, K, and V linear projection for improved efficiency.
-    self.qkv = torch.nn.Linear(self.d_model + global_stream_dim, 3*self.d_model * self.attention_multiplier, bias=USE_BIAS)
+    self.qkv = torch.nn.Linear(self.d_model + self.DIM_GLOBAL_TO_ATTN + self.DIM_GLOBAL_TO_ATTN, 3*self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
@@ -91,6 +93,10 @@ class DotProductAttention(torch.nn.Module):
       self.sm3 = torch.nn.Linear(smolgen_intermediate_dim, num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor)
       self.ln2 = torch.nn.LayerNorm(num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor) if norm_type == 'LayerNorm' else RMSNorm(num_attention_heads * smolgen_intermediate_dim// smolgen_head_divisor, eps=layernorm_eps)
       
+    if global_stream_dim > 0:
+      self.global_prep_attn_per_square = torch.nn.Linear(global_stream_dim, 64 * self.DIM_GLOBAL_TO_ATTN, bias = False); 
+      self.global_prep_attn            = torch.nn.Linear(global_stream_dim, self.DIM_GLOBAL_TO_ATTN, bias = False); 
+
   @property
   def smolgenPrepLayer(self):
     return self.wrapped_smolgen_prep_layer.linear
@@ -120,9 +126,15 @@ class DotProductAttention(torch.nn.Module):
     batch_size = query.size(0)
 
     if self.global_stream_dim > 0:
-      # append the global state to the query
-      global_state = global_state.repeat(1,64).reshape([-1, 64, self.global_stream_dim])
-      qkv_x = torch.cat([query, global_state], 2)
+      global_state_for_attn_per_square = self.global_prep_attn_per_square(global_state)
+      global_state_for_attn_per_square = global_state_for_attn_per_square.reshape([-1, 64, self.DIM_GLOBAL_TO_ATTN])
+      
+      
+      global_state_for_attn = self.global_prep_attn(global_state)
+      global_state_for_attn = global_state_for_attn.repeat(1,64).reshape([-1, 64, self.DIM_GLOBAL_TO_ATTN])
+
+      qkv_x = torch.cat([query, global_state_for_attn_per_square], 2)
+      qkv_x = torch.cat([qkv_x, global_state_for_attn], 2)
     else:
       qkv_x = query    
 
