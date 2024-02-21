@@ -539,13 +539,6 @@ namespace CeresTrain.NNEvaluators
 
       using (var _ = NewDisposeScope())
       {
-        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature);
-
-
-        ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
-        ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
-
         // Cast data to desired C# data type and transfer to CPU.
         // Then get ReadOnlySpans over the underlying data of the tensors.
         // Note: Because this all happens within an DisposeScope, the tensors will be kept alive (not disposed)
@@ -555,6 +548,12 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature, 
+                                                          Options.ShrinkExtremes ? predictionUNC : default);
+
+        ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
+        ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
         static float WtdPowerMean(float a, float b, float w1, float w2, float p)
         {
@@ -599,7 +598,7 @@ namespace CeresTrain.NNEvaluators
           }
         }
       
-        if (Options.ShrinkExtremes)
+        if (false && Options.ShrinkExtremes)
         {
           for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
           {
@@ -739,13 +738,26 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    private static Span<Half> ExtractValueWDL(Tensor predictionValue, float? temperature)
+    private static Span<Half> ExtractValueWDL(Tensor predictionValue, float? temperature, Tensor uncertaintyAdjustments = null)
     {
       // Extract logits and possibly apply temperature if specified.
       Tensor valueFloat = predictionValue.to(ScalarType.Float32);
       if (temperature.HasValue && temperature != 1)
       {
-        valueFloat /= temperature;
+        if (uncertaintyAdjustments is not null)
+        {
+          Tensor t = torch.full_like(uncertaintyAdjustments, temperature);
+//          t = torch.where(uncertaintyAdjustments < 0.08, torch.tensor(temperature.Value - 0.4f), t);
+//          t = torch.where(uncertaintyAdjustments > 0.20, torch.tensor(temperature.Value + 0.6f), t);
+
+          t = t + 4 * (uncertaintyAdjustments - 0.1);
+
+          valueFloat /= t;
+        }
+        else
+        {
+          valueFloat /= temperature;
+        } 
       }
 
       // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
