@@ -146,7 +146,7 @@ class DotProductAttention(torch.nn.Module):
     qkv = self.qkv(qkv_x)
 
     # Split apart Q, K, V (with heads on the left)
-    qkv = qkv.reshape(batch_size, 64, self.num_heads, 3*self.d_k)
+    qkv = qkv.reshape(batch_size, 64, self.num_heads, 3*self.d_k * self.attention_multiplier)
     qkv = qkv.permute(0, 2, 1, 3)
     Q, K, V = qkv.chunk(3, dim=-1)
 
