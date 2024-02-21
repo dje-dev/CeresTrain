@@ -58,7 +58,10 @@ class DotProductAttention(torch.nn.Module):
     self.smolgen_head_divisor = smolgen_head_divisor
     self.test = test    
     
-    self.DIM_GLOBAL_TO_ATTN = 64 if test else 32  
+    if global_stream_dim > 0:
+      self.DIM_GLOBAL_TO_ATTN = 64 if test else 32  
+    else:
+      self.DIM_GLOBAL_TO_ATTN = 0 
     
     if (smolgen_activation_type == 'None'):
       self.smolgen_activation_fn = torch.nn.Identity()
@@ -96,6 +99,7 @@ class DotProductAttention(torch.nn.Module):
     if global_stream_dim > 0:
       self.global_prep_attn_per_square = torch.nn.Linear(global_stream_dim, 64 * self.DIM_GLOBAL_TO_ATTN, bias = False); 
       self.global_prep_attn            = torch.nn.Linear(global_stream_dim, self.DIM_GLOBAL_TO_ATTN, bias = False); 
+      
 
   @property
   def smolgenPrepLayer(self):
