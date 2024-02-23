@@ -175,6 +175,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly int GlobalStreamFFNMultiplier { get; init; } = 2;
 
     /// <summary>
+    /// If nonzero, the feed into attention is specialized for each square (plus a shared global component).
+    /// </summary>
+    public readonly int GlobalStreamAttentionPerSquare { get; init; } = 0;
+
+    /// <summary>
     /// Number of layers in the model.
     /// </summary>
     public readonly int NumLayers { get; init; } = 8;

@@ -213,6 +213,7 @@ class CeresNet(pl.LightningModule):
                                                                 ffn_activation_type = config.NetDef_FFNActivationType, 
                                                                 norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
                                                                 attention_multiplier = ATTENTION_MULTIPLIER,
+                                                                global_stream_attention_per_square = config.NetDef_GlobalStreamAttentionPerSquare,
                                                                 smoe_mode = config.NetDef_SoftMoE_MoEMode,
                                                                 smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
                                                                 smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
