@@ -11,7 +11,6 @@ If not, see <http://www.gnu.org/licenses/>.
 
 # End of License Notice
 
-from statistics import linear_regression
 import torch
 import math
 from rms_norm import RMSNorm
