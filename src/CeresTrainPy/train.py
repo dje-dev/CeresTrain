@@ -321,6 +321,8 @@ def Train():
           fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
           if pn.endswith('bias'):
               no_decay.add(fpn)
+          elif "rpe" in fpn:
+              decay.add(fpn)
           elif "embedding" in fpn:
               no_decay.add(fpn)
           elif isinstance(m, blacklist_weight_modules):

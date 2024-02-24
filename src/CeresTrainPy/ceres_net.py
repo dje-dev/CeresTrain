@@ -242,6 +242,9 @@ class CeresNet(pl.LightningModule):
     self.optimizer = optimizer
     self.learning_rate = learning_rate
     self.test = config.Exec_TestFlag
+
+    if (self.test):
+      self.pos_encoding = nn.Linear(16, self.EMBEDDING_DIM)
     
 
   def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -255,6 +258,11 @@ class CeresNet(pl.LightningModule):
     flow = flow.reshape(-1, self.NUM_TOKENS, (64 * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS)
     flow = self.embedding_layer(flow)
 
+    flow_position = flow[:, :, -16:]
+
+    if (self.test):
+      flow = flow + self.pos_encoding(flow_position)
+      
     flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
     flow_global = self.embedding_layer_global(flow_global) if self.global_dim > 0 else None
     

@@ -13,6 +13,7 @@ If not, see <http://www.gnu.org/licenses/>.
 
 import torch
 import math
+from einops import einsum, rearrange
 from rms_norm import RMSNorm
 
 from activation_functions import Swish, ReLUSquared
@@ -87,6 +88,10 @@ class DotProductAttention(torch.nn.Module):
     # Fused Q, K, and V linear projection for improved efficiency.
     self.qkv = torch.nn.Linear(self.d_model + dim_global_info, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
+    
+    if (self.test):
+      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
+#      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -117,6 +122,19 @@ class DotProductAttention(torch.nn.Module):
     #Q = Q / scaleDivisor
     #K = K / scaleDivisor
     scores = torch.matmul(Q, K.transpose(2, 3))
+
+
+#size=(1024, 16, 64, 64), dtype=torch.bfloat16,
+#size=(16, 16, 64, 64), requires_grad=True)
+
+
+    if self.test:        
+      scores = scores + einsum(scores, self.rpe_q, "b h q k, d h q k -> b d q k")
+#      scores = scores + einsum(scores, self.rpe_k, "b h q k, d h q k -> b h q k") 
+
+#      scores += einsum(scores, self.rpe_q, "b h q d, q k d h -> b h q k")
+#      scores += einsum(scores, self.rpe_k, "b h k d, q k d h -> b h q k") 
+
     scores = scores / math.sqrt(self.d_k)
 
     smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
@@ -159,7 +177,7 @@ class DotProductAttention(torch.nn.Module):
     qkv = qkv.reshape(batch_size, 64, self.num_heads, 3*self.d_k * self.attention_multiplier)
     qkv = qkv.permute(0, 2, 1, 3)
     Q, K, V = qkv.chunk(3, dim=-1)
-
+     
     if self.smolgenPrepLayer is not None:
       smolgen = self.sm1(x)
       smolgen = smolgen.reshape(- 1, 64 * self.smolgen_per_square_dim)
