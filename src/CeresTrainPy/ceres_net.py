@@ -266,7 +266,9 @@ class CeresNet(pl.LightningModule):
     if self.global_dim > 0:
       flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
       flow_global = self.embedding_layer_global(flow_global) if self.global_dim > 0 else None
-    
+    else:
+      flow_global = None  
+      
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
       flow, global_update = self.transformer_layer[i](flow, flow_global)
