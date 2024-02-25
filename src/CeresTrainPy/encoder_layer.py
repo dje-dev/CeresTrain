@@ -25,7 +25,7 @@ PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16
 
 
 class EncoderLayer(torch.nn.Module):
-  def __init__(self, num_layers: int, hidden_size: int, global_stream_dim : int, ffn_hidden_size: int, 
+  def __init__(self, trunk_type : str, num_layers: int, hidden_size: int, global_stream_dim : int, ffn_hidden_size: int, 
                 num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5, 
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                 smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
@@ -40,6 +40,8 @@ class EncoderLayer(torch.nn.Module):
     assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish')
     assert norm_type in ('LayerNorm', 'RMSNorm') # None not supported
 
+    self.trunk_type = trunk_type
+    self.test = test
     self.layerNum = layerNum   
     self.numLayers = num_layers 
     self.global_stream_dim = global_stream_dim
