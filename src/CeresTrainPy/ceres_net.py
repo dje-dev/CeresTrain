@@ -255,12 +255,12 @@ class CeresNet(pl.LightningModule):
     flow = input_planes
 
     # Embedding layer.
-    flow = flow.reshape(-1, self.NUM_TOKENS, (64 * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS)
-    flow = self.embedding_layer(flow)
+    flow_squares = flow.reshape(-1, self.NUM_TOKENS, (64 * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS)
 
-    flow_position = flow[:, :, -16:]
+    flow = self.embedding_layer(flow_squares)
 
     if (self.test):
+      flow_position = flow_squares[:, :, -16:]
       flow = flow + self.pos_encoding(flow_position)
       
     flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
