@@ -91,9 +91,9 @@ class CeresNet(pl.LightningModule):
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
 
     self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM )
-    self.embedding_layer_global = nn.Linear(64 * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim) if config.NetDef_GlobalStreamDim > 0 else None
     self.global_dim = config.NetDef_GlobalStreamDim
     self.heads_pure_global = config.NetDef_GlobalStreamDim > 0 and config.NetDef_HeadsNonPolicyGlobalStreamOnly
+    self.embedding_layer_global = nn.Linear(64 * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim) if config.NetDef_GlobalStreamDim > 0 else None
     
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
@@ -262,9 +262,10 @@ class CeresNet(pl.LightningModule):
     if (self.test):
       flow_position = flow_squares[:, :, -16:]
       flow = flow + self.pos_encoding(flow_position)
-      
-    flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
-    flow_global = self.embedding_layer_global(flow_global) if self.global_dim > 0 else None
+
+    if self.global_dim > 0:
+      flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
+      flow_global = self.embedding_layer_global(flow_global) if self.global_dim > 0 else None
     
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
