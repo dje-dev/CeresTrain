@@ -208,7 +208,7 @@ class CeresNet(pl.LightningModule):
     else:
       self.smolgenPrepLayer = None
 
-    self.transformer_layer = torch.nn.Sequential(*[EncoderLayer(self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
+    self.transformer_layer = torch.nn.Sequential(*[EncoderLayer('T', self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
                                                                 self.FFN_MULT*self.EMBEDDING_DIM, self.NUM_HEADS, 
                                                                 ffn_activation_type = config.NetDef_FFNActivationType, 
                                                                 norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
@@ -288,7 +288,7 @@ class CeresNet(pl.LightningModule):
     headOut = self.policyHeadPremap(flow)
     flattenedPolicy = headOut.reshape(-1, self.NUM_TOKENS * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
     if self.global_dim > 0:
-      flattenedPolicy = torch.concat([flattenedPolicy, flow_global], 1);       
+      flattenedPolicy = torch.concat([flattenedPolicy, flow_global.detach()], 1);       
 
     ff1Policy = self.fcPolicyFinal1(flattenedPolicy)
     ff1RELUPolicy = self.fcPolicyRELU1(ff1Policy)
@@ -298,6 +298,8 @@ class CeresNet(pl.LightningModule):
 
     GLOBAL_ONLY = self.heads_pure_global
 
+    flow = flow.detach()
+    
     if GLOBAL_ONLY:
       value_out = self.out_value_layer1(flow_global)
     else:      

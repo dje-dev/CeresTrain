@@ -571,7 +571,7 @@ namespace CeresTrain.Trainer
                                        lrScale = 1.0f - fractionComplete;
                                      }
 
-                                     return MathF.Max(0.05f, MathF.Min(lrScale, 1));
+                                     return MathF.Max(0.10f, MathF.Min(lrScale, 1));
                                    });
 
       Stopwatch sw = new Stopwatch();
