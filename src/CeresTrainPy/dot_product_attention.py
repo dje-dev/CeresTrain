@@ -94,6 +94,7 @@ class DotProductAttention(torch.nn.Module):
     if USE_RPE:
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -128,7 +129,8 @@ class DotProductAttention(torch.nn.Module):
     if USE_RPE:
       scores = scores + einsum(Q, self.rpe_q, "b h q d, d h q k -> b h q k")
       scores = scores + einsum(K, self.rpe_k, "b h k d, d h q k -> b h q k") 
-
+      
+    
     scores = scores / math.sqrt(self.d_k)
 
     smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
@@ -138,6 +140,9 @@ class DotProductAttention(torch.nn.Module):
 
     # Get the weighted average of the values
     H = torch.matmul(A, V)
+
+    if USE_RPE:
+      H = H + einsum(A, self.rpe_v, "b h q k, d h q k -> b h q d") 
 
     return H, A
   
