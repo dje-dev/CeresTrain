@@ -253,6 +253,10 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly bool HeadsNonPolicyGlobalStreamOnly { get; init; } = false;
 
+    /// <summary>
+    /// If relative positional encoding should be used.
+    /// </summary>
+    public readonly bool UseRPE { get; init; } = false;
 
     /// <summary>
     /// Multiplier applied to the width of the default size of each layers in the output heads.

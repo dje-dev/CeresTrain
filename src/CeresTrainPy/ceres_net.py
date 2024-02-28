@@ -222,7 +222,7 @@ class CeresNet(pl.LightningModule):
                                                                 smolgenPrepLayer = self.smolgenPrepLayer, 
                                                                 smolgen_activation_type = config.NetDef_SmolgenActivationType,
                                                                 alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
-                                                                test = config.Exec_TestFlag)
+                                                                use_rpe=config.NetDef_UseRPE, test = config.Exec_TestFlag)
                                                   for i in range(self.NUM_LAYERS)])
 
     if config.NetDef_GlobalStreamDim > 0:
@@ -243,8 +243,8 @@ class CeresNet(pl.LightningModule):
     self.learning_rate = learning_rate
     self.test = config.Exec_TestFlag
 
-    if (self.test):
-      self.pos_encoding = nn.Linear(16, self.EMBEDDING_DIM)
+#    if (self.test):
+#      self.pos_encoding = nn.Linear(16, self.EMBEDDING_DIM)
     
 
   def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -259,9 +259,9 @@ class CeresNet(pl.LightningModule):
 
     flow = self.embedding_layer(flow_squares)
 
-    if (self.test):
-      flow_position = flow_squares[:, :, -16:]
-      flow = flow + self.pos_encoding(flow_position)
+#    if (self.test):
+#      flow_position = flow_squares[:, :, -16:]
+#      flow = flow + self.pos_encoding(flow_position)
 
     if self.global_dim > 0:
       flow_global = input_planes.reshape(-1, 64 * self.NUM_INPUT_BYTES_PER_SQUARE)
@@ -271,17 +271,17 @@ class CeresNet(pl.LightningModule):
       
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
-      flow, global_update = self.transformer_layer[i](flow, flow_global)
+      # Main policy encoder block, also receive back an update to be applied to the global stream
+      flow, global_update = self.transformer_layer[i](flow, flow_global)#.detach())
  
       # Update state based on the output of the encoder layer. 
       if self.global_dim > 0:# &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)  
+        # Prepare input to global encoder, concatenating last global state and the update from the policy encoder
         global_update = global_update.reshape(-1, 64 * 16)      
         flow_state_input = torch.cat([flow_global, global_update], 1)  
-      else:
-        flow_state_input = flow
-        
-      if self.global_dim > 0:
-        (_, flow_global) = self.mlp_global[i](flow_state_input)   
+
+        (_, flow_global_new) = self.mlp_global[i](flow_state_input)  
+        flow_global = flow_global_new + flow_global
         flow_global = self.ln_global(flow_global)
 
     # Heads.

@@ -26,8 +26,6 @@ class LinearWrapper:
   def linear(self):
     return self._layer
 
-USE_RPE = False
-
 
 class DotProductAttention(torch.nn.Module):
   """
@@ -48,7 +46,7 @@ class DotProductAttention(torch.nn.Module):
               global_stream_attention_per_square : int = 0,
               smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
               smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
-              smolgen_activation_type : str = 'None',
+              smolgen_activation_type : str = 'None', use_rpe : bool = False,
               test : bool = False) -> None:
     super().__init__()
 
@@ -62,19 +60,22 @@ class DotProductAttention(torch.nn.Module):
     self.smolgen_head_divisor = smolgen_head_divisor
     self.global_stream_attention_per_square = global_stream_attention_per_square
     self.test = test    
+    self.use_smolgen = smolgenPrepLayer is not None    
+    self.use_rpe = use_rpe
        
-    if (smolgen_activation_type == 'None'):
-      self.smolgen_activation_fn = torch.nn.Identity()
-    elif (smolgen_activation_type == 'ReLU'):
-      self.smolgen_activation_fn = torch.nn.ReLU()
-    elif (smolgen_activation_type == 'ReLUSquared'):
-      self.smolgen_activation_fn = ReLUSquared()
-    elif (smolgen_activation_type == 'Swish'):
-      self.smolgen_activation_fn = Swish()
-    elif (smolgen_activation_type == 'SwiGLU'):
-      self.smolgen_activation_fn = torch.nn.SiLU() # First of SwiGLU here
-    else:
-      raise Exception('Unknown activation type', smolgen_activation_type)
+    if self.use_smolgen:
+      if (smolgen_activation_type == 'None'):
+        self.smolgen_activation_fn = torch.nn.Identity()
+      elif (smolgen_activation_type == 'ReLU'):
+        self.smolgen_activation_fn = torch.nn.ReLU()
+      elif (smolgen_activation_type == 'ReLUSquared'):
+        self.smolgen_activation_fn = ReLUSquared()
+      elif (smolgen_activation_type == 'Swish'):
+        self.smolgen_activation_fn = Swish()
+      elif (smolgen_activation_type == 'SwiGLU'):
+        self.smolgen_activation_fn = torch.nn.SiLU() # First of SwiGLU here
+      else:
+        raise Exception('Unknown activation type', smolgen_activation_type)
 
 
     # Implementations often but not always use no bias
@@ -91,7 +92,7 @@ class DotProductAttention(torch.nn.Module):
     self.qkv = torch.nn.Linear(self.d_model + dim_global_info, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
     
-    if USE_RPE:
+    if self.use_rpe:
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
@@ -99,9 +100,9 @@ class DotProductAttention(torch.nn.Module):
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
 
-    self.wrapped_smolgen_prep_layer = LinearWrapper(smolgenPrepLayer) # wrap so shared layer is not re-registered
 
-    if smolgenPrepLayer is not None:
+    if self.use_smolgen:
+      self.wrapped_smolgen_prep_layer = LinearWrapper(smolgenPrepLayer) # wrap so shared layer is not re-registered
       self.sm1 = torch.nn.Linear(self.d_model, smolgen_per_square_dim)
       self.sm2 = torch.nn.Linear(64 * smolgen_per_square_dim, smolgen_intermediate_dim)
       self.ln1 = torch.nn.LayerNorm(smolgen_intermediate_dim) if norm_type == 'LayerNorm' else RMSNorm(smolgen_intermediate_dim, eps=layernorm_eps)
@@ -126,22 +127,23 @@ class DotProductAttention(torch.nn.Module):
     #K = K / scaleDivisor
     scores = torch.matmul(Q, K.transpose(2, 3))
 
-    if USE_RPE:
+    if self.use_rpe:
       scores = scores + einsum(Q, self.rpe_q, "b h q d, d h q k -> b h q k")
       scores = scores + einsum(K, self.rpe_k, "b h k d, d h q k -> b h q k") 
+      # consider using scaling below as (3 * self.d_k) due to extra terms
       
-    
     scores = scores / math.sqrt(self.d_k)
 
-    smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
-    scores = scores + smolgen_logits_repeated
+    if self.use_smolgen:
+      smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
+      scores = scores + smolgen_logits_repeated
      
     A = self.softmax(scores)
 
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    if USE_RPE:
+    if self.use_rpe:
       H = H + einsum(A, self.rpe_v, "b h q k, d h q k -> b h q d") 
 
     return H, A
@@ -177,7 +179,7 @@ class DotProductAttention(torch.nn.Module):
     qkv = qkv.permute(0, 2, 1, 3)
     Q, K, V = qkv.chunk(3, dim=-1)
      
-    if self.smolgenPrepLayer is not None:
+    if self.use_smolgen:
       smolgen = self.sm1(x)
       smolgen = smolgen.reshape(- 1, 64 * self.smolgen_per_square_dim)
       smolgen = self.sm2(smolgen)
@@ -191,7 +193,10 @@ class DotProductAttention(torch.nn.Module):
       smolgen = smolgen.reshape(-1, self.num_heads, 64, 64)
       H_cat, A = self.sdp_smolgen(Q, K, V, smolgen)
     else:
-      H_cat = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
+      if self.use_rpe:
+        H_cat, A = self.sdp_smolgen(Q, K, V, None)
+      else:
+        H_cat = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
 
     # Put all the heads back together by concat (with heads moved back to the right)
     H_cat =  H_cat.transpose(1, 2).contiguous().view(batch_size, -1, self.d_output * self.attention_multiplier)

@@ -115,6 +115,7 @@ class Configuration:
     self.NetDef_SmolgenToHeadDivisor = config_net_def.get('SmolgenToHeadDivisor', 2)
     self.NetDef_SmolgenActivationType = config_net_def.get('SmolgenActivationType', 'None')
     self.NetDef_HeadWidthMultiplier = config_net_def.get('HeadWidthMultiplier', 4)
+    self.NetDef_UseRPE = config_net_def.get('UseRPE', False)
     self.NetDef_TestValue = config_net_def.get('TestValue', 0)
 
     # SoftMoEConfig is a nested structure, so it requires special handling
