@@ -41,15 +41,18 @@ class DotProductAttention(torch.nn.Module):
       smolgen_intermediate_dim (int, optional): Intermediate dimensionality for Smolgen processing. Defaults to 0.
       smolgenPrepLayer: Optional layer for preprocessing in the Smolgen context.
   """
-  def __init__(self, global_stream_dim : int, num_attention_heads: int, kv_channels: int, norm_type : str, 
-              layernorm_eps : float, attention_multiplier : int = 1,
-              global_stream_attention_per_square : int = 0,
-              smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
-              smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
-              smolgen_activation_type : str = 'None', use_rpe : bool = False,
-              test : bool = False) -> None:
+  def __init__(self, num_tokens_q : int, num_tokens_kv : int,
+               global_stream_dim : int, num_attention_heads: int, kv_channels: int, norm_type : str, 
+               layernorm_eps : float, attention_multiplier : int = 1,
+               global_stream_attention_per_square : int = 0,
+               smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
+               smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
+               smolgen_activation_type : str = 'None', use_rpe : bool = False,
+               test : bool = False) -> None:
     super().__init__()
 
+    self.num_tokens_q = num_tokens_q
+    self.num_tokens_kv = num_tokens_kv
     self.global_stream_dim = global_stream_dim
     self.num_heads = num_attention_heads
     self.attention_multiplier = attention_multiplier
@@ -93,9 +96,10 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
-      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
-      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, 64, 64))
+      assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"
+      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_q, self.num_tokens_kv))
+      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_kv, self.num_tokens_kv))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_kv, self.num_tokens_kv))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -104,12 +108,13 @@ class DotProductAttention(torch.nn.Module):
     if self.use_smolgen:
       self.wrapped_smolgen_prep_layer = LinearWrapper(smolgenPrepLayer) # wrap so shared layer is not re-registered
       self.sm1 = torch.nn.Linear(self.d_model, smolgen_per_square_dim)
-      self.sm2 = torch.nn.Linear(64 * smolgen_per_square_dim, smolgen_intermediate_dim)
+      self.sm2 = torch.nn.Linear(num_tokens_q * smolgen_per_square_dim, smolgen_intermediate_dim)
       self.ln1 = torch.nn.LayerNorm(smolgen_intermediate_dim) if norm_type == 'LayerNorm' else RMSNorm(smolgen_intermediate_dim, eps=layernorm_eps)
       self.sm3 = torch.nn.Linear(smolgen_intermediate_dim, num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor)
       self.ln2 = torch.nn.LayerNorm(num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor) if norm_type == 'LayerNorm' else RMSNorm(num_attention_heads * smolgen_intermediate_dim// smolgen_head_divisor, eps=layernorm_eps)
       
     if global_stream_dim > 0 and self.global_stream_attention_per_square > 0:
+      assert num_tokens_q == num_tokens_kv, "global_stream_attention_per_square requires equal number of tokens for Q and K"
       self.global_prep_attn_per_square = torch.nn.Linear(global_stream_dim, 64 * self.global_stream_attention_per_square, bias = False); 
       self.global_prep_attn            = torch.nn.Linear(global_stream_dim, self.global_stream_attention_per_square, bias = False); 
       
@@ -135,7 +140,8 @@ class DotProductAttention(torch.nn.Module):
     scores = scores / math.sqrt(self.d_k)
 
     if self.use_smolgen:
-      smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, 64, 64)
+      assert self.num_tokens_q == self.num_tokens_kv, "use_smolgen requires equal number of tokens for Q and K"
+      smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, self.num_tokens_q, self.num_tokens_q)
       scores = scores + smolgen_logits_repeated
      
     A = self.softmax(scores)
@@ -165,7 +171,7 @@ class DotProductAttention(torch.nn.Module):
         qkv_x = torch.concatenate([qkv_x, global_state_for_attn], 2)
       else:
         # append the full global state to the query (every square)
-        global_state = global_state.repeat(1,64).reshape([-1, 64, self.global_stream_dim])
+        global_state = global_state.repeat(1,self.num_tokens_q).reshape([-1, self.num_tokens_q, self.global_stream_dim])
         qkv_x = torch.cat([query, global_state], 2)
         
     else:
@@ -175,13 +181,13 @@ class DotProductAttention(torch.nn.Module):
     qkv = self.qkv(qkv_x)
 
     # Split apart Q, K, V (with heads on the left)
-    qkv = qkv.reshape(batch_size, 64, self.num_heads, 3*self.d_k * self.attention_multiplier)
+    qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
     qkv = qkv.permute(0, 2, 1, 3)
     Q, K, V = qkv.chunk(3, dim=-1)
      
     if self.use_smolgen:
       smolgen = self.sm1(x)
-      smolgen = smolgen.reshape(- 1, 64 * self.smolgen_per_square_dim)
+      smolgen = smolgen.reshape(- 1, self.num_tokens_q * self.smolgen_per_square_dim)
       smolgen = self.sm2(smolgen)
       smolgen = self.smolgen_activation_fn(smolgen)
       smolgen = self.ln1(smolgen)
@@ -190,7 +196,7 @@ class DotProductAttention(torch.nn.Module):
       smolgen = self.ln2(smolgen)
       smolgen = smolgen.reshape(-1, self.num_heads, self.smolgen_intermediate_dim // self.smolgen_head_divisor)
       smolgen = self.smolgenPrepLayer(smolgen) # shared
-      smolgen = smolgen.reshape(-1, self.num_heads, 64, 64)
+      smolgen = smolgen.reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
       H_cat, A = self.sdp_smolgen(Q, K, V, smolgen)
     else:
       if self.use_rpe:

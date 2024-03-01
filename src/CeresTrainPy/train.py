@@ -98,8 +98,6 @@ MAX_POSITIONS = config.Opt_NumTrainingPositions
 LR = config.Opt_LearningRateBase
 WEIGHT_DECAY = config.Opt_WeightDecay
 
-NUM_TOKENS = 64 # N.B. ALSO UPDATE IN pt_net.py
-
 num_pos = 0
 
 time_last_status_update = datetime.datetime.now()
@@ -123,7 +121,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = torch.rand(256, NUM_TOKENS, (137) * (64 // NUM_TOKENS)).to(convert_type).to(m.device)
+    sample_inputs = torch.rand(256, 64, (137) * (64 // 64)).to(convert_type).to(m.device)
     if True:
       m_save = torch.jit.trace(m, sample_inputs)
     else:
