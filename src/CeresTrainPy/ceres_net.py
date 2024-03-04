@@ -71,7 +71,7 @@ class CeresNet(pl.LightningModule):
     self.NUM_INPUT_BYTES_PER_SQUARE = 137 # N.B. also update in train.py
 
     self.NUM_TOKENS_INPUT = 64
-    self.NUM_TOKENS_NET = 128 if config.Exec_TestFlag else 64
+    self.NUM_TOKENS_NET = 64
     
   
     self.DROPOUT_RATE = config.Exec_DropoutRate
@@ -229,7 +229,9 @@ class CeresNet(pl.LightningModule):
                                                                 smolgenPrepLayer = self.smolgenPrepLayer, 
                                                                 smolgen_activation_type = config.NetDef_SmolgenActivationType,
                                                                 alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
-                                                                use_rpe=config.NetDef_UseRPE, test = config.Exec_TestFlag)
+                                                                use_rpe=config.NetDef_UseRPE, 
+                                                                dual_attention_mode = config.NetDef_DualAttentionMode,
+                                                                test = config.Exec_TestFlag)
                                                   for i in range(self.NUM_LAYERS)])
 
     if config.NetDef_GlobalStreamDim > 0:
@@ -280,6 +282,7 @@ class CeresNet(pl.LightningModule):
     else:
       flow_global = None  
       
+
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
       # Main policy encoder block, also receive back an update to be applied to the global stream
@@ -309,6 +312,7 @@ class CeresNet(pl.LightningModule):
 
     GLOBAL_ONLY = self.heads_pure_global
 
+     
     if GLOBAL_ONLY:
       flow = flow.detach()
     

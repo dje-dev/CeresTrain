@@ -48,6 +48,7 @@ class DotProductAttention(torch.nn.Module):
                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', use_rpe : bool = False,
+               transpose_out : bool = False,
                test : bool = False) -> None:
     super().__init__()
 
@@ -57,7 +58,7 @@ class DotProductAttention(torch.nn.Module):
     self.num_heads = num_attention_heads
     self.attention_multiplier = attention_multiplier
     self.d_model = num_attention_heads * kv_channels
-    self.d_output = num_attention_heads * kv_channels
+    self.d_output = num_tokens_q if transpose_out else num_attention_heads * kv_channels
     self.d_k = kv_channels
     self.softmax = torch.nn.Softmax(-1)
     self.smolgen_head_divisor = smolgen_head_divisor
@@ -65,7 +66,8 @@ class DotProductAttention(torch.nn.Module):
     self.test = test    
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
-       
+    self.transpose_out = transpose_out  
+    
     if self.use_smolgen:
       if (smolgen_activation_type == 'None'):
         self.smolgen_activation_fn = torch.nn.Identity()
@@ -93,7 +95,8 @@ class DotProductAttention(torch.nn.Module):
       
     # Fused Q, K, and V linear projection for improved efficiency.
     self.qkv = torch.nn.Linear(self.d_model + dim_global_info, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
-    self.W_h = torch.nn.Linear(self.d_output * self.attention_multiplier, self.d_output)
+    out_width = self.num_tokens_q if self.transpose_out else self.d_output
+    self.W_h = torch.nn.Linear(out_width * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
       assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"
@@ -206,7 +209,7 @@ class DotProductAttention(torch.nn.Module):
 
     # Put all the heads back together by concat (with heads moved back to the right)
     H_cat =  H_cat.transpose(1, 2).contiguous().view(batch_size, -1, self.d_output * self.attention_multiplier)
-
+      
     # Final linear layer  
     H = self.W_h(H_cat)
 

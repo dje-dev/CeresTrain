@@ -76,12 +76,28 @@ namespace CeresTrain.Networks.Transformer
       SwiGLU
     }
 
-    public enum DualAttentionMode
+    /// <summary>
+    /// Type of secondary attention mode (if any).
+    /// </summary>
+    public enum DualAttentionModeType
     {
+      /// <summary>
+      /// No secondary attention.
+      /// </summary>
       None,
-      DualAttention,
+
+      /// <summary>
+      /// Dual attention only.
+      /// </summary>
+      DualAttentionOnly,
+
+      /// <summary>
+      /// Dual attention and feedforward network.
+      /// Based on "DaViT: Dual Attention Vision Transformers" by Ding et. al.
+      /// </summary>
       DualAttentionAndFFN,
     }
+
 
     [Flags]
     public enum TransformerFeatures
@@ -91,11 +107,13 @@ namespace CeresTrain.Networks.Transformer
 
       /// <summary>
       /// Turn on Smolgen feature with typical sizing.
+      /// See: https://lczero.org/blog/2024/02/transformer-progress/ (Daniel Moore).
       /// </summary>
       Smolgen = 1,
 
       /// <summary>
       /// Turn on Soft Mixture of Experts feature with typical hyperparameters.
+      /// See "From Sparse to Soft Mixtures of Experts" by Puigcerver et. al.
       /// </summary>
       SoftMoE = 2,
 
@@ -194,6 +212,11 @@ namespace CeresTrain.Networks.Transformer
     /// Number of attention heads in the model.
     /// </summary>
     public readonly int NumHeads { get; init; } = 8;
+
+    /// <summary>
+    /// Type of dual attention (if any).
+    /// </summary>
+    public readonly DualAttentionModeType DualAttentionMode { get; init; } = DualAttentionModeType.None;
 
     /// <summary>
     /// If transformer encoded block should be pre-normalized (as opposed to post-normalized).

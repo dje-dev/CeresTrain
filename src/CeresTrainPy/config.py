@@ -103,6 +103,7 @@ class Configuration:
     self.NetDef_HeadsNonPolicyGlobalStreamOnly = config_net_def.get('HeadsNonPolicyGlobalStreamOnly', False)
     self.NetDef_NumLayers = config_net_def.get('NumLayers', 8)
     self.NetDef_NumHeads = config_net_def.get('NumHeads', 8)
+    self.NetDef_DualAttentionMode = config_net_def.get('DualAttentionMode', 'None')
     self.NetDef_PreNorm = config_net_def.get('PreNorm', False)
     self.NetDef_NormType = config_net_def.get('NormType', 'LayerNorm')
     self.NetDef_AttentionMultiplier = config_net_def.get('AttentionMultiplier', 1)
