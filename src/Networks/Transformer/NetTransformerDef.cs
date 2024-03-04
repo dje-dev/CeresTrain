@@ -76,6 +76,12 @@ namespace CeresTrain.Networks.Transformer
       SwiGLU
     }
 
+    public enum DualAttentionMode
+    {
+      None,
+      DualAttention,
+      DualAttentionAndFFN,
+    }
 
     [Flags]
     public enum TransformerFeatures
