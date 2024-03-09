@@ -47,7 +47,11 @@ class DotProductAttention(torch.nn.Module):
                global_stream_attention_per_square : int = 0,
                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
-               smolgen_activation_type : str = 'None', use_rpe : bool = False,
+               smolgen_activation_type : str = 'None', 
+               use_rpe : bool = False,
+               rpe_factor_q : torch.Tensor = None,
+               rpe_factor_k : torch.Tensor = None,
+               rpe_factor_v : torch.Tensor = None,
                transpose_out : bool = False,
                test : bool = False) -> None:
     super().__init__()
@@ -97,12 +101,18 @@ class DotProductAttention(torch.nn.Module):
     self.qkv = torch.nn.Linear(self.d_model + dim_global_info, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     out_width = self.num_tokens_q if self.transpose_out else self.d_output
     self.W_h = torch.nn.Linear(out_width * self.attention_multiplier, self.d_output)
+#    print ('dout ', out_width * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"
-      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_q, self.num_tokens_kv))
-      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_kv, self.num_tokens_kv))
-      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, self.num_tokens_kv, self.num_tokens_kv))
+      assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"     
+      self.rpe_factor_q = LinearWrapper(rpe_factor_q)
+      self.rpe_factor_k = LinearWrapper(rpe_factor_k)
+#      self.rpe_factor_v = LinearWrapper(rpe_factor_v)
+      
+      RPE_INNER_DIM = 512
+      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
+      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
+#      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -127,6 +137,7 @@ class DotProductAttention(torch.nn.Module):
     return self.wrapped_smolgen_prep_layer.linear
 
 
+
   def sdp_smolgen(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, smolgen:torch.Tensor): # -> torch.Tensor, torch.Tensor:
     # Note that scaling could be done separately on Q and K to possibly improve stability. See:
     #   https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/118
@@ -136,8 +147,8 @@ class DotProductAttention(torch.nn.Module):
     scores = torch.matmul(Q, K.transpose(2, 3))
 
     if self.use_rpe:
-      scores = scores + einsum(Q, self.rpe_q, "b h q d, d h q k -> b h q k")
-      scores = scores + einsum(K, self.rpe_k, "b h k d, d h q k -> b h q k") 
+      scores = scores + self.rpe_factor_q.linear(einsum(Q, self.rpe_q, "b h q d, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+      scores = scores + self.rpe_factor_k.linear(einsum(K, self.rpe_k, "b h k d, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
       # consider using scaling below as (3 * self.d_k) due to extra terms
       
     scores = scores / math.sqrt(self.d_k)
@@ -148,12 +159,13 @@ class DotProductAttention(torch.nn.Module):
       scores = scores + smolgen_logits_repeated
      
     A = self.softmax(scores)
-
+#    print('A', A.shape) # 1024 16 64 64
     # Get the weighted average of the values
     H = torch.matmul(A, V)
+#    print('H', H.shape) # 1024 16 64 24
 
-    if self.use_rpe:
-      H = H + einsum(A, self.rpe_v, "b h q k, d h q k -> b h q d") 
+#    if self.use_rpe:
+#      H = H + einsum(A, self.rpe_v, "b h q k, d h q k -> b h q d") 
 
     return H, A
   

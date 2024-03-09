@@ -36,7 +36,11 @@ class EncoderLayer(torch.nn.Module):
                 global_stream_attention_per_square : int = 0,
                 smoe_mode : str = 'None', smoe_num_experts : int = 0,
                 alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0,
-                use_rpe : bool = False, dual_attention_mode : str = 'None', test : bool = False):
+                use_rpe : bool = False, 
+                rpe_factor_q : torch.Tensor = None,
+                rpe_factor_k : torch.Tensor = None,
+                rpe_factor_v : torch.Tensor = None,
+                dual_attention_mode : str = 'None', test : bool = False):
     super().__init__()
 
     assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish')
@@ -57,14 +61,15 @@ class EncoderLayer(torch.nn.Module):
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv, global_stream_dim, num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, global_stream_attention_per_square,
-                                         smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, use_rpe, False, test)
+                                         smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
+                                         use_rpe, rpe_factor_q, rpe_factor_k, rpe_factor_v, False, test)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dual_attention_mode in ('DualAttentionAndFFN', 'DualAttentionOnly'):
       NUM_ATTENTION2_HEADS = 8 
       self.attention2 = DotProductAttention(hidden_size, hidden_size, 0, NUM_ATTENTION2_HEADS, num_tokens_q//NUM_ATTENTION2_HEADS, norm_type, layernorm_eps, 
-                                           attention_multiplier, global_stream_attention_per_square,
-                                           0, 0, 0, None, smolgen_activation_type, False, True, test)
+                                           1, global_stream_attention_per_square,
+                                           0, 0, 0, None, smolgen_activation_type, False, None, None, None, True, test)
       self.ln3 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
       if self.dual_attention_mode == 'DualAttentionAndFFN':
         self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 

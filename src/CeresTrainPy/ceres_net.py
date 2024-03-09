@@ -212,27 +212,40 @@ class CeresNet(pl.LightningModule):
     else:
       self.smolgenPrepLayer = None
 
+    if config.NetDef_UseRPE:
+      RPE_INNER_DIM = 512
+      self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
+      self.rpe_factor_k = nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
+      self.rpe_factor_v = None # nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
+    else:
+      self.smolgenPrepLayer = None
+
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET
-    self.transformer_layer = torch.nn.Sequential(*[EncoderLayer('T', num_tokens_q, num_tokens_kv,
-                                                                self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
-                                                                self.FFN_MULT*self.EMBEDDING_DIM, self.NUM_HEADS, 
-                                                                ffn_activation_type = config.NetDef_FFNActivationType, 
-                                                                norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
-                                                                attention_multiplier = ATTENTION_MULTIPLIER,
-                                                                global_stream_attention_per_square = config.NetDef_GlobalStreamAttentionPerSquare,
-                                                                smoe_mode = config.NetDef_SoftMoE_MoEMode,
-                                                                smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
-                                                                smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
-                                                                smolgen_intermediate_dim = SMOLGEN_INTERMEDIATE_DIM, 
-                                                                smolgen_head_divisor = config.NetDef_SmolgenToHeadDivisor,
-                                                                smolgenPrepLayer = self.smolgenPrepLayer, 
-                                                                smolgen_activation_type = config.NetDef_SmolgenActivationType,
-                                                                alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
-                                                                use_rpe=config.NetDef_UseRPE, 
-                                                                dual_attention_mode = config.NetDef_DualAttentionMode,
-                                                                test = config.Exec_TestFlag)
-                                                  for i in range(self.NUM_LAYERS)])
+    self.transformer_layer = torch.nn.Sequential(
+       *[EncoderLayer('T', num_tokens_q, num_tokens_kv,
+                      self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
+                      self.FFN_MULT*self.EMBEDDING_DIM, 
+                      self.NUM_HEADS * 2 if config.Exec_TestFlag and i % 2 == 0 else self.NUM_HEADS,
+                      ffn_activation_type = config.NetDef_FFNActivationType, 
+                      norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
+                      attention_multiplier = ATTENTION_MULTIPLIER * 3 if config.Exec_TestFlag and i % 2 == 0 else ATTENTION_MULTIPLIER,
+                      global_stream_attention_per_square = config.NetDef_GlobalStreamAttentionPerSquare,
+                      smoe_mode = config.NetDef_SoftMoE_MoEMode,
+                      smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
+                      smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
+                      smolgen_intermediate_dim = SMOLGEN_INTERMEDIATE_DIM, 
+                      smolgen_head_divisor = config.NetDef_SmolgenToHeadDivisor,
+                      smolgenPrepLayer = self.smolgenPrepLayer, 
+                      smolgen_activation_type = config.NetDef_SmolgenActivationType,
+                      alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
+                      use_rpe=config.NetDef_UseRPE, 
+                      rpe_factor_q = self.rpe_factor_q,
+                      rpe_factor_k = self.rpe_factor_k,
+                      rpe_factor_v = self.rpe_factor_v,
+                      dual_attention_mode = config.NetDef_DualAttentionMode if config.Exec_TestFlag and i % 2 == 1 else 'None',
+                      test = config.Exec_TestFlag)
+        for i in range(self.NUM_LAYERS)])
 
     if config.NetDef_GlobalStreamDim > 0:
       PER_SQUARE_DIM = 16
