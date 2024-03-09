@@ -45,8 +45,11 @@ print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.enable_flash_sdp(True)
 
-#sys.argv = ['train.py', '/mnt/e/cout/configs/KRP_256_8_start35x', '/mnt/e/cout']
-#sys.argv = ['train.py', '/mnt/e/cout/configs/t1_wsl', '/mnt/e/cout', 'CONVERT', '1525782528']
+# Settings to facilitate interactive debugging:
+# NOTE: need to also disable compile 
+#os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
+#sys.argv = ['train.py', '/mnt/deve/cout/configs/ENT_256_10_16_FFN2_500mm_smol_moe_dualboth', '/mnt/deve/cout']
+
 
 if len(sys.argv) < 3:
   raise ValueError("train.py expected <config_path> <outputs_directory>")
@@ -320,6 +323,8 @@ def Train():
           if pn.endswith('bias'):
               no_decay.add(fpn)
           elif "rpe" in fpn:
+              decay.add(fpn)
+          elif "qkv" in fpn:
               decay.add(fpn)
           elif "embedding" in fpn:
               no_decay.add(fpn)
