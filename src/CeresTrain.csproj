@@ -35,11 +35,11 @@
   </ItemGroup>
   
   <ItemGroup Condition="'$(OS)' == 'Unix'">
-    <PackageReference Include="TorchSharp-cuda-linux" Version="0.101.5" />
+    <PackageReference Include="TorchSharp-cuda-linux" Version="0.102.2" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <PackageReference Include="TorchSharp-cuda-windows" Version="0.101.5" />
+    <PackageReference Include="TorchSharp-cuda-windows" Version="0.102.2" />
   </ItemGroup>
 
   <ItemGroup>
