@@ -216,7 +216,7 @@ class CeresNet(pl.LightningModule):
       RPE_INNER_DIM = 512
       self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
       self.rpe_factor_k = self.rpe_factor_q # shared
-      self.rpe_factor_v = None
+      self.rpe_factor_v = self.rpe_factor_q # shared
 
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET

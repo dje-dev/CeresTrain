@@ -103,12 +103,12 @@ class DotProductAttention(torch.nn.Module):
       assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"     
       self.rpe_factor_q = LinearWrapper(rpe_factor_q)
       self.rpe_factor_k = LinearWrapper(rpe_factor_k)
-#      self.rpe_factor_v = LinearWrapper(rpe_factor_v)
+      self.rpe_factor_v = LinearWrapper(rpe_factor_v)
       
       RPE_INNER_DIM = 512
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
-#      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, RPE_INNER_DIM))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -158,6 +158,10 @@ class DotProductAttention(torch.nn.Module):
 #    print('A', A.shape) # 1024 16 64 64
     # Get the weighted average of the values
     H = torch.matmul(A, V)
+
+    if self.use_rpe:
+      H = H + self.rpe_factor_v.linear(einsum(H, self.rpe_v, "b h q k, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+    
 #    print('H', H.shape) # 1024 16 64 24
 
 #    if self.use_rpe:
