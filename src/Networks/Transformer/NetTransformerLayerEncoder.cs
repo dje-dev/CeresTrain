@@ -30,7 +30,6 @@ using CeresTrain.Networks.MiscModules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.Utils;
 
-
 #endregion
 
 namespace CeresTrain.Networks.Transformer
@@ -94,6 +93,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool PreNorm;
 
     /// <summary>
+    /// Type of dual attention mode to use (if any).
+    /// </summary>
+    public readonly NetTransformerDef.DualAttentionModeType DualAttentionMode;
+    
+    /// <summary>
     /// Number of neurons to be used per square if Smolgen is enabled (otherwise 0).
     /// </summary>
     public readonly int SmolgenPerSquareDim;
@@ -155,17 +159,25 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool MonitorMoEActivationStats;
 
     Linear attentionQKV;
-
     Linear attentionOutput;
+
+    Linear attentionQKVDual;
+    Linear attentionOutputDual;
 
     Linear mlpLinear1;
     Linear mlpLinear2;
     Linear mlpLinear3;
 
+    Linear mlpLinearDual1;
+    Linear mlpLinearDual2;
+
     Linear toGlobalV;
 
     Module<Tensor, Tensor> norm1;
     Module<Tensor, Tensor> norm2;
+    Module<Tensor, Tensor> norm3;
+    Module<Tensor, Tensor> norm4;
+
     ReLU relu;
 
     Dropout dropoutAttention;
@@ -207,7 +219,8 @@ namespace CeresTrain.Networks.Transformer
     /// <exception cref="ArgumentException"></exception>
     public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, int dimGlobalStream, bool preNorm,
                                       NetTransformerDef.NormalizationType normType,
-                                      int attentionMultiplier, int ffnMult, NetTransformerDef.ActivationType ffnActivation,
+                                      int attentionMultiplier, NetTransformerDef.DualAttentionModeType dualAttentionMode,
+                                      int ffnMult, NetTransformerDef.ActivationType ffnActivation,
                                       float alpha, float dropoutRate, bool dropoutDuringInference, float clipLevel,
                                       bool monitorCosineSimilarity,
                                       int smolgenPerSquareDim, int smolgenIntermediateDim, 
@@ -231,6 +244,7 @@ namespace CeresTrain.Networks.Transformer
       FFNActivation = ffnActivation;
       PreNorm = preNorm;
       AttentionMultiplier = attentionMultiplier;
+      DualAttentionMode = dualAttentionMode;
       DropoutRate = dropoutRate;
       DropoutDuringInference = dropoutDuringInference;
       ClipLevel = clipLevel;
@@ -244,6 +258,12 @@ namespace CeresTrain.Networks.Transformer
 
       attentionQKV = Linear(dim + (ATTENTION_USE_GLOBAL_STREAM ? DimGlobalStream : 0), dim * attentionMultiplier * 3, hasBias: false);
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
+
+      if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
+      {
+        attentionQKVDual = Linear(64, 64 * 3, hasBias: false);
+        attentionOutputDual = Linear(64, 64, hasBias: true);
+      }
 
       bool useSoftMoE = (softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.None 
                      && softMoEParams.NumExperts > 0)
@@ -286,6 +306,18 @@ namespace CeresTrain.Networks.Transformer
 
       norm1 = MakeNormalizationLayer(DimModel);
       norm2 = MakeNormalizationLayer(DimModel);
+
+      if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
+      {
+        norm3 = MakeNormalizationLayer(DimModel);
+        if (DualAttentionMode == NetTransformerDef.DualAttentionModeType.DualAttentionAndFFN)
+        {
+          Debug.Assert(FFNActivation != NetTransformerDef.ActivationType.SwiGLU, "SwiGLU not supported for DualAttentionAndFFN");
+          mlpLinearDual1 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
+          mlpLinearDual2 = Linear(dim * ffnMult, dim, hasBias: USE_FFN_BIAS);
+          norm4 = MakeNormalizationLayer(DimModel);
+        }
+      }
 
       if (dropoutRate > 0.0f)
       {
@@ -400,14 +432,14 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="clipGamma"></param>
     /// <param name="smolgenLogits"></param>
     /// <returns></returns>
-    Tensor ScaledDotProductAttention(Tensor Q, Tensor K, Tensor V, float clipGamma, Tensor smolgenLogits)
+    Tensor ScaledDotProductAttention(Tensor Q, Tensor K, Tensor V, float clipGamma, Tensor? smolgenLogits)
     {
       using (NewDisposeScope())
       {
         Tensor scores = matmul(Q, K.transpose(2, 3));
         scores.div_(MathF.Sqrt(DimPerHead));
 
-        if (SmolgenPerSquareDim > 0)
+        if (smolgenLogits is not null)
         {
 //if (count % 100 == 0) DumpTensorStats(smolgenLogitsRepeated, "smolgen");
 
@@ -452,67 +484,19 @@ namespace CeresTrain.Networks.Transformer
       {
         int batch_size = (int)x.size(0);
 
-       
+
         // Repeat state 64 times
         if (DimGlobalStream > 0 && ATTENTION_USE_GLOBAL_STREAM)
         {
           // Concatenate x and state
           state = state.repeat(1, 64).reshape([-1, 64, DimGlobalStream]);
-        } 
+        }
 
-        Tensor qkv_x = (DimGlobalStream == 0 || !ATTENTION_USE_GLOBAL_STREAM) ? x : torch.cat([x, state ], 2);
+        Tensor qkv_x = (DimGlobalStream == 0 || !ATTENTION_USE_GLOBAL_STREAM) ? x : torch.cat([x, state], 2);
 
         Tensor attentionInput = PreNorm ? norm1.call(qkv_x) : qkv_x;
-
-        Tensor qkv = attentionQKV.call(attentionInput);
-
-        // Split apart Q, K, V (with heads on the left)
-        qkv = qkv.reshape(batch_size, 64, NumHeads, 3 * DimPerHead);
-        qkv = qkv.permute(0, 2, 1, 3);
-        Tensor[] qkvChunks = qkv.chunk(3, -1);
-        (Tensor attentionQ, Tensor attentionK, Tensor attentionV) = (qkvChunks[0], qkvChunks[1], qkvChunks[2]);
-
-        float thisClipLevel = ClipLevel != 0 && LayerNum == NumLayers - 1 ? ClipLevel : 0;
-        bool monitorThisTime = MonitorCosineSimilarity && MonitoringCurrentInvocation;
-
-        Tensor H_cat;
-        if (SmolgenPerSquareDim == 0 && thisClipLevel == 0 && !monitorThisTime)
-        {
-          H_cat = functional.scaled_dot_product_attention(attentionQ, attentionK, attentionV);
-        }
-        else
-        {
-          Tensor smolgenLogits = null;
-          if (SmolgenPerSquareDim > 0)
-          {
-            smolgenLogits = SmolgenAttentionCalc(x);
-          }
-
-          H_cat = ScaledDotProductAttention(attentionQ, attentionK, attentionV, thisClipLevel, smolgenLogits);
-
-
-          if (monitorThisTime)
-          {
-            lastAttentionHeadOutputCosineSimilarities = VectorSimilarity.CalcAttentionHeadOutputCosineOutputSimilarities(H_cat, attentionOutput.weight, DimModel, NumHeads, DimPerHead);
-          }
-        }
-
-        // Put all the heads back together by concat (with heads moved back to the right).
-        Tensor H_cat1 = H_cat.transpose(1, 2).contiguous().view(batch_size, -1, DimModel * AttentionMultiplier);
-
-        Tensor attn_output = attentionOutput.call(H_cat1);
-
-        if (DropoutRate > 0)
-        {
-          if (isEval)
-          {
-            attn_output = functional.dropout(attn_output, DropoutRate, training: DropoutDuringInference);
-          }
-          else
-          {
-            attn_output = dropoutAttention.call(attn_output);
-          }
-        }
+        Tensor attn_output = Attention(x, isEval, batch_size, attentionInput, AttentionMultiplier,
+                                       attentionQKV, SmolgenPerSquareDim > 0, attentionOutput);
 
         // RESIDUAL/LAYER NORM
         Tensor out1 = x * Alpha + attn_output;
@@ -598,8 +582,118 @@ namespace CeresTrain.Networks.Transformer
           out2 = norm2.call(out2);
         }
 
-        return (out2.MoveToOuterDisposeScope(), DimGlobalStream > 0 ? toGlobal.MoveToOuterDisposeScope() : null); 
+        if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
+        {
+          const int NUM_HEADS = 8;
+          Tensor attn_output3 = AttentionTranspose(out2, isEval, batch_size, NUM_HEADS);
+          Tensor out3 = norm3.call(out2 * Alpha + attn_output3);
+
+          if (DualAttentionMode == NetTransformerDef.DualAttentionModeType.DualAttentionAndFFN)
+          {
+            Tensor mlpDual = mlpLinearDual1.call(out3);
+            mlpDual = TorchSharpUtils.WithActivation(mlpDual, FFNActivation);
+            mlpDual = mlpLinearDual2.call(mlpDual);
+            out3 = norm4.call(out3 * Alpha + mlpDual);
+          }
+          out2 = out3;
+        }
+
+        return (out2.MoveToOuterDisposeScope(), DimGlobalStream > 0 ? toGlobal.MoveToOuterDisposeScope() : null);
       }
+    }
+
+
+    private Tensor Attention(Tensor x, bool isEval, int batch_size, Tensor attentionInput,
+                         int attentionMultiplier,
+                         Linear attKQV, bool useSmolgen, Linear attnOutput)
+    {
+      Tensor qkv = attKQV.call(attentionInput);
+
+      // Split apart Q, K, V (with heads on the left)
+      qkv = qkv.reshape(batch_size, 64, NumHeads, 3 * DimPerHead);
+      qkv = qkv.permute(0, 2, 1, 3);
+      Tensor[] qkvChunks = qkv.chunk(3, -1);
+      (Tensor attentionQ, Tensor attentionK, Tensor attentionV) = (qkvChunks[0], qkvChunks[1], qkvChunks[2]);
+
+      float thisClipLevel = ClipLevel != 0 && LayerNum == NumLayers - 1 ? ClipLevel : 0;
+      bool monitorThisTime = MonitorCosineSimilarity && MonitoringCurrentInvocation;
+
+      Tensor H_cat;
+      if (SmolgenPerSquareDim == 0 && thisClipLevel == 0 && !monitorThisTime)
+      {
+        H_cat = functional.scaled_dot_product_attention(attentionQ, attentionK, attentionV);
+      }
+      else
+      {
+        Tensor? smolgenLogits = null;
+        if (useSmolgen)
+        {
+          smolgenLogits = SmolgenAttentionCalc(x);
+        }
+
+        H_cat = ScaledDotProductAttention(attentionQ, attentionK, attentionV, thisClipLevel, smolgenLogits);
+
+
+        if (monitorThisTime)
+        {
+          lastAttentionHeadOutputCosineSimilarities = VectorSimilarity.CalcAttentionHeadOutputCosineOutputSimilarities(H_cat, attentionOutput.weight, DimModel, NumHeads, DimPerHead);
+        }
+      }
+
+      // Put all the heads back together by concat (with heads moved back to the right).
+      Tensor H_cat1 = H_cat.transpose(1, 2).contiguous().view(batch_size, -1, DimModel * attentionMultiplier);
+
+      Tensor attn_output = attnOutput.call(H_cat1);
+
+      if (DropoutRate > 0)
+      {
+        if (isEval)
+        {
+          attn_output = functional.dropout(attn_output, DropoutRate, training: DropoutDuringInference);
+        }
+        else
+        {
+          attn_output = dropoutAttention.call(attn_output);
+        }
+      }
+
+      return attn_output;
+    }
+
+    private Tensor AttentionTranspose(Tensor attentionInput, bool isEval, int batch_size, int numHeads)
+    {
+      const int DIM_TR_MODEL = 64;
+      int DIM_PER_HEAD = DIM_TR_MODEL / numHeads;
+      attentionInput = attentionInput.permute(0, 2, 1);
+
+      Tensor qkv = attentionQKVDual.call(attentionInput);
+
+      // Split apart Q, K, V (with heads on the left)
+      qkv = qkv.reshape(batch_size, DimModel, numHeads, 3 * DIM_PER_HEAD);
+      qkv = qkv.permute(0, 2, 1, 3);
+      Tensor[] qkvChunks = qkv.chunk(3, -1);
+      (Tensor attentionQ, Tensor attentionK, Tensor attentionV) = (qkvChunks[0], qkvChunks[1], qkvChunks[2]);
+
+      Tensor H_cat = functional.scaled_dot_product_attention(attentionQ, attentionK, attentionV);
+
+      // Put all the heads back together by concat (with heads moved back to the right).
+      Tensor H_cat1 = H_cat.transpose(1, 2).contiguous().view(batch_size, -1, DIM_TR_MODEL);
+
+      Tensor attn_output = attentionOutputDual.call(H_cat1);
+
+      if (DropoutRate > 0)
+      {
+        if (isEval)
+        {
+          attn_output = functional.dropout(attn_output, DropoutRate, training: DropoutDuringInference);
+        }
+        else
+        {
+          attn_output = dropoutAttention.call(attn_output);
+        }
+      }
+
+      return attn_output.permute(0, 2, 1); // return untransposed result
     }
 
     #region Helper methods
@@ -612,7 +706,37 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="weightsLoaded"></param>
     /// <exception cref="NotImplementedException"></exception>
     internal void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded)
-    {
+    {                                            
+      if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
+      {
+        LinearLoad(weightsSource, weightsLoaded, attentionQKVDual, $"transformer_layer.{LayerNum}.attention2.qkv.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, attentionOutputDual, $"transformer_layer.{LayerNum}.attention2.W_h.weight", $"transformer_layer.{LayerNum}.attention2.W_h.bias");
+
+        LinearLoad(weightsSource, weightsLoaded, mlpLinearDual1, $"transformer_layer.{LayerNum}.mlp2.linear1.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, mlpLinearDual2, $"transformer_layer.{LayerNum}.mlp2.linear2.weight", null);
+
+        if (NormType == NetTransformerDef.NormalizationType.LayerNorm)
+        {
+          LayerNormLoad(weightsSource, weightsLoaded, (LayerNorm)norm3, $"transformer_layer.{LayerNum}.ln3.weight", $"transformer_layer.{LayerNum}.ln3.bias");
+          if (DualAttentionMode == NetTransformerDef.DualAttentionModeType.DualAttentionAndFFN)
+          {
+            LayerNormLoad(weightsSource, weightsLoaded, (LayerNorm)norm4, $"transformer_layer.{LayerNum}.ln4.weight", $"transformer_layer.{LayerNum}.ln4.bias");
+          }
+        }
+        else if (NormType == NetTransformerDef.NormalizationType.RMSNorm)
+        {
+          RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)norm3, $"transformer_layer.{LayerNum}.ln3.scale");
+          if (DualAttentionMode == NetTransformerDef.DualAttentionModeType.DualAttentionAndFFN)
+          {
+            RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)norm4, $"transformer_layer.{LayerNum}.ln4.scale");
+          }
+        }
+        else if (NormType != NetTransformerDef.NormalizationType.None)
+        {
+          throw new NotImplementedException("Unsupported NormalizationType: " + NormType);
+        } 
+      }
+
       LinearLoad(weightsSource, weightsLoaded, attentionQKV, $"transformer_layer.{LayerNum}.attention.qkv.weight", null);
       LinearLoad(weightsSource, weightsLoaded, attentionOutput, $"transformer_layer.{LayerNum}.attention.W_h.weight", $"transformer_layer.{LayerNum}.attention.W_h.bias");
 
@@ -683,6 +807,6 @@ namespace CeresTrain.Networks.Transformer
     }
 
 
-    #endregion
+#endregion
   }
 }

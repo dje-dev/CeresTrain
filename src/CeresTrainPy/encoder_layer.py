@@ -62,14 +62,14 @@ class EncoderLayer(torch.nn.Module):
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv, global_stream_dim, num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, global_stream_attention_per_square,
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
-                                         use_rpe, rpe_factor_q, rpe_factor_k, rpe_factor_v, False, test)
+                                         use_rpe, rpe_factor_q, rpe_factor_k, rpe_factor_v, test)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dual_attention_mode in ('DualAttentionAndFFN', 'DualAttentionOnly'):
       NUM_ATTENTION2_HEADS = 8 
       self.attention2 = DotProductAttention(hidden_size, hidden_size, 0, NUM_ATTENTION2_HEADS, num_tokens_q//NUM_ATTENTION2_HEADS, norm_type, layernorm_eps, 
                                            1, global_stream_attention_per_square,
-                                           0, 0, 0, None, smolgen_activation_type, False, None, None, None, True, test)
+                                           0, 0, 0, None, smolgen_activation_type, False, None, None, None, test)
       self.ln3 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
       if self.dual_attention_mode == 'DualAttentionAndFFN':
         self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
@@ -128,9 +128,9 @@ class EncoderLayer(torch.nn.Module):
     
     if self.dual_attention_mode != 'None':
       out3_tr = out2.permute(0, 2, 1)
-#      print ('x_tr', x_tr.shape)
       attn_output3 = self.attention2(out3_tr, out3_tr, out3_tr, out3_tr, None)
-#      print ('attn_output2', attn_output2.shape)
+      attn_output3 = attn_output3.permute(0, 2, 1)
+
       out3 = self.ln3(out2 * self.alpha + attn_output3)
       if self.dual_attention_mode == 'DualAttentionAndFFN':
         (_, mlp_output2) = self.mlp2(out3) 

@@ -217,8 +217,6 @@ class CeresNet(pl.LightningModule):
       self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
       self.rpe_factor_k = self.rpe_factor_q # shared
       self.rpe_factor_v = None
-    else:
-      self.smolgenPrepLayer = None
 
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET
@@ -243,7 +241,7 @@ class CeresNet(pl.LightningModule):
                       rpe_factor_q = self.rpe_factor_q if config.NetDef_UseRPE else None,
                       rpe_factor_k = self.rpe_factor_k if config.NetDef_UseRPE else None,
                       rpe_factor_v = self.rpe_factor_v if config.NetDef_UseRPE else None,
-                      dual_attention_mode = config.NetDef_DualAttentionMode if config.Exec_TestFlag and i % 4 == 2 else 'None',
+                      dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 0 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
 

@@ -208,9 +208,14 @@ namespace CeresTrain.Networks.Transformer
             }
           }
 
+          bool hasDual = TransformerConfig.DualAttentionMode != NetTransformerDef.DualAttentionModeType.None 
+                      && paramsToLoad.ContainsKey($"transformer_layer.{layerNum}.attention2.qkv.weight"); // sometimes dual only prepsent in certain layers, e.g. every other one
+          NetTransformerDef.DualAttentionModeType dualMode = !hasDual ? NetTransformerDef.DualAttentionModeType.None : TransformerConfig.DualAttentionMode;
+
           NetTransformerLayerEncoder teCS = new(TransformerConfig.NumLayers, layerNum, TransformerConfig.ModelDim,
                                                 TransformerConfig.NumHeads, TransformerConfig.GlobalStreamDim, TransformerConfig.PreNorm,
-                                                TransformerConfig.NormType, TransformerConfig.AttentionMultiplier,
+                                                TransformerConfig.NormType, 
+                                                TransformerConfig.AttentionMultiplier, dualMode,
                                                 TransformerConfig.FFNMultiplier, TransformerConfig.FFNActivationType,
                                                 alpha, ExecutionConfig.DropoutRate, ExecutionConfig.DropoutDuringInference,
                                                 0, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
