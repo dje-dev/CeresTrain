@@ -214,7 +214,10 @@ class CeresNet(pl.LightningModule):
 
     if config.NetDef_UseRPE:
       RPE_INNER_DIM = 512
-      self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64, bias=False)
+      self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64)
+      self.rpe_factor_q.weight.data.zero_()
+      self.rpe_factor_q.bias.data.zero_()
+      
       self.rpe_factor_k = self.rpe_factor_q # shared
       self.rpe_factor_v = self.rpe_factor_q # shared
 

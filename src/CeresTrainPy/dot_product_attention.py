@@ -110,6 +110,11 @@ class DotProductAttention(torch.nn.Module):
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, RPE_INNER_DIM))
 
+      with torch.no_grad():
+        torch.nn.init.zeros_(self.rpe_q)
+        torch.nn.init.zeros_(self.rpe_k)
+        torch.nn.init.zeros_(self.rpe_v)
+
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
 
@@ -156,11 +161,13 @@ class DotProductAttention(torch.nn.Module):
      
     A = self.softmax(scores)
 #    print('A', A.shape) # 1024 16 64 64
+
+    if self.use_rpe:
+      A = A + self.rpe_factor_v.linear(einsum(A, self.rpe_v, "b h q k, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    if self.use_rpe:
-      H = H + self.rpe_factor_v.linear(einsum(H, self.rpe_v, "b h q k, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
     
 #    print('H', H.shape) # 1024 16 64 24
 
