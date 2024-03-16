@@ -39,6 +39,7 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("Time"));
       table.AddColumn(new TableColumn("Secs").RightAligned());
       table.AddColumn(new TableColumn("Config"));
+      table.AddColumn(new TableColumn("Host"));
 
       table.AddColumn(new TableColumn("Positions").RightAligned());
       table.AddColumn(new TableColumn("Pos/sec").RightAligned());
@@ -77,7 +78,7 @@ namespace CeresTrain.Trainer
 
     Dictionary<string, (DateTime, long)> priorLastRows = new();
 
-    public override void UpdateInfo(string configID, int numRowsAdded, bool endRow, 
+    public override void UpdateInfo(string configID, string host, int numRowsAdded, bool endRow, 
                                     float posPerSecond, DateTime time, float elapsedSecs, long numPositions, 
                                     float totalLoss, float valueLoss, float valueAcc, 
                                     float policyLoss, float policyAcc,
@@ -99,7 +100,7 @@ namespace CeresTrain.Trainer
         }
         priorLastRows[configID] = (DateTime.Now, numPositions);
 
-        Lasts[configID] = [configID, 
+        Lasts[configID] = [configID, host,
                            numPositions.ToString(),
                            MathF.Round(posPerSecond, 0).ToString(), MathF.Round(totalLoss, 3).ToString(),
                            MathF.Round(policyLoss, 3).ToString(), MathF.Round(valueLoss, 3).ToString(),

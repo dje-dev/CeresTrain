@@ -181,7 +181,8 @@ namespace CeresTrain.TrainCommands
     /// <param name="startTime"></param>
     /// <param name="numTrainLinesSeen"></param>
     /// <param name="line"></param>
-    internal static void UpdateTableWithLine(TrainingStatusTable table, string configID, ref DateTime startTime, ref int numTrainLinesSeen, string line)
+    internal static void UpdateTableWithLine(TrainingStatusTable table, string configID, string host, 
+                                             ref DateTime startTime, ref int numTrainLinesSeen, string line)
     {
       if (line.StartsWith("TRAIN:"))
       {
@@ -197,7 +198,7 @@ namespace CeresTrain.TrainCommands
         }
 
         float elapsedSeconds = (float)(DateTime.Now - startTime).TotalSeconds;
-        table.UpdateInfo(DateTime.Now, configID, elapsedSeconds, trainingData.NumPos, trainingData.TotalLoss,
+        table.UpdateInfo(DateTime.Now, configID, host, elapsedSeconds, trainingData.NumPos, trainingData.TotalLoss,
                          trainingData.LastValueLoss, 0.01f * trainingData.LastValueAcc,
                          trainingData.LastPolicyLoss, 0.01f * trainingData.LastPolicyAcc,
                          trainingData.LastMLHLoss, trainingData.LastUNCLoss, 

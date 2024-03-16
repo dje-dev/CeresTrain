@@ -62,7 +62,7 @@ namespace CeresTrain.Trainer
     float lastTotalLoss = 0;
     DateTime timeAtOnePercentDone = default;
 
-    public override void UpdateInfo(string configID, int numLinesWritten, bool endRow, float posPerSecond,
+    public override void UpdateInfo(string configID, string host, int numLinesWritten, bool endRow, float posPerSecond,
                                     DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss,
                                     float valueAcc, float policyLoss, float policyAcc, 
                                     float mlhLoss, float uncLoss,

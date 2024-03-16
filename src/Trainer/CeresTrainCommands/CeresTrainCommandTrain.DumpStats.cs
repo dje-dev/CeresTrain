@@ -112,7 +112,7 @@ namespace CeresTrain.Trainer
         ? $"[{positionsProcessed:N0} / {OptimizationBatchSizeForward}f / {OptimizationBatchSizeBackward}b] "
         : $"[{positionsProcessed:N0} / {OptimizationBatchSizeForward}] ";
 
-      consoleStatusTable.UpdateInfo(DateTime.Now, configID, (float)elapsedSec, numRead, thisLossAdjRunning,
+      consoleStatusTable.UpdateInfo(DateTime.Now, configID, "(local)", (float)elapsedSec, numRead, thisLossAdjRunning,
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, 
                                     lossMLHAdjRunning, lossUNCAdjRunning,
                                     lossValue2AdjRunning, lossQDeviationLowerAdjRunning, lossQDeviationUpperAdjRunning,

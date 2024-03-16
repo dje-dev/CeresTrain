@@ -113,7 +113,7 @@ namespace CeresTrain.Trainer
     /// <param name="qDeviationLowerLoss"></param>
     /// <param name="qDeviationUpperLoss"></param>
     /// <param name="curLR"></param>
-    public void UpdateInfo(DateTime time, string configID, float elapsedSecs, long numPositions,
+    public void UpdateInfo(DateTime time, string configID, string host, float elapsedSecs, long numPositions,
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc,
                            float mlhLoss, float uncLoss,
@@ -138,7 +138,7 @@ namespace CeresTrain.Trainer
 
         if (numRowsAdded > 0)
         {
-          implementor.UpdateInfo(configID, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
+          implementor.UpdateInfo(configID, host, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
                                  value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
                                  curLR);
@@ -152,7 +152,7 @@ namespace CeresTrain.Trainer
             intervalBetweenRows = INTERVAL_NEW_ROW_LATER_HOURS;
           }
 
-          implementor.UpdateInfo(configID, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
+          implementor.UpdateInfo(configID, host, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
                                  value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
                                  curLR);

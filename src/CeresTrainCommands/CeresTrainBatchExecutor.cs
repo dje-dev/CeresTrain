@@ -33,15 +33,12 @@ namespace CeresTrain.TrainCommands
     /// <summary>
     /// Runs a series of training configurations on specified host/device.
     /// </summary>
-    /// <param name="baseConfig"></param>
     /// <param name="piecesString"></param>
-    /// <param name="hostConfig"></param>
-    /// <param name="deviceIDs"></param>
     /// <param name="numPositions"></param>
-    /// <param name="variantModifiers"></param>
+    /// <param name="variants"></param>
     /// <returns></returns>
     public static TrainingResultSummary[] TestBatchParallel(string piecesString, long numPositions,
-                                                            params (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig, Func<ConfigTraining, ConfigTraining> modifier)[] variants)
+                                                            params TrainingSessionSpecification[] variants)
     {
       // Throw exception if any of the variants have the same ID
       string[] variantsArray = variants.Select(v => v.variantID).ToArray();
@@ -63,16 +60,18 @@ namespace CeresTrain.TrainCommands
       {
         string fullConfigID = variant.baseConfig.ExecConfig.ID + "_" + variant.variantID;
         ConfigTraining config = variant.baseConfig;
-        config = variant.modifier(config);
-        CeresTrainCommands.ProcessInitCommand(in config, fullConfigID);
 
         lock (lockObj)
         {
+          CeresTrainCommands.ProcessInitCommand(in config, fullConfigID);
           Console.WriteLine();
           Console.WriteLine("Writing config " + fullConfigID);
           Console.WriteLine();
           Console.WriteLine("Launch " + fullConfigID + " on " + variant.hostConfig.HostName + " ...");
         }
+
+        // Random sleep to avoid overloading the server.
+        System.Threading.Thread.Sleep((int)(2000f * Random.Shared.NextSingle()));
 
         TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions, variant.hostConfig.HostName, variant.tpgDir, variant.deviceIDs, sharedStatusTable);
 
@@ -150,5 +149,18 @@ namespace CeresTrain.TrainCommands
       return results.ToArray();
     }
 
+  }
+
+  public record struct TrainingSessionSpecification(string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig)
+  {
+    public static implicit operator (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig)(TrainingSessionSpecification value)
+    {
+      return (value.variantID, value.hostConfig, value.deviceIDs, value.tpgDir, value.baseConfig);
+    }
+
+    public static implicit operator TrainingSessionSpecification((string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig) value)
+    {
+      return new TrainingSessionSpecification(value.variantID, value.hostConfig, value.deviceIDs, value.tpgDir, value.baseConfig);
+    }
   }
 }

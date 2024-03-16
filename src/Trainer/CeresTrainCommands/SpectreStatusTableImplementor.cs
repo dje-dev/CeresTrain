@@ -85,7 +85,7 @@ namespace CeresTrain.Trainer
       this.title = title;
     }
 
-    public override void UpdateInfo(string configID, int numRowsAdded, bool endRow,
+    public override void UpdateInfo(string configID, string host, int numRowsAdded, bool endRow,
                                    float posPerSecond, DateTime time, float elapsedSecs, long numPositions,
                                    float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
                                    float mlhLoss, float uncLoss,

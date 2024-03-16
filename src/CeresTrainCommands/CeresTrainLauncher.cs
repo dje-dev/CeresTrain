@@ -112,7 +112,7 @@ namespace CeresTrain.TrainCommands
           string line = process.StandardOutput.ReadLine();
           logger.AddLine(line);
 
-          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, configID, ref startTime, ref numTrainLinesSeen, line);
+          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, configID, "WSL", ref startTime, ref numTrainLinesSeen, line);
 
           if (line.Contains(END_TRAINING_PHRASE))
           {
@@ -265,7 +265,7 @@ namespace CeresTrain.TrainCommands
           {
             logger.AddLine(line);
             string configID = new FileInfo(configBasePath).Name;
-            CeresTrainCommandUtils.UpdateTableWithLine(table, configID, ref startTime, ref numTrainLinesSeen, line);
+            CeresTrainCommandUtils.UpdateTableWithLine(table, configID, hostName, ref startTime, ref numTrainLinesSeen, line);
 
             if (line.StartsWith(END_TRAINING_PHRASE))
             {
