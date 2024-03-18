@@ -356,7 +356,7 @@ def Train():
     global num_pos
     
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
-    FRAC_MIN = 0.10
+    FRAC_MIN = 0.15
 
     if num_pos < 20000000 and (fraction_complete < 0.02 or num_pos < 500000):
         lr_scale = 0.1 # warmup

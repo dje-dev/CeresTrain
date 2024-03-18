@@ -249,7 +249,7 @@ class CeresNet(pl.LightningModule):
                       rpe_factor_q = self.rpe_factor_q if config.NetDef_UseRPE else None,
                       rpe_factor_k = self.rpe_factor_k if config.NetDef_UseRPE else None,
                       rpe_factor_v = self.rpe_factor_v if config.NetDef_UseRPE else None,
-                      dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 0 else 'None'),
+                      dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
 
