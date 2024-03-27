@@ -213,7 +213,7 @@ class CeresNet(pl.LightningModule):
     self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
     self.DEEPNORM = config.NetDef_DeepNorm
-    self.denseformer = self.NetDef_DenseFormer
+    self.denseformer = config.NetDef_DenseFormer
     
     if self.DEEPNORM:     
       self.alpha = math.pow(2 * self.NUM_LAYERS, 0.25)
