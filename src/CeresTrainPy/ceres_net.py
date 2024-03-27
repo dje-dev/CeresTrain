@@ -30,7 +30,33 @@ from config import Configuration
 from mlp2_layer import MLP2Layer
 from rms_norm import RMSNorm
 
-   
+"""
+Code from:
+  "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
+    https://arxiv.org/pdf/2402.02622v2.pdf
+This code is taken directly from the paper, not from their github repository.
+
+The github code would be advisable or necessary for very deep nets (50 to 100 layers)
+to improve performance and reduce memory usage.
+
+However this is unnecessary for Ceres nets which are not as deep.
+Also the more complex github implementation uses in place operations that are not supported by torch.compile.
+"""
+class DWA(torch.nn.Module): 
+  def __init__(self, n_alphas):
+    super().__init__()
+    self.n_alphas = n_alphas
+    alphas = torch.zeros((n_alphas,))
+    alphas[-1] = 1.0
+    self.alphas = torch.nn.Parameter(alphas)
+
+  def forward(self, all_previous_x):
+    weighted_avg = all_previous_x[0] * self.alphas[0]
+    for i in range(1, self.n_alphas):
+      weighted_avg += self.alphas[i] * all_previous_x[i]
+    return weighted_avg
+
+
 class CeresNet(pl.LightningModule):
   def __init__(
     self,
@@ -187,7 +213,8 @@ class CeresNet(pl.LightningModule):
     self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
     self.DEEPNORM = config.NetDef_DeepNorm
-
+    self.denseformer = self.NetDef_Denseformer
+    
     if self.DEEPNORM:     
       self.alpha = math.pow(2 * self.NUM_LAYERS, 0.25)
     else:      
@@ -271,9 +298,9 @@ class CeresNet(pl.LightningModule):
     self.learning_rate = learning_rate
     self.test = config.Exec_TestFlag
 
-#    if (self.test):
-#      self.pos_encoding = nn.Linear(16, self.EMBEDDING_DIM)
-    
+    if (self.denseformer):
+      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
+ 
 
   def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(input_planes, list):
@@ -300,13 +327,19 @@ class CeresNet(pl.LightningModule):
       flow_global = self.embedding_layer_global(flow_global)
     else:
       flow_global = None  
-      
 
+    if self.denseformer:
+      all_previous_x = [flow]
+      
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
       # Main policy encoder block, also receive back an update to be applied to the global stream
       flow, global_update = self.transformer_layer[i](flow, flow_global)#.detach())
- 
+
+      if self.denseformer:
+        all_previous_x.append(flow)
+        flow = self.dwa_modules[i](all_previous_x)
+      
       # Update state based on the output of the encoder layer. 
       if self.global_dim > 0:# &&  NetTransformerLayerEncoder.PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM > 0)  
         # Prepare input to global encoder, concatenating last global state and the update from the policy encoder
@@ -316,7 +349,7 @@ class CeresNet(pl.LightningModule):
         (_, flow_global_new) = self.mlp_global[i](flow_state_input)  
         flow_global = flow_global_new + flow_global
         flow_global = self.ln_global(flow_global)
-
+   
     # Heads.
     headOut = self.policyHeadPremap(flow)
     flattenedPolicy = headOut.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)

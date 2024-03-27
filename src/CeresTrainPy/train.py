@@ -217,6 +217,15 @@ def Train():
                    q_deviation_loss_weight= config.Opt_LossQDeviationMultiplier,                  
                    q_ratio=config.Data_FractionQ, optimizer='adamw', learning_rate=LR)
 
+
+  # Sample code to load from a saved TorchScript model
+  if False:
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_32bn_smol_att2x_dualALT_DT_LR20min_steep_1972985856.ts')
+    with torch.no_grad():
+      for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
+          pytorch_param.data.copy_(torchscript_param.data)
+    del torchscript_model
+  
   if False:
     # Load the ONNX model
     import onnxruntime as ort
@@ -324,6 +333,8 @@ def Train():
               no_decay.add(fpn)
           elif "rpe" in fpn:
               decay.add(fpn)
+          elif "alphas" in fpn: # for Denseformer
+              decay.add(fpn)
           elif "qkv" in fpn:
               decay.add(fpn)
           elif "embedding" in fpn:
@@ -359,14 +370,16 @@ def Train():
     FRAC_MIN = 0.15
 
     if num_pos < 20000000 and (fraction_complete < 0.02 or num_pos < 500000):
-        lr_scale = 0.1 # warmup
+      return FRAC_MIN # warmup
     elif fraction_complete < FRAC_START_DELAY:
-        lr_scale = 1.0
+      return 1.0
+    elif fraction_complete > 1:
+      return FRAC_MIN # shouldn't happen
     else:
-        # Once decay starts, LR multiplier is same as fraction remaining until end of training.
-        lr_scale = 1.0 - fraction_complete
-
-    return max(FRAC_MIN, min(lr_scale, 1))
+      # Once decay starts, LR multiplier starts at fraction remaining and linearly decreases to FRAC_MIN
+      fraction_remaining = 1.0 - fraction_complete
+      slope = (FRAC_START_DELAY - FRAC_MIN)/FRAC_START_DELAY
+      return FRAC_MIN + fraction_remaining * slope
 
   scheduler = LambdaLR(optimizer, lr_lambda)
 

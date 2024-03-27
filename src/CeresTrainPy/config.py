@@ -111,6 +111,7 @@ class Configuration:
     self.NetDef_FFNActivationType = config_net_def.get('FFNActivationType', 'ReLUSquared')
     self.NetDef_HeadsActivationType = config_net_def.get('HeadsActivationType', 'ReLU')      
     self.NetDef_DeepNorm = config_net_def.get('DeepNorm', False) 
+    self.NetDef_Denseformer = config_net_def.get('Denseformer', False) 
     self.NetDef_SmolgenDimPerSquare = config_net_def.get('SmolgenDimPerSquare', 32)
     self.NetDef_SmolgenDim = config_net_def.get('SmolgenDim', 512)
     self.NetDef_SmolgenToHeadDivisor = config_net_def.get('SmolgenToHeadDivisor', 2)
