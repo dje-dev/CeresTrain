@@ -255,6 +255,12 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool DeepNorm { get; init; } = false;
 
     /// <summary>
+    /// If true, the DenseFormer architecture is used. See:
+    ///   "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
+    /// </summary>
+    public readonly bool DenseFormer { get; init; } = false;
+
+    /// <summary>
     /// Number of per square dimensions used for Smolgen (or 0 if Smolgen not used).
     /// Invented by Ergodice, see: https://github.com/Ergodice/lczero-training.
     /// </summary>
