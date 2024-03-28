@@ -378,8 +378,8 @@ def Train():
     else:
       # Once decay starts, LR multiplier starts at fraction remaining and linearly decreases to FRAC_MIN
       fraction_remaining = 1.0 - fraction_complete
-      slope = (FRAC_START_DELAY - FRAC_MIN)/FRAC_START_DELAY
-      return FRAC_MIN + fraction_remaining * slope
+      frac_end_delay = 1.0 - FRAC_START_DELAY
+      return FRAC_MIN + (fraction_remaining/frac_end_delay) * (frac_end_delay - FRAC_MIN)      
 
   scheduler = LambdaLR(optimizer, lr_lambda)
 
