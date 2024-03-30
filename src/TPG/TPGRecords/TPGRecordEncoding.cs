@@ -28,6 +28,17 @@ namespace CeresTrain.TPG
   /// </summary>
   internal static class TPGRecordEncoding
   {
+    /// <summary>
+    /// If experimental feature to include the WDL from prior position in the TPGRecord is enabled.
+    /// </summary>
+    internal const bool ENABLE_PRIOR_VALUE_POSITION = false;
+
+    // Scaling factor by which the win/draw/loss probabilities
+    // from the prior board position are multiplied.
+    // We expand the range of values to [0, 2.0] to reduce quantization error
+    // (to use increments of 0.005).
+    internal const float PRIOR_POS_VALUE_PROB_MULTIPLIER = 2.0f;
+
     internal static int Move50CountDecoded(float mlh)
     {
       const float MOVE_50_DIVISOR = 50;

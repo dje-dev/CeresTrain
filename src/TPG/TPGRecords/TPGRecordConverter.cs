@@ -107,7 +107,8 @@ namespace CeresTrain.TPG
     public static TPGRecord ConvertedToTPGRecord(in EncodedPositionWithHistory encodedPosToConvert,
                                                  bool includeHistory,
                                                  Span<byte> pliesSinceLastPieceMoveBySquare = default,
-                                                 float qNegativeBlunders = 0, float qPositiveBlunders = 0)
+                                                 float qNegativeBlunders = 0, float qPositiveBlunders = 0,
+                                                 float priorPosWinP = 0, float priorPosDrawP = 0, float priorPosLossP = 0)
     {
 #if MOVES
         throw new NotImplementedException();
@@ -119,7 +120,8 @@ namespace CeresTrain.TPG
       // Write squares.
       ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, default, null,
                                 ref tpgRecord, pliesSinceLastPieceMoveBySquare, pliesSinceLastPieceMoveBySquare != default,
-                                qNegativeBlunders, qPositiveBlunders);
+                                qNegativeBlunders, qPositiveBlunders,
+                                priorPosWinP, priorPosDrawP, priorPosLossP); 
 
       return tpgRecord;
     }
@@ -135,7 +137,10 @@ namespace CeresTrain.TPG
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
                                                  bool emitPlySinceLastMovePerSquare,
                                                  float qNegativeBlunders = 0,
-                                                 float qPositiveBlunders = 0)
+                                                 float qPositiveBlunders = 0,
+                                                 float priorPosWinP = 0, 
+                                                 float priorPosDrawP = 0,
+                                                 float priorPosLossP = 0)
     {
       // N.B. Some logic here is the same as in method above (ConvertedToTPGRecord) and should be kept in sync.
 
@@ -150,7 +155,8 @@ namespace CeresTrain.TPG
 #endif
       ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, moves, targetInfo, ref tpgRecord, 
                                 pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
-                                qNegativeBlunders, qPositiveBlunders);
+                                qNegativeBlunders, qPositiveBlunders,
+                                priorPosWinP, priorPosDrawP, priorPosLossP);
 
       // Convert the values unrelated to moves and squares
       if (targetInfo != null)
@@ -257,8 +263,15 @@ namespace CeresTrain.TPG
         TPGRecord tpgRecord = default;
         Span<byte> thesePliesSinceLastMove = pliesSinceLastMoveAllPositions == null ? default : new Span<byte>(pliesSinceLastMoveAllPositions, i * 64, 64);
 
+        float w = TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION ? positions.PositionsBuffer.Span[i].MiscInfo.InfoTraining.OriginalQ : float.NaN;
+        float d = TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION ? positions.PositionsBuffer.Span[i].MiscInfo.InfoTraining.OriginalD : float.NaN;
+        float l = TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION ? positions.PositionsBuffer.Span[i].MiscInfo.InfoTraining.OriginalM : float.NaN;
+
         ConvertToTPGRecord(in positionsFlat.Span[i], includeHistory, moves, null, null, float.NaN,
-                           ref tpgRecord, thesePliesSinceLastMove, lastMovePliesEnabled, qNegativeBlunders, qPositiveBlunders);
+                           ref tpgRecord, thesePliesSinceLastMove, lastMovePliesEnabled, 
+                           qNegativeBlunders, qPositiveBlunders,
+                           w, d, l);
+                           
         tempTPGRecords[i] = tpgRecord;
 
         const bool VALIDITY_CHECK = true;
@@ -295,7 +308,8 @@ namespace CeresTrain.TPG
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
                                                  bool emitPlySinceLastMovePerSquare,
                                                  bool emitMoves,
-                                                 float qNegativeBlunders, float qPositivelBlunders)
+                                                 float qNegativeBlunders, float qPositivelBlunders,
+                                                 float priorPosWinP, float priorPosDrawP, float priorPosLossP)
                                                  
     {
       trainingPos.ValidateIntegrity("Validate in ConvertToTPGRecord");
@@ -330,7 +344,8 @@ namespace CeresTrain.TPG
       // Write squares.
       ConvertToTPGRecordSquares(trainingPos.PositionWithBoards, includeHistory, default, targetInfo, ref tpgRecord,
                                 pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
-                                qNegativeBlunders, qPositivelBlunders);
+                                qNegativeBlunders, qPositivelBlunders,
+                                priorPosWinP, priorPosDrawP, priorPosLossP);
 
 #if DEBUG
       const bool validate = TPGRecord.NUM_SQUARES == 64;; // TODO: Generalize this for <64
@@ -449,8 +464,8 @@ namespace CeresTrain.TPG
                                                         ref TPGRecord tpgRecord,
                                                         Span<byte> pliesSinceLastPieceMoveBySquare,
                                                         bool emitPlySinceLastMovePerSquare,
-                                                        float qNegativeBlunders, float qPositiveBlunders
-      )
+                                                        float qNegativeBlunders, float qPositiveBlunders,
+                                                        float priorPosWinP, float priorPosDrawP, float priorPosLossP)
     {
       static Position GetHistoryPosition(in EncodedPositionWithHistory historyPos, int index, in Position? fillInIfEmpty)
       {
@@ -509,7 +524,8 @@ namespace CeresTrain.TPG
       TPGSquareRecord.WritePosPieces(in thisPosition, in historyPos1, in historyPos2, in historyPos3,
                                      in historyPos4, in historyPos5, in historyPos6, in historyPos7,
                                      tpgRecord.Squares, pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
-                                     qNegativeBlunders, qPositiveBlunders);
+                                     qNegativeBlunders, qPositiveBlunders,
+                                     priorPosWinP, priorPosDrawP, priorPosLossP);
 #if DEBUG
       const bool validate = true;
 #else

@@ -63,6 +63,21 @@ namespace CeresTrain.TPG.TPGGenerator
     // TODO: clean this up, possibly store somewhere else. Technically these are not targets but rather inputs.
     public float ForwardSumPositiveBlunders;
     public float ForwardSumNegativeBlunders;
+
+    /// <summary>
+    /// Value head estimate of win probability (from our perspective) at the prior position.
+    /// </summary>
+    public float PriorPositionWinP;
+
+    /// <summary>
+    /// Value head estimate of draw probability (from our perspective) at the prior position.
+    /// </summary>
+    public float PriorPositionDrawP;
+
+    /// <summary>
+    /// Value head estimate of loss probability (from our perspective) at the prior position.
+    /// </summary>
+    public float PriorPositionLossP;
   }
 
 

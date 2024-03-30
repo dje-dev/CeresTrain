@@ -309,6 +309,16 @@ class CeresNet(pl.LightningModule):
 
     flow = input_planes
 
+#    if self.test:
+#      flow[:, :, 109] = 0
+#      flow[:, :, 110] = 0
+#      flow[:, :, 111] = 0
+
+#      condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
+#      flow[:, :, 107] = condition.bfloat16()
+#      flow[:, :, 108] = 1 - flow[:, :, 107]
+      
+
     # Embedding layer.
     flow_squares = flow.reshape(-1, self.NUM_TOKENS_INPUT, (self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS_INPUT)
 

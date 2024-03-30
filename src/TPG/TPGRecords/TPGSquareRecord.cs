@@ -155,6 +155,8 @@ namespace CeresTrain.TPG
       // TODO: fix      Debug.Assert(IsOurPiece.Value == 0 || IsEnPassant.Value == 0); // only makes sense for opponent piece to be en passant
     }
 
+    static bool haveWarned = false;
+
     static internal unsafe void WritePosPieces(in Position pos,
                                                in Position historyPos1,
                                                in Position historyPos2,
@@ -166,8 +168,8 @@ namespace CeresTrain.TPG
                                                Span<TPGSquareRecord> squareRecords,
                                                Span<byte> pliesSinceLastPieceMoveBySquare,
                                                bool emitPlySinceLastMovePerSquare,
-                                               float qNegativeBlunders, 
-                                               float qPositiveBlunders)
+                                               float qNegativeBlunders, float qPositiveBlunders,
+                                               float priorPosWinP, float priorPosDrawP, float priorPosLossP)
     {
       bool hasEnPassant = pos.MiscInfo.EnPassantRightsPresent;
       bool sawEnPassant = false;
@@ -208,7 +210,9 @@ namespace CeresTrain.TPG
         pieceRecord.CanOOO.Value = canOOO;
         pieceRecord.OpponentCanOO.Value = opponentCanOO;
         pieceRecord.OpponentCanOOO.Value = opponentCanOOO;
+        
         pieceRecord.Move50Count.Value = TPGRecordEncoding.Move50CountEncoded(pos.MiscInfo.Move50Count);
+
         pieceRecord.QNegativeBlunders.Value = Math.Min(ByteScaled.MAX_VALUE, qNegativeBlunders);
         pieceRecord.QPositiveBlunders.Value = Math.Min(ByteScaled.MAX_VALUE, qPositiveBlunders);
 
@@ -255,19 +259,43 @@ namespace CeresTrain.TPG
         }
 
         // Write piece on this square for this position and all history positions.
-        WritePieceHistory(0, pos.SideToMove, in pos, squareFromPos, pieceRecord.PieceTypeHistorySetter(0), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(1, pos.SideToMove, in historyPos1, squareFromPos, pieceRecord.PieceTypeHistorySetter(1), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(2, pos.SideToMove, in historyPos2, squareFromPos, pieceRecord.PieceTypeHistorySetter(2), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(3, pos.SideToMove, in historyPos3, squareFromPos, pieceRecord.PieceTypeHistorySetter(3), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(4, pos.SideToMove, in historyPos4, squareFromPos, pieceRecord.PieceTypeHistorySetter(4), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(5, pos.SideToMove, in historyPos5, squareFromPos, pieceRecord.PieceTypeHistorySetter(5), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(6, pos.SideToMove, in historyPos6, squareFromPos, pieceRecord.PieceTypeHistorySetter(6), pieceRecord.HistoryRepetitionCountsSetter);
-        WritePieceHistory(7, pos.SideToMove, in historyPos7, squareFromPos, pieceRecord.PieceTypeHistorySetter(7), pieceRecord.HistoryRepetitionCountsSetter);
+        Span<ByteScaled> historyReptitionCountSetter = pieceRecord.HistoryRepetitionCountsSetter;
+        WritePieceHistory(0, pos.SideToMove, in pos,         squareFromPos, pieceRecord.PieceTypeHistorySetter(0), historyReptitionCountSetter);
+        WritePieceHistory(1, pos.SideToMove, in historyPos1, squareFromPos, pieceRecord.PieceTypeHistorySetter(1), historyReptitionCountSetter);
+        WritePieceHistory(2, pos.SideToMove, in historyPos2, squareFromPos, pieceRecord.PieceTypeHistorySetter(2), historyReptitionCountSetter);
+        WritePieceHistory(3, pos.SideToMove, in historyPos3, squareFromPos, pieceRecord.PieceTypeHistorySetter(3), historyReptitionCountSetter);
+        WritePieceHistory(4, pos.SideToMove, in historyPos4, squareFromPos, pieceRecord.PieceTypeHistorySetter(4), historyReptitionCountSetter);
+        WritePieceHistory(5, pos.SideToMove, in historyPos5, squareFromPos, pieceRecord.PieceTypeHistorySetter(5), historyReptitionCountSetter);
+        WritePieceHistory(6, pos.SideToMove, in historyPos6, squareFromPos, pieceRecord.PieceTypeHistorySetter(6), historyReptitionCountSetter);
+        WritePieceHistory(7, pos.SideToMove, in historyPos7, squareFromPos, pieceRecord.PieceTypeHistorySetter(7), historyReptitionCountSetter);
 
         // Write position of square on board.
         bool needsReversal = pos.SideToMove == SideType.Black;
         Square squareInTPG = needsReversal ? squareFromPos.Reversed : squareFromPos;
         TPGRecordUtils.WriteSquareEncoding(squareInTPG, pieceRecord.RankEncodingSetter, pieceRecord.FileEncodingSetter);
+
+        if (TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION)
+        {
+
+          // *************** TEMPORARY
+          if (!haveWarned)
+          {
+            Console.WriteLine("TPGSquareRecord: TEMPORARY OVERWRITE OF Move50Count and PlySinceLastMove");
+            haveWarned = true;
+          }
+          // HACK - stuff the values here
+          historyReptitionCountSetter[5].Value = TPGRecordEncoding.PRIOR_POS_VALUE_PROB_MULTIPLIER * priorPosWinP;
+          historyReptitionCountSetter[6].Value = TPGRecordEncoding.PRIOR_POS_VALUE_PROB_MULTIPLIER * priorPosDrawP;
+          historyReptitionCountSetter[7].Value = TPGRecordEncoding.PRIOR_POS_VALUE_PROB_MULTIPLIER * priorPosLossP;
+#if false
+        Console.WriteLine("Offset move50 " + Marshal.OffsetOf(typeof(TPGSquareRecord), "Move50Count"));
+        Console.WriteLine("Offset PlySinceLastMove " + Marshal.OffsetOf(typeof(TPGSquareRecord), "PlySinceLastMove"));
+        Console.WriteLine("Offset historyRepetitionCounts " + Marshal.OffsetOf(typeof(TPGSquareRecord), "historyRepetitionCounts"));
+        System.Environment.Exit(3);
+#endif
+          Debug.Assert(!emitPlySinceLastMovePerSquare);
+          // *************** END TEMPORARY
+        }
 
         if (pos.SideToMove == SideType.White)
         {

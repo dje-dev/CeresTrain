@@ -272,7 +272,7 @@ namespace CeresTrain.NNEvaluators
 //        tpgRecord.Dump();
 #endif
       }
-
+      
       MGPosition[] mgPos;
       byte[] squareBytesAll;
       byte[] moveBytesAll;

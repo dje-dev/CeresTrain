@@ -156,6 +156,12 @@ namespace CeresTrain.TPG.TPGGenerator
     public bool EmitPlySinceLastMovePerSquare = false;
 
     /// <summary>
+    /// Number of positions in a contiguous block which is written.
+    /// Typically just 1, but some modes support writing multiple related positions in consecutive slots.
+    /// </summary>
+    public int NumRelatedPositionsPerBlock = 1;
+
+    /// <summary>
     /// Type of deblundering in use (if any).
     /// </summary>
     public DeblunderType Deblunder { init; get; } = DeblunderType.None;
@@ -189,6 +195,15 @@ namespace CeresTrain.TPG.TPGGenerator
     /// (based on negative change in evaluations see within next 2 moves).
     public float DeblunderUnintnededThreshold { init; get; } = 0.15f;
 
+    /// <summary>
+    /// If the value head estimate (win/loss probabilities)
+    /// from the prior position in the game should be emitted.
+    /// 
+    /// In some situations this data may be unavailable in the training data
+    /// (first move, prior move a blunder, or NaN in the training data file).
+    /// In this case, Win and Loss are both set to 0.
+    /// </summary>
+    public bool EmitPriorMoveWinLoss { init; get; } = false;
 
     /// <summary>
     /// If any missing history planes (e.g. in first moves of game)
@@ -312,6 +327,11 @@ namespace CeresTrain.TPG.TPGGenerator
       {
         throw new Exception("PositionMaxFraction must be greater than 0 (use 1.0 to disable filtering).");
       }
+
+      if (EmitPriorMoveWinLoss && !TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION)
+      {
+        throw new Exception("EmitPriorMoveWinLoss is enabled but TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION is false.");
+      }
     }
 
     /// <summary>
@@ -320,44 +340,49 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="outStream"></param>
     public void Dump(TextWriter writer, bool dumpFiles)
     {
-      writer.WriteLine($"  MachineName                  : {MachineName}");
-      writer.WriteLine($"  Description                  : {Description}");
-      writer.WriteLine($"  Ceres JSON Path (override)   : {CeresJSONFileName}");
-      writer.WriteLine($"  StartTime                    : {StartTime}");
-      writer.WriteLine($"  SourceDirectory              : {SourceDirectory}");
-      writer.WriteLine($"  FilenameFilter               : {(FilenameFilter != null ? "*Y*" : "No")}");
-      writer.WriteLine($"  NumConcurrentSets            : {NumConcurrentSets}");
-      writer.WriteLine($"  PositionSkipCount            : {PositionSkipCount}");
+      writer.WriteLine($"  MachineName                   : {MachineName}");
+      writer.WriteLine($"  Description                   : {Description}");
+      writer.WriteLine($"  Ceres JSON Path (override)    : {CeresJSONFileName}");
+      writer.WriteLine($"  StartTime                     : {StartTime}");
+      writer.WriteLine($"  SourceDirectory               : {SourceDirectory}");
+      writer.WriteLine($"  FilenameFilter                : {(FilenameFilter != null ? "*Y*" : "No")}");
+      writer.WriteLine($"  NumConcurrentSets             : {NumConcurrentSets}");
+      writer.WriteLine($"  PositionSkipCount             : {PositionSkipCount}");
       if (PositionMaxFraction >= 1)
       {
-        writer.WriteLine($"  PositionMaxFraction          : (none)");
+        writer.WriteLine($"  PositionMaxFraction           : (none)");
       }
       else
       {
-        writer.WriteLine($"  PositionMaxFraction          : {100 * PositionMaxFraction,8:F5}%");
+        writer.WriteLine($"  PositionMaxFraction           : {100 * PositionMaxFraction,8:F5}%");
       }
-      writer.WriteLine($"  AcceptRejectAnnotater        : {(AcceptRejectAnnotater != null ? "*Yes*" : "No")}");
+      writer.WriteLine($"  AcceptRejectAnnotater         : {(AcceptRejectAnnotater != null ? "*Yes*" : "No")}");
       writer.WriteLine();
-      writer.WriteLine($"  RescoreWithTablebase         : {RescoreWithTablebase}");
-      writer.WriteLine($"  FillInHistoryPlanes          : {FillInHistoryPlanes}");
-      writer.WriteLine($"  AnnotationNNEvaluator        : {AnnotationNNEvaluator}");
-      writer.WriteLine($"  AnnotationPostprocessor      : {(AnnotationPostprocessor != null ? "*Yes* " : "No")}");
-      writer.WriteLine($"  EmitPlySinceLastMovePerSquare: {(EmitPlySinceLastMovePerSquare ? "*Yes* " : "No")}");
+      writer.WriteLine($"  RescoreWithTablebase          : {RescoreWithTablebase}");
+      writer.WriteLine($"  FillInHistoryPlanes           : {FillInHistoryPlanes}");
+      writer.WriteLine($"  AnnotationNNEvaluator         : {AnnotationNNEvaluator}");
+      writer.WriteLine($"  AnnotationPostprocessor       : {(AnnotationPostprocessor != null ? "*Yes* " : "No")}");
+      writer.WriteLine($"  EmitPlySinceLastMovePerSquare : {(EmitPlySinceLastMovePerSquare ? "*Yes* " : "No")}");
 
-      writer.WriteLine($"  MinProbabilityForLegalMove   : {100 * MinProbabilityForLegalMove}%");
-      writer.WriteLine($"  Deblunder                    : {Deblunder}");
-      writer.WriteLine($"  Deblunder Threshold          : {DeblunderThreshold}");
-      writer.WriteLine($"  Deblunder (unint.) Threshold : {DeblunderUnintnededThreshold}");
+      Console.WriteLine();
+      writer.WriteLine($"  NumRelatedPositionsPerBlock   : {NumRelatedPositionsPerBlock}");
+      writer.WriteLine($"  EmitPriorMoveWinLoss          : {(EmitPriorMoveWinLoss ? "*Yes* " : "No")}");
+
+      Console.WriteLine();
+      writer.WriteLine($"  MinProbabilityForLegalMove    : {100 * MinProbabilityForLegalMove}%");
+      writer.WriteLine($"  Deblunder                     : {Deblunder}");
+      writer.WriteLine($"  Deblunder Threshold           : {DeblunderThreshold}");
+      writer.WriteLine($"  Deblunder (unint.) Threshold  : {DeblunderUnintnededThreshold}");
       writer.WriteLine();
-      writer.WriteLine($"  OutputFormat                 : {OutputFormat}");
-      writer.WriteLine($"  NumThreads                   : {NumThreads}");
-      writer.WriteLine($"  NumConcurrentSets            : {NumConcurrentSets}");
-      writer.WriteLine($"  NumPositionsTotal            : {NumPositionsTotal,14:N0}");
-      writer.WriteLine($"  Bytes per position           : {TPGRecord.TOTAL_BYTES,14:N0}");
-      writer.WriteLine($"  Batch Size                   : {BatchSize,14:N0}");
+      writer.WriteLine($"  OutputFormat                  : {OutputFormat}");
+      writer.WriteLine($"  NumThreads                    : {NumThreads}");
+      writer.WriteLine($"  NumConcurrentSets             : {NumConcurrentSets}");
+      writer.WriteLine($"  NumPositionsTotal             : {NumPositionsTotal,14:N0}");
+      writer.WriteLine($"  Bytes per position            : {TPGRecord.TOTAL_BYTES,14:N0}");
+      writer.WriteLine($"  Batch Size                    : {BatchSize,14:N0}");
 
-      writer.WriteLine($"  TargetCompression            : {TargetCompression}");
-      writer.WriteLine($"  TargetFileNameBase           : {TargetFileNameBase}");
+      writer.WriteLine($"  TargetCompression             : {TargetCompression}");
+      writer.WriteLine($"  TargetFileNameBase            : {TargetFileNameBase}");
 
       writer.WriteLine();
       writer.WriteLine($"FILES USED ({SourceFilesSizeMB * 0.001f,6:F3} GB)");
