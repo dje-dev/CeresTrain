@@ -430,6 +430,9 @@ def Train():
 
   model.train()
 
+  wdl_reverse = torch.tensor([2, 1, 0]) # for reversing perspective on WDL
+  
+
   # Train Network
   for batch_idx, (batch) in enumerate(dataloader):
     if (num_pos >= MAX_POSITIONS):
@@ -450,21 +453,25 @@ def Train():
         num_processing_now = batch['squares'].shape[0]
         policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(batch['squares'])
         loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
-                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, None, None, num_pos, this_lr, show_losses)
       else:
         num_processing_now = batch[0]['squares'].shape[0] * 4
         sub_batch = batch[0]
         policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
         loss1 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
-                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, None, None, num_pos, this_lr, show_losses)
         sub_batch = batch[1]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
-        loss2 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
-                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1 = model(sub_batch['squares'])
+        loss2 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
+                                   value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, 
+                                   value_out[:, wdl_reverse], value2_out[:, wdl_reverse],  # comparing to previous positions
+                                   num_pos, this_lr, show_losses)
         sub_batch = batch[2]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
-        loss3 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
-                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2 = model(sub_batch['squares'])
+        loss3 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
+                                   value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
+                                   value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
+                                   num_pos, this_lr, show_losses)
 
         loss = (loss1 + loss2 + loss3) / 3
         
@@ -520,7 +527,11 @@ def Train():
                      + config.Opt_LossMLHMultiplier * loss_calc.LAST_MLH_LOSS
                      + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS
                      + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_LOWER_LOSS       
-                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS)
+                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS
+                     
+                     + config.Opt_LossValueDMultiplier * loss_calc.LAST_VALUE_DIFF_LOSS
+                     + config.Opt_LossValue2DMultiplier * loss_calc.LAST_VALUE2_DIFF_LOSS
+                     )
         
         print("TRAIN:", num_pos, ",", total_loss, ",", 
               loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
@@ -532,6 +543,10 @@ def Train():
               loss_calc.LAST_VALUE2_LOSS if config.Opt_LossValue2Multiplier > 0 else 0, ",", 
               loss_calc.LAST_Q_DEVIATION_LOWER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
               loss_calc.LAST_Q_DEVIATION_UPPER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+
+              loss_calc.LAST_VALUE_DIFF_LOSS if config.Opt_LossValueDMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_VALUE2_DIFF_LOSS if config.Opt_LossValue2DMultiplier > 0 else 0, ",", 
+
               scheduler.get_last_lr()[0], flush=True)
         loss_calc.reset_counters()
         time_last_status_update = datetime.datetime.now()

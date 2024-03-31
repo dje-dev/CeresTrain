@@ -166,6 +166,16 @@ namespace CeresTrain.Trainer
     /// </summary>
     public readonly float LossQDeviationMultiplier { get; init; } = 0.0f;
 
+    /// <summary>
+    /// Scaling multiplier to be applied to difference in value scores between consecutive positions.
+    /// </summary>
+    public readonly float LossValueDMultiplier { get; init; } = 0.0f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to difference in value2 scores between consecutive positions.
+    /// </summary>
+    public readonly float LossValue2DMultiplier { get; init; } = 0.0f;
+
     #endregion
 
     /// <summary>

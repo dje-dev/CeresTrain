@@ -465,7 +465,9 @@ class CeresNet(pl.LightningModule):
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
-                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, last_lr, log_stats):
+                   value2_out, q_deviation_lower_out, q_deviation_upper_out, 
+                   value_diff_out, value2_diff_out,
+                   num_pos, last_lr, log_stats):
     policy_target = batch['policies']
     wdl_target = batch['wdl_result']
     q_target = batch['wdl_q']
@@ -483,6 +485,16 @@ class CeresNet(pl.LightningModule):
     u_loss = loss_calc.unc_loss(unc_target, unc_out)
     q_deviation_lower_loss = loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
     q_deviation_upper_loss = loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
+
+    if value_diff_out is not None:
+      value_diff_loss = loss_calc.value_diff_loss(value_out, value_diff_out)
+    else:
+      value_diff_loss = 0 
+      
+    if value2_diff_out is not None:
+      value2_diff_loss = loss_calc.value2_diff_loss(value2_out, value2_diff_out)
+    else:
+      value2_diff_loss = 0
     
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
@@ -490,7 +502,10 @@ class CeresNet(pl.LightningModule):
         + self.unc_loss_weight * u_loss
         + self.value2_loss_weight * v2_loss
         + self.q_deviation_loss_weight * q_deviation_lower_loss
-        + self.q_deviation_loss_weight * q_deviation_upper_loss)
+        + self.q_deviation_loss_weight * q_deviation_upper_loss
+        + 0.50 * value_diff_loss
+        + 0.50 * value2_diff_loss
+        )
         
     if (log_stats):
         policy_accuracy = loss_calc.calc_accuracy(policy_target, policy_out, True)
@@ -507,6 +522,8 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("unc_loss", u_loss, step=num_pos)
         self.fabric.log("q_deviation_lower_loss", q_deviation_lower_loss, step=num_pos)
         self.fabric.log("q_deviation_upper_loss", q_deviation_upper_loss, step=num_pos)
+        self.fabric.log("value_diff_loss", value_diff_loss, step=num_pos)
+        self.fabric.log("value2_diff_loss", value2_diff_loss, step=num_pos)
         
     return total_loss
 

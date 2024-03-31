@@ -28,7 +28,8 @@ class LossCalculator():
 
     # Keep running statistics (counts/totals) in between calls to reset_counters.
     self.reset_counters()
-
+    self.ce_loss = nn.CrossEntropyLoss()
+    
   def reset_counters(self):
     self.PENDING_COUNT = 0
     self.PENDING_VALUE_LOSS = 0
@@ -40,12 +41,25 @@ class LossCalculator():
     self.PENDING_VALUE2_LOSS = 0
     self.PENDING_Q_DEVIATION_LOWER_LOSS = 0
     self.PENDING_Q_DEVIATION_UPPER_LOSS = 0
-
+    self.PENDING_VALUE_DIFF_LOSS = 0
+    self.PENDING_VALUE2_DIFF_LOSS = 0
 
   @property
   def LAST_VALUE_LOSS(self):
     return self.PENDING_VALUE_LOSS / self.PENDING_COUNT
   
+  @property
+  def LAST_VALUE2_LOSS(self):
+    return self.PENDING_VALUE2_LOSS / self.PENDING_COUNT
+  
+  @property
+  def LAST_VALUE_DIFF_LOSS(self):
+    return self.PENDING_VALUE_DIFF_LOSS / self.PENDING_COUNT
+  
+  @property
+  def LAST_VALUE2_DIFF_LOSS(self):
+    return self.PENDING_VALUE2_DIFF_LOSS / self.PENDING_COUNT
+
   @property
   def LAST_POLICY_LOSS(self):
     return self.PENDING_POLICY_LOSS / self.PENDING_COUNT
@@ -66,10 +80,6 @@ class LossCalculator():
   def LAST_UNC_LOSS(self):
     return self.PENDING_UNC_LOSS / self.PENDING_COUNT
 
-  @property
-  def LAST_VALUE2_LOSS(self):
-    return self.PENDING_VALUE2_LOSS / self.PENDING_COUNT
-  
   @property
   def LAST_Q_DEVIATION_LOWER_LOSS(self):
     return self.PENDING_Q_DEVIATION_LOWER_LOSS / self.PENDING_COUNT
@@ -97,7 +107,7 @@ class LossCalculator():
     illegalMaskValue = torch.zeros_like(output).add_(self.MASK_POLICY_VALUE)
     output = torch.where(legalMoves, output, illegalMaskValue)
 
-    loss = nn.CrossEntropyLoss().forward(output, target)
+    loss = self.ce_loss.forward(output, target)
 
     self.PENDING_POLICY_LOSS += loss.item()
     self.PENDING_POLICY_ACC += self.calc_accuracy(target, output, True)
@@ -112,14 +122,33 @@ class LossCalculator():
 
 
   def value_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = nn.CrossEntropyLoss().forward(output, target)
+    loss = self.ce_loss.forward(output, target)
     self.PENDING_VALUE_LOSS += loss.item()
     self.PENDING_VALUE_ACC += self.calc_accuracy(target, output, False)
     return loss
 
   def value2_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = nn.CrossEntropyLoss().forward(output, target)
+    loss = self.ce_loss.forward(output, target)
     self.PENDING_VALUE2_LOSS += loss.item()
+    return loss
+
+  def value_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
+    # both logits
+    loss_fn = nn.KLDivLoss(reduction='batchmean')
+    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
+    
+#    loss = self.ce_loss.forward(output, target)
+    
+    self.PENDING_VALUE_DIFF_LOSS += loss.item()
+    return loss
+
+  def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
+    loss_fn = nn.KLDivLoss(reduction='batchmean')
+    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
+
+#    loss = self.ce_loss.forward(output, target)
+    
+    self.PENDING_VALUE2_DIFF_LOSS += loss.item()
     return loss
 
 

@@ -209,7 +209,7 @@ class TPGDataset(Dataset):
     NUM_PER_SUBBATCH = 4
     
     def create_filtered_dict(mod_value):
-      # Function to filter tensor elements with indices modulo 4 equal to mod_value
+      # Function to filter tensor elements with indices modulo NUM_PER_SUBBATCH equal to mod_value
       def filter_tensor(tensor, mod_value):
           indices = torch.arange(len(tensor))
           filtered_indices = indices[indices % NUM_PER_SUBBATCH == mod_value]
