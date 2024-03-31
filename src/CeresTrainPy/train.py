@@ -219,7 +219,7 @@ def Train():
 
 
   # Sample code to load from a saved TorchScript model
-  if False:
+  if True:
     torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_32bn_smol_att2x_dualALT_DT_LR20min_steep_1972985856.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
@@ -442,11 +442,32 @@ def Train():
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
-      policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(batch['squares'])
-      loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
-                                value2_out, q_deviation_lower_out, q_deviation_upper_out,
-                                num_pos, scheduler.get_last_lr(), show_losses)
+      this_lr = scheduler.get_last_lr()
+      
+      SINGLE_MODE = False
+      if SINGLE_MODE:
+        batch = batch[0]
+        num_processing_now = batch['squares'].shape[0]
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(batch['squares'])
+        loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
+                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+      else:
+        num_processing_now = batch[0]['squares'].shape[0] * 4
+        sub_batch = batch[0]
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
+        loss1 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
+                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+        sub_batch = batch[1]
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
+        loss2 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
+                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
+        sub_batch = batch[2]
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
+        loss3 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
+                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, num_pos, this_lr, show_losses)
 
+        loss = (loss1 + loss2 + loss3) / 3
+        
       fabric.backward(loss)
 
     if not is_accumulating:
@@ -459,7 +480,7 @@ def Train():
     batch_accumulation_counter = batch_accumulation_counter + 1
     
     # update number of positions processed across all workers
-    num_pos = num_pos + (fabric.world_size * batch['squares'].shape[0])
+    num_pos = num_pos + (fabric.world_size * num_processing_now)
 
 
     if (fabric.is_global_zero):

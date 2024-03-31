@@ -138,9 +138,12 @@ class TPGDataset(Dataset):
 
               wdl_q = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
+
+              policy_index_in_parent = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.int16).reshape(-1, 1)
+              offset+= 1 * 2
              
               #ply_next_square_move = np.ascontiguousarray(this_batch[:, offset : offset + 64 * 1]).view(dtype=np.byte).reshape(-1, 64).astype(DTYPE)
-              offset+= 64
+              offset+= 62
 
               mlh = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               mlh = np.square(mlh / 0.1) # undo preprocessing
@@ -179,7 +182,7 @@ class TPGDataset(Dataset):
               assert(offset == BYTES_PER_POS)
 
               yield  ((policies_indices, policies_values, wdl_result, wdl_q, mlh, uncertainty, 
-                       wdl2_result, q_deviation_lower, q_deviation_upper, squares))
+                       wdl2_result, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent))
 
 
   def __getitem__(self, idx):
@@ -194,6 +197,7 @@ class TPGDataset(Dataset):
     q_deviation_lower = batch[7]
     q_deviation_upper = batch[8]
     squares = batch[9]
+    policy_index_in_parent = batch[10]
     
     policies_indices = torch.tensor(policies_indices, dtype=torch.int64).reshape(self.batch_size, MAX_MOVES)
     policies_values  = torch.tensor(policies_values, dtype=torch.float16).reshape(self.batch_size, MAX_MOVES)
@@ -202,16 +206,31 @@ class TPGDataset(Dataset):
     policies = torch.zeros(self.batch_size, 1858, dtype=torch.float16)
     policies.scatter_(1, policies_indices, policies_values)
 
-    return {'policies': policies,
-            'policies': policies, # NOT NEEDED
-            'wdl_result':torch.tensor(wdl_result),
-            'wdl_q': torch.tensor(wdl_q), 
-            'mlh': torch.tensor(mlh), 
-            'unc': torch.tensor(uncertainty), 
-            'wdl2_result': torch.tensor(wdl2_result), 
-            'q_deviation_lower': torch.tensor(q_deviation_lower).to(torch.float32),
-            'q_deviation_upper': torch.tensor(q_deviation_upper).to(torch.float32),
-            'squares': torch.tensor(squares)}
+    NUM_PER_SUBBATCH = 4
+    
+    def create_filtered_dict(mod_value):
+      # Function to filter tensor elements with indices modulo 4 equal to mod_value
+      def filter_tensor(tensor, mod_value):
+          indices = torch.arange(len(tensor))
+          filtered_indices = indices[indices % NUM_PER_SUBBATCH == mod_value]
+          return tensor[filtered_indices]
+
+      # Creating the new dictionary with filtered tensors
+      filtered_dict = {
+          'policies': filter_tensor(torch.tensor(policies), mod_value),
+          'wdl_result': filter_tensor(torch.tensor(wdl_result), mod_value),
+          'wdl_q': filter_tensor(torch.tensor(wdl_q), mod_value),
+          'mlh': filter_tensor(torch.tensor(mlh), mod_value),
+          'unc': filter_tensor(torch.tensor(uncertainty), mod_value),
+          'wdl2_result': filter_tensor(torch.tensor(wdl2_result), mod_value),
+          'q_deviation_lower': filter_tensor(torch.tensor(q_deviation_lower), mod_value).to(torch.float32),
+          'q_deviation_upper': filter_tensor(torch.tensor(q_deviation_upper), mod_value).to(torch.float32),
+          'squares': filter_tensor(torch.tensor(squares), mod_value),
+          'policy_index_in_parent': filter_tensor(torch.tensor(policy_index_in_parent), mod_value)
+      }  
+      return filtered_dict
+    
+    return [create_filtered_dict(i) for i in range(NUM_PER_SUBBATCH)]
 
 
 def worker_init_fn(worker_id):
