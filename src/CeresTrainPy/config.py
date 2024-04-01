@@ -91,6 +91,7 @@ class Configuration:
     self.Opt_LossValue2Multiplier = config_opt.get('LossValue2Multiplier', 0.0)
     self.Opt_LossValueDMultiplier = config_opt.get('LossValueDMultiplier', 0.0)
     self.Opt_LossValue2DMultiplier = config_opt.get('LossValue2DMultiplier', 0.0)
+    self.Opt_LossActionMultiplier = config_opt.get('LossActionMultiplier', 0.0)
     self.Opt_LossQDeviationMultiplier = config_opt.get('LossQDeviationMultiplier', 0.0)    
     self.Opt_LossPolicyMultiplier = config_opt.get('LossPolicyMultiplier', 1)
     self.Opt_LossMLHMultiplier = config_opt.get('LossMLHMultiplier', 0)

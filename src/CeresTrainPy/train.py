@@ -152,7 +152,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                     export_params=True,
                     opset_version=17,
                     input_names = ['squares'], 
-                    output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper'], 
+                    output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action'], 
                     dynamic_axes={'squares' : {0 : 'batch_size'},    
                                   'policy' : {0 : 'batch_size'},
                                   'value' : {0 : 'batch_size'},
@@ -214,12 +214,15 @@ def Train():
                    moves_left_loss_weight= config.Opt_LossMLHMultiplier, 
                    unc_loss_weight= config.Opt_LossUNCMultiplier,
                    value2_loss_weight= config.Opt_LossValue2Multiplier,
-                   q_deviation_loss_weight= config.Opt_LossQDeviationMultiplier,                  
+                   q_deviation_loss_weight= config.Opt_LossQDeviationMultiplier,
+                   value_diff_loss_weight = config.Opt_LossValueDMultiplier,
+                   value2_diff_loss_weight = config.Opt_LossValue2DMultiplier,
+                   action_loss_weight = config.Opt_LossActionMultiplier,
                    q_ratio=config.Data_FractionQ, optimizer='adamw', learning_rate=LR)
 
 
   # Sample code to load from a saved TorchScript model
-  if True:
+  if False:
     torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_32bn_smol_att2x_dualALT_DT_LR20min_steep_1972985856.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
@@ -271,7 +274,7 @@ def Train():
       export_params=True,
       opset_version=17,
       input_names = ['squares'], 
-      output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper'], 
+      output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action'], 
       dynamic_axes={'squares' : {0 : 'batch_size'},    
                     'policy' : {0 : 'batch_size'},
                     'value' : {0 : 'batch_size'},
@@ -451,29 +454,77 @@ def Train():
       if SINGLE_MODE:
         batch = batch[0]
         num_processing_now = batch['squares'].shape[0]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(batch['squares'])
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out = model(batch['squares'])
         loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
-                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, None, None, num_pos, this_lr, show_losses)
+                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, 
+                                  None, None, 
+                                  None, None,
+                                  num_pos, this_lr, show_losses)
       else:
         num_processing_now = batch[0]['squares'].shape[0] * 4
+        
+        #Board 1
         sub_batch = batch[0]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out = model(sub_batch['squares'])
-        loss1 = model.compute_loss(loss_calc, sub_batch, policy_out, value_out, moves_left_out, unc_out,
-                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, None, None, num_pos, this_lr, show_losses)
-        sub_batch = batch[1]
-        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1 = model(sub_batch['squares'])
-        loss2 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
+        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, action_out1 = model(sub_batch['squares'])
+        loss1 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
                                    value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, 
-                                   value_out[:, wdl_reverse], value2_out[:, wdl_reverse],  # comparing to previous positions
-                                   num_pos, this_lr, show_losses)
-        sub_batch = batch[2]
-        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2 = model(sub_batch['squares'])
-        loss3 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
-                                   value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
-                                   value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
+                                   None, None, 
+                                   None, None, 
                                    num_pos, this_lr, show_losses)
 
-        loss = (loss1 + loss2 + loss3) / 3
+        # Board 2
+        sub_batch = batch[1]
+        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2 = model(sub_batch['squares'])
+
+        if config.Opt_LossActionMultiplier > 0:
+          action2_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
+          extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action2_played_move_indices.squeeze(-1)]
+        else:
+          extracted_action1_out = None
+          
+
+        loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
+                                   value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
+                                   value_out1[:, wdl_reverse], value_out2[:, wdl_reverse],  # comparing to previous positions
+                                   extracted_action1_out, value2_out2, # prior board action should target this value2 result
+                                   num_pos, this_lr, show_losses)
+        
+        # Board 3
+        sub_batch = batch[2]
+        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3 = model(sub_batch['squares'])
+
+        if config.Opt_LossActionMultiplier > 0:
+          action3_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
+          extracted_action2_out = action_out2[torch.arange(0, action_out2.size(0)), action3_played_move_indices.squeeze(-1)]
+        else:
+          extracted_action2_out = None
+
+        loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
+                                   value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
+                                   value_out2[:, wdl_reverse], value_out3[:, wdl_reverse],  # comparing to previous positions
+                                   extracted_action2_out, value2_out3, # prior board action should target this value2 result
+                                   num_pos, this_lr, show_losses)
+
+
+        # Board 4
+        sub_batch = batch[3]
+        policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4 = model(sub_batch['squares'])
+
+
+        if config.Opt_LossActionMultiplier > 0:
+          action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
+          extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action4_played_move_indices.squeeze(-1)]
+        else:
+          extracted_action1_out = None
+
+        loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
+                                   None, None, None, 
+                                   None, None,
+                                   extracted_action1_out, value2_out4, # prior board action should target this value2 result
+                                   num_pos, this_lr, show_losses)
+
+
+        loss = (loss1 + loss2 + loss3 + loss4) / 3 # although there are 4 loss terms, the last one is typically very small so we only divide by 3
         
       fabric.backward(loss)
 
@@ -531,7 +582,8 @@ def Train():
                      
                      + config.Opt_LossValueDMultiplier * loss_calc.LAST_VALUE_DIFF_LOSS
                      + config.Opt_LossValue2DMultiplier * loss_calc.LAST_VALUE2_DIFF_LOSS
-                     )
+                     
+                     + config.Opt_LossActionMultiplier * loss_calc.LAST_ACTION_LOSS)
         
         print("TRAIN:", num_pos, ",", total_loss, ",", 
               loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
@@ -547,6 +599,8 @@ def Train():
               loss_calc.LAST_VALUE_DIFF_LOSS if config.Opt_LossValueDMultiplier > 0 else 0, ",", 
               loss_calc.LAST_VALUE2_DIFF_LOSS if config.Opt_LossValue2DMultiplier > 0 else 0, ",", 
 
+              loss_calc.LAST_ACTION_LOSS if config.Opt_LossActionMultiplier > 0 else 0, ",",
+              
               scheduler.get_last_lr()[0], flush=True)
         loss_calc.reset_counters()
         time_last_status_update = datetime.datetime.now()

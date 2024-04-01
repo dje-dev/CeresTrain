@@ -68,6 +68,9 @@ class CeresNet(pl.LightningModule):
     unc_loss_weight,
     value2_loss_weight,
     q_deviation_loss_weight,
+    value_diff_loss_weight,
+    value2_diff_loss_weight,
+    action_loss_weight,
     q_ratio,
     optimizer,
     learning_rate
@@ -137,6 +140,18 @@ class CeresNet(pl.LightningModule):
     self.fcPolicyFinal2 = nn.Linear(FINAL_POLICY_FC1_SIZE, FINAL_POLICY_FC2_SIZE)
     self.fcPolicyRELU2 = self.Activation
     self.fcPolicyFinal3 = nn.Linear(FINAL_POLICY_FC2_SIZE, 1858)
+
+
+    if action_loss_weight > 0:
+      FINAL_ACTION_FC1_SIZE = 128 * HEAD_MULT
+      FINAL_ACTION_FC2_SIZE = 64 * HEAD_MULT
+
+      self.fcActionFinal1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY, FINAL_ACTION_FC1_SIZE)
+      self.fcActionRELU1 = self.Activation
+      self.fcActionFinal2 = nn.Linear(FINAL_ACTION_FC1_SIZE, FINAL_ACTION_FC2_SIZE)
+      self.fcActionRELU2 = self.Activation
+      self.fcActionFinal3 = nn.Linear(FINAL_ACTION_FC2_SIZE, 1858 * 3)
+
 
     self.HEAD_PREMAP_DIVISOR_VALUE = 8
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
@@ -293,6 +308,11 @@ class CeresNet(pl.LightningModule):
     self.unc_loss_weight = unc_loss_weight
     self.value2_loss_weight = value2_loss_weight
     self.q_deviation_loss_weight = q_deviation_loss_weight
+    self.value_diff_loss_weight = value_diff_loss_weight
+    self.value2_diff_loss_weight = value2_diff_loss_weight
+    self.action_loss_weight = action_loss_weight
+
+
     self.q_ratio = q_ratio
     self.optimizer = optimizer
     self.learning_rate = learning_rate
@@ -371,6 +391,17 @@ class CeresNet(pl.LightningModule):
     ff2Policy = self.fcPolicyFinal2(ff1RELUPolicy)
     ff2RELUPolicy = self.fcPolicyRELU2(ff2Policy)
     policy_out = self.fcPolicyFinal3(ff2RELUPolicy)
+
+    if self.action_loss_weight > 0:
+      ff1Action = self.fcActionFinal1(flattenedPolicy) # shares premap with policy
+      ff1RELUAction = self.fcActionRELU1(ff1Action)
+      ff2Action = self.fcActionFinal2(ff1RELUAction)
+      ff2RELUAction = self.fcActionRELU2(ff2Action)
+      action_out = self.fcActionFinal3(ff2RELUAction)
+      action_out = action_out.reshape(-1, 1858, 3)
+
+    else:
+      action_out = None
 
     GLOBAL_ONLY = self.heads_pure_global
 
@@ -461,12 +492,13 @@ class CeresNet(pl.LightningModule):
     q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
 
 
-    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
+    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
                    value2_out, q_deviation_lower_out, q_deviation_upper_out, 
                    value_diff_out, value2_diff_out,
+                   action_target, action_out,
                    num_pos, last_lr, log_stats):
     policy_target = batch['policies']
     wdl_target = batch['wdl_result']
@@ -478,24 +510,24 @@ class CeresNet(pl.LightningModule):
     q_deviation_upper_target = batch['q_deviation_upper']
 
     value_target = q_target * self.q_ratio + wdl_target * (1 - self.q_ratio)
-    p_loss = loss_calc.policy_loss(policy_target, policy_out)
-    v_loss = loss_calc.value_loss(value_target, value_out)
-    v2_loss = loss_calc.value2_loss(wdl2_target, value2_out)
-    ml_loss = loss_calc.moves_left_loss(moves_left_target, moves_left_out)
-    u_loss = loss_calc.unc_loss(unc_target, unc_out)
-    q_deviation_lower_loss = loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
-    q_deviation_upper_loss = loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
+    p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out)
+    v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out)
+    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl2_target, value2_out)
+    ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out)
+    u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out)
+    q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
+    q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
 
-    if value_diff_out is not None:
-      value_diff_loss = loss_calc.value_diff_loss(value_out, value_diff_out)
-    else:
-      value_diff_loss = 0 
+    # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
+    # How to decide which to take as the target (more definitive)? 
+    # It seems that self-consistency requires that this_board is the target because this will hold
+    # if both the value and policy of prior_board were correct.
+    value_diff_loss = 0 if value_diff_out is None else loss_calc.value_diff_loss(value_out, value_diff_out)      
+    value2_diff_loss = 0 if value2_diff_out is None else loss_calc.value2_diff_loss(value2_out, value2_diff_out)
+
+    action_loss = 0 if action_target is None else loss_calc.action_loss(action_target, action_out)
       
-    if value2_diff_out is not None:
-      value2_diff_loss = loss_calc.value2_diff_loss(value2_out, value2_diff_out)
-    else:
-      value2_diff_loss = 0
-    
+
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
         + self.moves_left_loss_weight * ml_loss
@@ -503,13 +535,14 @@ class CeresNet(pl.LightningModule):
         + self.value2_loss_weight * v2_loss
         + self.q_deviation_loss_weight * q_deviation_lower_loss
         + self.q_deviation_loss_weight * q_deviation_upper_loss
-        + 0.50 * value_diff_loss
-        + 0.50 * value2_diff_loss
+        + self.value_loss_weight * value_diff_loss
+        + self.value2_loss_weight * value2_diff_loss
+        + self.action_loss_weight * action_loss
         )
         
     if (log_stats):
-        policy_accuracy = loss_calc.calc_accuracy(policy_target, policy_out, True)
-        value_accuracy = loss_calc.calc_accuracy(value_target, value_out, False)
+        policy_accuracy = 0 if policy_out is None else loss_calc.calc_accuracy(policy_target, policy_out, True)
+        value_accuracy = 0 if value_out is None else loss_calc.calc_accuracy(value_target, value_out, False)
         self.fabric.log("pos_mm", num_pos // 1000000., step=num_pos)
         self.fabric.log("LR", last_lr[0], step=num_pos)
         self.fabric.log("total_loss", total_loss, step=num_pos)
@@ -524,6 +557,7 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("q_deviation_upper_loss", q_deviation_upper_loss, step=num_pos)
         self.fabric.log("value_diff_loss", value_diff_loss, step=num_pos)
         self.fabric.log("value2_diff_loss", value2_diff_loss, step=num_pos)
+        self.fabric.log("action_loss", action_loss, step=num_pos)
         
     return total_loss
 

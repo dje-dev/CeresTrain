@@ -24,7 +24,7 @@ class LossCalculator():
   def __init__(self):
     super().__init__()
 
-    self.MASK_POLICY_VALUE = -1E5 #; // for illegal moves
+    self.MASK_POLICY_VALUE = -1E5 # for illegal moves
 
     # Keep running statistics (counts/totals) in between calls to reset_counters.
     self.reset_counters()
@@ -43,6 +43,7 @@ class LossCalculator():
     self.PENDING_Q_DEVIATION_UPPER_LOSS = 0
     self.PENDING_VALUE_DIFF_LOSS = 0
     self.PENDING_VALUE2_DIFF_LOSS = 0
+    self.PENDING_ACTION_LOSS = 0
 
   @property
   def LAST_VALUE_LOSS(self):
@@ -88,6 +89,10 @@ class LossCalculator():
   def LAST_Q_DEVIATION_UPPER_LOSS(self):
     return self.PENDING_Q_DEVIATION_UPPER_LOSS / self.PENDING_COUNT
 
+  @property
+  def LAST_ACTION_LOSS(self):
+    return self.PENDING_ACTION_LOSS / self.PENDING_COUNT
+  
   
   def calc_accuracy(self, target: torch.Tensor, output: torch.Tensor, apply_masking : bool) -> float:
     if apply_masking:
@@ -143,6 +148,7 @@ class LossCalculator():
     return loss
 
   def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
+    # both logits
     loss_fn = nn.KLDivLoss(reduction='batchmean')
     loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
 
@@ -151,6 +157,15 @@ class LossCalculator():
     self.PENDING_VALUE2_DIFF_LOSS += loss.item()
     return loss
 
+  def action_loss(self, target: torch.Tensor, output: torch.Tensor):
+    # both logits
+    loss_fn = nn.KLDivLoss(reduction='batchmean')
+    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
+    
+#    loss = self.ce_loss.forward(output, target)
+    
+    self.PENDING_ACTION_LOSS += loss.item()
+    return loss
 
   def moves_left_loss(self, target: torch.Tensor, output: torch.Tensor):
     # Scale the loss to similar range as other losses.
