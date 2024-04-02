@@ -497,7 +497,7 @@ class CeresNet(pl.LightningModule):
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
                    value2_out, q_deviation_lower_out, q_deviation_upper_out, 
-                   value_diff_out, value2_diff_out,
+                   prior_value_out, prior_value2_out,
                    action_target, action_out,
                    num_pos, last_lr, log_stats):
     policy_target = batch['policies']
@@ -522,12 +522,11 @@ class CeresNet(pl.LightningModule):
     # How to decide which to take as the target (more definitive)? 
     # It seems that self-consistency requires that this_board is the target because this will hold
     # if both the value and policy of prior_board were correct.
-    value_diff_loss = 0 if value_diff_out is None else loss_calc.value_diff_loss(value_out, value_diff_out)      
-    value2_diff_loss = 0 if value2_diff_out is None else loss_calc.value2_diff_loss(value2_out, value2_diff_out)
+    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out)
+    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out)
 
-    action_loss = 0 if action_target is None else loss_calc.action_loss(action_target, action_out)
+    action_loss = 0 if self.action_loss_weight == 0 or action_target == None else loss_calc.action_loss(action_target, action_out)
       
-
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
         + self.moves_left_loss_weight * ml_loss
@@ -535,8 +534,8 @@ class CeresNet(pl.LightningModule):
         + self.value2_loss_weight * v2_loss
         + self.q_deviation_loss_weight * q_deviation_lower_loss
         + self.q_deviation_loss_weight * q_deviation_upper_loss
-        + self.value_loss_weight * value_diff_loss
-        + self.value2_loss_weight * value2_diff_loss
+        + self.value_diff_loss_weight * value_diff_loss
+        + self.value2_diff_loss_weight * value2_diff_loss
         + self.action_loss_weight * action_loss
         )
         

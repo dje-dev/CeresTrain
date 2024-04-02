@@ -485,8 +485,8 @@ def Train():
 
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
-                                   value_out1[:, wdl_reverse], value_out2[:, wdl_reverse],  # comparing to previous positions
-                                   extracted_action1_out, value2_out2, # prior board action should target this value2 result
+                                   value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
+                                   value2_out2, extracted_action1_out,  # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
         
         # Board 3
@@ -501,8 +501,8 @@ def Train():
 
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
-                                   value_out2[:, wdl_reverse], value_out3[:, wdl_reverse],  # comparing to previous positions
-                                   extracted_action2_out, value2_out3, # prior board action should target this value2 result
+                                   value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse],  # comparing to previous positions
+                                   value2_out3, extracted_action2_out, # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
 
 
@@ -520,7 +520,7 @@ def Train():
         loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                    None, None, None, 
                                    None, None,
-                                   extracted_action1_out, value2_out4, # prior board action should target this value2 result
+                                   value2_out4, extracted_action1_out,  # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
 
 

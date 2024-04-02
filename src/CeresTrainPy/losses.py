@@ -138,32 +138,20 @@ class LossCalculator():
     return loss
 
   def value_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
-    # both logits
-    loss_fn = nn.KLDivLoss(reduction='batchmean')
-    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
-    
-#    loss = self.ce_loss.forward(output, target)
+    loss = self.ce_loss(output, F.softmax(target, dim=-1))
     
     self.PENDING_VALUE_DIFF_LOSS += loss.item()
     return loss
 
   def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
-    # both logits
-    loss_fn = nn.KLDivLoss(reduction='batchmean')
-    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
-
-#    loss = self.ce_loss.forward(output, target)
-    
+    loss = self.ce_loss(output, F.softmax(target, dim=-1))
+   
     self.PENDING_VALUE2_DIFF_LOSS += loss.item()
     return loss
 
   def action_loss(self, target: torch.Tensor, output: torch.Tensor):
-    # both logits
-    loss_fn = nn.KLDivLoss(reduction='batchmean')
-    loss = loss_fn(F.log_softmax(output, dim=-1), F.softmax(target, dim=-1))
-    
-#    loss = self.ce_loss.forward(output, target)
-    
+    loss = self.ce_loss(output, F.softmax(target, dim=-1))   
+  
     self.PENDING_ACTION_LOSS += loss.item()
     return loss
 
