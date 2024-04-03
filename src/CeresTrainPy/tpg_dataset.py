@@ -46,14 +46,15 @@ class TPGDataset(Dataset):
       world_size (int): Total number of processes in distributed training.
       num_workers (int): Number of worker processes for data loading.
   """
-  def __init__(self, root_dir, batch_size, wdl_smoothing, rank, world_size, num_workers):
+  def __init__(self, root_dir, batch_size, wdl_smoothing, rank, world_size, num_workers, boards_per_batch):
 
     self.root_dir = root_dir
     self.batch_size = batch_size
     self.wdl_smoothing = wdl_smoothing
     self.num_workers = num_workers
     self.generator = self.item_generator()
-      
+    self.boards_per_batch = boards_per_batch
+    
     # Get the list of files in the specified directory and select the subset appropriate for this worker.
     all_files = fnmatch.filter(os.listdir(root_dir), '*.zst')
     all_files.sort(key=lambda f: stable_str_hash(f))  # deterministic shuffle
@@ -138,12 +139,9 @@ class TPGDataset(Dataset):
 
               wdl_q = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
-
-              policy_index_in_parent = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.int16).reshape(-1, 1)
-              offset+= 1 * 2
-             
+           
               #ply_next_square_move = np.ascontiguousarray(this_batch[:, offset : offset + 64 * 1]).view(dtype=np.byte).reshape(-1, 64).astype(DTYPE)
-              offset+= 62
+              offset+= 64
 
               mlh = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               mlh = np.square(mlh / 0.1) # undo preprocessing
@@ -158,13 +156,10 @@ class TPGDataset(Dataset):
               offset+= 1 * 2
               q_deviation_upper = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.float16).reshape(-1, 1)
               offset+= 1 * 2
+
+              policy_index_in_parent = np.ascontiguousarray(this_batch[:, offset : offset + 1*2]).view(dtype=np.int16).reshape(-1, 1)
+              offset+= 1 * 2
  
-              # IsWhiteToMove
-              offset+= 1
-
-              # UnusedByte1
-              offset+= 1;
-
               policies_indices = np.ascontiguousarray(this_batch[:, offset : offset + MAX_MOVES*2]).view(dtype=np.int16).reshape(-1, MAX_MOVES)
               # much faster, but tries to reinitialize CUDA and fails:
               #   policies = torch.from_numpy(np.ascontiguousarray(this_batch[:, offset : offset + 1858*2]).view(dtype=np.float16)).cuda().reshape(-1,1858)
@@ -206,13 +201,12 @@ class TPGDataset(Dataset):
     policies = torch.zeros(self.batch_size, 1858, dtype=torch.float16)
     policies.scatter_(1, policies_indices, policies_values)
 
-    NUM_PER_SUBBATCH = 4
-    
+   
     def create_filtered_dict(mod_value):
-      # Function to filter tensor elements with indices modulo NUM_PER_SUBBATCH equal to mod_value
+      # Function to filter tensor elements with indices modulo boards_per_batch equal to mod_value
       def filter_tensor(tensor, mod_value):
           indices = torch.arange(len(tensor))
-          filtered_indices = indices[indices % NUM_PER_SUBBATCH == mod_value]
+          filtered_indices = indices[indices % self.boards_per_batch == mod_value]
           return tensor[filtered_indices]
 
       # Creating the new dictionary with filtered tensors
@@ -230,7 +224,7 @@ class TPGDataset(Dataset):
       }  
       return filtered_dict
     
-    return [create_filtered_dict(i) for i in range(NUM_PER_SUBBATCH)]
+    return [create_filtered_dict(i) for i in range(self.boards_per_batch)]
 
 
 def worker_init_fn(worker_id):

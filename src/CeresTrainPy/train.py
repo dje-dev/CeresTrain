@@ -50,6 +50,8 @@ torch.backends.cuda.enable_flash_sdp(True)
 #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
 #sys.argv = ['train.py', '/mnt/deve/cout/configs/ENT_256_10_16_FFN2_500mm_smol_moe_dualboth', '/mnt/deve/cout']
 
+BOARDS_PER_BATCH = 4
+
 
 if len(sys.argv) < 3:
   raise ValueError("train.py expected <config_path> <outputs_directory>")
@@ -125,12 +127,13 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
     sample_inputs = torch.rand(256, 64, (137) * (64 // 64)).to(convert_type).to(m.device)
-    if True:
-      m_save = torch.jit.trace(m, sample_inputs)
-    else:
-      # NOTE: fails for some common Pytorch operations such as einops
-      m_save = torch.jit.script(m)
-    m_save.save(SAVE_TS_PATH)
+    if False: # torchscript saving broke upon introduction of multiboard support (starting 31 March 2024)
+      if True:
+        m_save = torch.jit.trace(m, sample_inputs)
+      else:
+        # NOTE: fails for some common Pytorch operations such as einops
+        m_save = torch.jit.script(m)
+      m_save.save(SAVE_TS_PATH)
     
     # below simpler method fails, probably due to use of .compile
     #BATCH_SIZE = 16
@@ -144,7 +147,11 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
       ONNX16_SAVE_PATH = SAVE_TS_PATH + "_16.onnx"
       
       # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
-      if save_onnx: # possibly hangs or crashes, possibly on in certain comiled modes
+      if save_onnx: # possibly hangs or crashes, possibly on in certain compiled modes
+        head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper']
+        if config.Opt_LossActionMultiplier > 0:
+          head_output_names.append('action')
+        
         torch.onnx.export(m,
                     [sample_inputs],
                     ONNX_SAVE_PATH,
@@ -152,7 +159,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                     export_params=True,
                     opset_version=17,
                     input_names = ['squares'], 
-                    output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action'], 
+                    output_names = head_output_names, 
                     dynamic_axes={'squares' : {0 : 'batch_size'},    
                                   'policy' : {0 : 'batch_size'},
                                   'value' : {0 : 'batch_size'},
@@ -401,9 +408,10 @@ def Train():
   NUM_DATASET_WORKERS = min(1, count_zst_files)
   PREFETCH_FACTOR = 4 # to keep GPU busy
 
+ 
   world_size = len(devices)
   rank = 0 if world_size == 1 else dist.get_rank()
-  dataset = TPGDataset(TPG_TRAIN_DIR, batch_size_forward // len(devices), config.Data_WDLLabelSmoothing, rank, world_size, NUM_DATASET_WORKERS)
+  dataset = TPGDataset(TPG_TRAIN_DIR, batch_size_forward // len(devices), config.Data_WDLLabelSmoothing, rank, world_size, NUM_DATASET_WORKERS, BOARDS_PER_BATCH)
 
   dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)
@@ -450,8 +458,7 @@ def Train():
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
       this_lr = scheduler.get_last_lr()
       
-      SINGLE_MODE = False
-      if SINGLE_MODE:
+      if BOARDS_PER_BATCH == 1:
         batch = batch[0]
         num_processing_now = batch['squares'].shape[0]
         policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out = model(batch['squares'])
@@ -460,6 +467,7 @@ def Train():
                                   None, None, 
                                   None, None,
                                   num_pos, this_lr, show_losses)
+
       else:
         num_processing_now = batch[0]['squares'].shape[0] * 4
         
@@ -471,7 +479,7 @@ def Train():
                                    None, None, 
                                    None, None, 
                                    num_pos, this_lr, show_losses)
-
+        
         # Board 2
         sub_batch = batch[1]
         policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2 = model(sub_batch['squares'])
@@ -482,11 +490,10 @@ def Train():
         else:
           extracted_action1_out = None
           
-
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out2, extracted_action1_out,  # prior board action should target this value2 result
+                                   value2_out2, extracted_action1_out[:, wdl_reverse],  # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
         
         # Board 3
@@ -502,9 +509,8 @@ def Train():
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out3, extracted_action2_out, # prior board action should target this value2 result
+                                   value2_out3, extracted_action2_out[:, wdl_reverse], # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
-
 
         # Board 4
         sub_batch = batch[3]
@@ -520,14 +526,13 @@ def Train():
         loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                    None, None, None, 
                                    None, None,
-                                   value2_out4, extracted_action1_out,  # prior board action should target this value2 result
+                                   value2_out4, extracted_action1_out[:, wdl_reverse],  # prior board action should target this value2 result
                                    num_pos, this_lr, show_losses)
 
-
         loss = (loss1 + loss2 + loss3 + loss4) / 3 # although there are 4 loss terms, the last one is typically very small so we only divide by 3
-        
-      fabric.backward(loss)
 
+      fabric.backward(loss)
+        
     if not is_accumulating:
       if config.Opt_GradientClipLevel > 0:
         fabric.clip_gradients(model, optimizer, max_norm=config.Opt_GradientClipLevel)
