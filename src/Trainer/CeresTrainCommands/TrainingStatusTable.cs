@@ -33,7 +33,9 @@ namespace CeresTrain.Trainer
                                                      float ValueLoss, float ValueAcc,
                                                      float PolicyLoss, float PolicyAcc,
                                                      float MLHLoss, float UNCLoss,
-                                                     float Value2Loss, float QDeviationLowerLoss, float QDeviationUpperLoss,
+                                                     float Value2Loss, float QDeviationLowerLoss, float QDeviationUpperLoss, 
+                                                     float ValueDLoss, float Value2DLoss,
+                                                     float ActionLoss,
                                                      float CurLR);
 
     const float INTERVAL_NEW_ROW_FIRST_HOUR = 60;       // New row very minute for first hour
@@ -58,7 +60,7 @@ namespace CeresTrain.Trainer
     /// <param name="id"></param>
     /// <param name="title"></param>
     /// <param name="maxPositions"></param>
-    /// <param name="multitrainingMode">if multiple threads will concurrently use this same table</param>
+    /// <param name="multiTrainingMode">if multiple threads will concurrently use this same table</param>
     public TrainingStatusTable(string id, string title, long maxPositions, bool multiTrainingMode)
     {
       ID = id;
@@ -110,14 +112,16 @@ namespace CeresTrain.Trainer
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
     /// <param name="value2Loss"></param>
-    /// <param name="qDeviationLowerLoss"></param>
-    /// <param name="qDeviationUpperLoss"></param>
+    /// <param name="valueDLoss"></param>
+    /// <param name="value2DLoss"></param>
+    /// <param name="actionLoss"></param>
     /// <param name="curLR"></param>
     public void UpdateInfo(DateTime time, string configID, string host, float elapsedSecs, long numPositions,
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc,
                            float mlhLoss, float uncLoss,
-                           float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                           float value2Loss, float valueDLoss, float value2DLoss,
+                           float actionLoss,
                            float curLR)
     {
       lock (this)
@@ -131,7 +135,9 @@ namespace CeresTrain.Trainer
                                                  totalLoss, valueLoss, valueAcc,
                                                  policyLoss, policyAcc,
                                                  mlhLoss, uncLoss,
-                                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                                 float.NaN, float.NaN,
+                                                 value2Loss, valueDLoss, value2DLoss,
+                                                 actionLoss,
                                                  curLR);
 
         int curRowNum = numRowsAdded - 1;
@@ -140,7 +146,8 @@ namespace CeresTrain.Trainer
         {
           implementor.UpdateInfo(configID, host, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                 value2Loss, valueDLoss, value2DLoss,
+                                 actionLoss,
                                  curLR);
         }
 
@@ -154,7 +161,8 @@ namespace CeresTrain.Trainer
 
           implementor.UpdateInfo(configID, host, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                 value2Loss, valueDLoss, value2DLoss,
+                                 actionLoss,
                                  curLR);
           TrainingStatusRecords.Add(currentRecord);
 

@@ -28,8 +28,9 @@ namespace CeresTrain.Trainer
     float lossUNCAdjRunning;
 
     float lossValue2AdjRunning;
-    float lossQDeviationLowerAdjRunning;
-    float lossQDeviationUpperAdjRunning;
+    float valueDLossAdjRunning;
+    float value2DLossAdjRunning;
+    float actionLossAdjRunning;
 
     float thisLossAdjRunning;
 
@@ -55,9 +56,9 @@ namespace CeresTrain.Trainer
       float lossUNCAdj = TrainingConfig.OptConfig.LossUNCMultiplier == 0 ? 0 : lossUNCBatch.ToSingle();
 
       float lossValue2Adj = TrainingConfig.OptConfig.LossValue2Multiplier == 0 ? 0 : lossValue2Batch.ToSingle();
-      float lossQDeviationLowerAdj = TrainingConfig.OptConfig.LossQDeviationMultiplier == 0 ? 0 : lossQDeviationLowerBatch.ToSingle();
-      float lossQDeviationUpperAdj = TrainingConfig.OptConfig.LossQDeviationMultiplier == 0 ? 0 : lossQDeviationUpperBatch.ToSingle();
-
+      float lossQDeviationLowerAdj = TrainingConfig.OptConfig.LossValueDMultiplier == 0 ? 0 : lossValueDBatch.ToSingle();
+      float lossQDeviationUpperAdj = TrainingConfig.OptConfig.LossValue2DMultiplier == 0 ? 0 : lossValue2DBatch.ToSingle();
+      float lossActionAdj = 0; // TODO: TrainingConfig.OptConfig.LossActionMultiplier == 0 ? 0 : lossActionBatch.ToSingle();
 
       // update exponential averages
       const float WT_CUR = 0.15f; // smoothing to include decayed prior values
@@ -77,8 +78,9 @@ namespace CeresTrain.Trainer
       lossUNCAdjRunning = SmoothedValue(lossUNCAdj, lossUNCAdjRunning);
 
       lossValue2AdjRunning = SmoothedValue(lossValue2Adj, lossValue2AdjRunning);
-      lossQDeviationLowerAdjRunning = SmoothedValue(lossQDeviationLowerAdj, lossQDeviationLowerAdjRunning);
-      lossQDeviationUpperAdjRunning = SmoothedValue(lossQDeviationUpperAdj, lossQDeviationUpperAdjRunning);
+      valueDLossAdjRunning = SmoothedValue(lossQDeviationLowerAdj, valueDLossAdjRunning);
+      value2DLossAdjRunning = SmoothedValue(lossQDeviationUpperAdj, value2DLossAdjRunning);
+      actionLossAdjRunning = SmoothedValue(lossActionAdj, actionLossAdjRunning);
 
 
       numStatusLines++;
@@ -86,13 +88,15 @@ namespace CeresTrain.Trainer
       double elapsedSec = (DateTime.Now - timeStartTraining).TotalSeconds;
       double curLR = optimizer.ParamGroups.FirstOrDefault().LearningRate;
 
-      thisLossAdjRunning = lossValueAdjRunning  * TrainingConfig.OptConfig.LossValueMultiplier
+      thisLossAdjRunning = lossValueAdjRunning * TrainingConfig.OptConfig.LossValueMultiplier
                           + lossPolicyAdjRunning * TrainingConfig.OptConfig.LossPolicyMultiplier
                           + lossMLHAdjRunning * TrainingConfig.OptConfig.LossMLHMultiplier
                           + lossUNCAdjRunning * TrainingConfig.OptConfig.LossUNCMultiplier
                           + lossValue2AdjRunning * TrainingConfig.OptConfig.LossValue2Multiplier
-                          + lossQDeviationLowerAdjRunning  * TrainingConfig.OptConfig.LossQDeviationMultiplier
-                          + lossQDeviationUpperAdjRunning *  TrainingConfig.OptConfig.LossQDeviationMultiplier;
+                          + valueDLossAdjRunning * TrainingConfig.OptConfig.LossValueDMultiplier
+                          + value2DLossAdjRunning * TrainingConfig.OptConfig.LossValue2DMultiplier
+                          + actionLossAdjRunning * TrainingConfig.OptConfig.LossActionMultiplier;
+
 
       // Write log statistics.
       tbWriter?.AddScalars((int)(numRead / 1024), // show in K to avoid overflow since must fit as int
@@ -103,8 +107,11 @@ namespace CeresTrain.Trainer
                            ("mlh", lossMLHAdjRunning),
                            ("unc", lossUNCAdjRunning),
                            ("val2", lossValue2AdjRunning),
-                           ("qDevL", lossQDeviationLowerAdjRunning),
-                           ("qDevU", lossQDeviationUpperAdjRunning),
+                           ("qDevL", valueDLossAdjRunning),
+                           ("qDevU", value2DLossAdjRunning),
+                           ("valD", valueDLossAdjRunning),
+                           ("val2D", value2DLossAdjRunning),
+                           ("action", actionLossAdjRunning),
                            ("acc", policyAccAdjRunning * 100));
 
       long positionsProcessed = batchId * OptimizationBatchSizeForward;
@@ -115,7 +122,8 @@ namespace CeresTrain.Trainer
       consoleStatusTable.UpdateInfo(DateTime.Now, configID, "(local)", (float)elapsedSec, numRead, thisLossAdjRunning,
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, 
                                     lossMLHAdjRunning, lossUNCAdjRunning,
-                                    lossValue2AdjRunning, lossQDeviationLowerAdjRunning, lossQDeviationUpperAdjRunning,
+                                    lossValue2AdjRunning, valueDLossAdjRunning, value2DLossAdjRunning,
+                                    0, // TODO: actionLossRunning,
                                     (float)curLR);
 
       // Save network if best seen so far (on total loss) unless very early in training.

@@ -14,6 +14,7 @@
 #region Using directives
 
 using System;
+using TorchSharp.Modules;
 
 #endregion
 
@@ -30,8 +31,9 @@ namespace CeresTrain.Trainer
   /// <param name="MLHLoss"></param>
   /// <param name="UNCLoss"></param>
   /// <param name="Value2Loss"></param>
-  /// <param name="QDeviationLowerLoss"></param>
-  /// <param name="QDeviationUpperLoss"></param>
+  /// <param name="ValueDLoss"></param>
+  /// <param name="Value2DLoss"></param>
+  /// <param name="ActionLoss"></param>
 
   [Serializable]
   public readonly record struct TrainingLossSummary(float TotalLoss,
@@ -39,8 +41,37 @@ namespace CeresTrain.Trainer
                                                     float PolicyLoss, float PolicyAccuracy,
                                                     float MLHLoss, float UNCLoss,
                                                     float Value2Loss,
-                                                    float QDeviationLowerLoss, float QDeviationUpperLoss)
+                                                    float QDeviationLowerLoss, float QDeviationUpperLoss,
+                                                    float ValueDLoss, float Value2DLoss,
+                                                    float ActionLoss)
   {
+    /// <summary>
+    /// Returns a sanitized version of the loss summary where NaN values are replaced with -999
+    /// (because writing JSON with NaN values is not allowed).  
+    /// </summary>
+    /// <returns></returns>
+    public TrainingLossSummary ReplaceNaNWithMinus999()
+    {
+      return this with
+      {
+        TotalLoss = float.IsNaN(TotalLoss) ? -999 : TotalLoss,
+        ValueLoss = float.IsNaN(ValueLoss) ? -999 : ValueLoss,
+        ValueAccuracy = float.IsNaN(ValueAccuracy) ? -999 : ValueAccuracy,
+        PolicyLoss = float.IsNaN(PolicyLoss) ? -999 : PolicyLoss,
+        PolicyAccuracy = float.IsNaN(PolicyAccuracy) ? -999 : PolicyAccuracy,
+        MLHLoss = float.IsNaN(MLHLoss) ? -999 : MLHLoss,
+        UNCLoss = float.IsNaN(UNCLoss) ? -999 : UNCLoss,
+        Value2Loss = float.IsNaN(Value2Loss) ? -999 : Value2Loss,
+        QDeviationLowerLoss = float.IsNaN(QDeviationLowerLoss) ? -999 : QDeviationLowerLoss,
+        QDeviationUpperLoss = float.IsNaN(QDeviationUpperLoss) ? -999 : QDeviationUpperLoss,
+        ValueDLoss = float.IsNaN(ValueDLoss) ? -999 : ValueDLoss,
+        Value2DLoss = float.IsNaN(Value2DLoss) ? -999 : Value2DLoss,
+        ActionLoss = float.IsNaN(ActionLoss) ? -999 : ActionLoss,
+      };
+    }
+
+
+
     /// <summary>
     /// Returns a string summarizing the loss values.
     /// </summary>
@@ -56,11 +87,11 @@ namespace CeresTrain.Trainer
                $"MLH:{MLHLoss,7:F3}  " +
                $"UNC:{UNCLoss,7:F3}  " +
                $"V2L:{Value2Loss,7:F3}  " +
-               $"QDLL:{QDeviationLowerLoss,7:F3}  " +
-               $"QDUL:{QDeviationUpperLoss,7:F3}";
+               $"VDL:{ValueDLoss,7:F3}  " +
+               $"V2DL:{Value2DLoss,7:F3}" +
+               $"ACT:{ActionLoss,7:F3}";
       }
     }
   }
 
 }
-

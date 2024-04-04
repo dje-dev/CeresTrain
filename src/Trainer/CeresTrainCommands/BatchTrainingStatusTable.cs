@@ -51,8 +51,9 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
       table.AddColumn(new TableColumn("PolicyAcc").RightAligned());
       table.AddColumn(new TableColumn("ValueAcc").RightAligned());
-      table.AddColumn(new TableColumn("QDevLow").RightAligned());
-      table.AddColumn(new TableColumn("QDevUp").RightAligned());
+      table.AddColumn(new TableColumn("ValueD").RightAligned());
+      table.AddColumn(new TableColumn("Value2D").RightAligned());
+      table.AddColumn(new TableColumn("ActionLoss").RightAligned());
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
@@ -83,7 +84,8 @@ namespace CeresTrain.Trainer
                                     float totalLoss, float valueLoss, float valueAcc, 
                                     float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                    float value2Loss, float valueDLoss, float value2DLoss,
+                                    float actionLoss,
                                     float curLR)
     {
 
@@ -107,7 +109,8 @@ namespace CeresTrain.Trainer
                            MathF.Round(value2Loss, 3).ToString(),
                            MathF.Round(mlhLoss, 3).ToString(), MathF.Round(uncLoss, 3).ToString(),
                            MathF.Round(100*policyAcc, 2).ToString(), MathF.Round(100*valueAcc, 2).ToString(),
-                           MathF.Round(qDeviationLowerLoss, 3).ToString(), MathF.Round(qDeviationUpperLoss, 3).ToString(),
+                           MathF.Round(valueDLoss, 3).ToString(), MathF.Round(value2DLoss, 3).ToString(),
+                           MathF.Round(actionLoss, 3).ToString(),
                            curLR.ToString()];
 
         int UPDATE_INTERVAL_SECS = numPositions > 10_000_000 ? 180 : 30;

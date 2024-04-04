@@ -176,6 +176,11 @@ namespace CeresTrain.Trainer
     /// </summary>
     public readonly float LossValue2DMultiplier { get; init; } = 0.0f;
 
+    /// <summary>
+    /// Loss weight applied to error in action prediction (relative to actual value2 from position).
+    /// </summary>
+    public readonly float LossActionMultiplier { get; init; } = 0.0f;
+
     #endregion
 
     /// <summary>

@@ -13,6 +13,7 @@
 
 #region Using directives
 
+using Microsoft.Diagnostics.Tracing.Parsers.IIS_Trace;
 using System;
 
 #endregion
@@ -65,14 +66,16 @@ namespace CeresTrain.Trainer
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
     /// <param name="value2Loss"></param>
-    /// <param name="qDeviationLowerLoss"></param>
-    /// <param name="qDeviationUpperLoss"></param>
+    /// <param name="valueDLoss"></param>
+    /// <param name="value2DLoss"></param>
+    /// <param name="actionLoss"></param>
     /// <param name="curLR"></param>
     public abstract void UpdateInfo(string configID, string host, int numRowsAdded, bool endRow, float posPerSecond, 
                                     DateTime time, float elapsedSecs, long numPositions, 
                                     float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                    float value2Loss, float valueDLoss, float value2DLoss,
+                                    float actionLoss,
                                     float curLR);
 
 

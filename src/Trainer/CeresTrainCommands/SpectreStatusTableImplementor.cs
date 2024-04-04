@@ -63,8 +63,9 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("ValueAcc").RightAligned());
       table.AddColumn(new TableColumn("MLHLoss").RightAligned());
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
-      table.AddColumn(new TableColumn("QDevLow").RightAligned());
-      table.AddColumn(new TableColumn("QDevUp").RightAligned());
+      table.AddColumn(new TableColumn("ValueDLoss").RightAligned());
+      table.AddColumn(new TableColumn("Value2DLoss").RightAligned());
+      table.AddColumn(new TableColumn("ActionLoss").RightAligned());
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
@@ -89,13 +90,16 @@ namespace CeresTrain.Trainer
                                    float posPerSecond, DateTime time, float elapsedSecs, long numPositions,
                                    float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
                                    float mlhLoss, float uncLoss,
-                                   float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                   float value2Loss, float valueDLoss, float value2DLoss,
+                                   float actionLoss,
                                    float curLR)
     {
       currentRecord = new TrainingStatusRecord(configID, time, elapsedSecs, posPerSecond, numPositions,
                                                totalLoss, valueLoss, valueAcc,
                                                policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                               value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                               value2Loss, float.NaN, float.NaN,
+                                               valueDLoss, value2DLoss,
+                                               actionLoss,
                                                curLR);
 
       int curRowNum = numRowsAdded - 1;
@@ -123,10 +127,12 @@ namespace CeresTrain.Trainer
         table.UpdateCell(curRowNum, 11, $"{mlhLoss:F3}");
         table.UpdateCell(curRowNum, 12, $"{uncLoss:F3}");
 
-        table.UpdateCell(curRowNum, 13, $"{qDeviationLowerLoss:F3}");
-        table.UpdateCell(curRowNum, 14, $"{qDeviationUpperLoss:F3}");
+        table.UpdateCell(curRowNum, 13, $"{valueDLoss:F3}");
+        table.UpdateCell(curRowNum, 14, $"{value2DLoss:F3}");
 
-        table.UpdateCell(curRowNum, 15, $"{Math.Round(curLR, 6):F6}");
+        table.UpdateCell(curRowNum, 15, $"{actionLoss:F3}");
+
+        table.UpdateCell(curRowNum, 16, $"{Math.Round(curLR, 6):F6}");
         context.Refresh();
       }
 

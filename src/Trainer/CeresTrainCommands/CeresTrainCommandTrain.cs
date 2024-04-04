@@ -87,8 +87,9 @@ namespace CeresTrain.Trainer
     Tensor lossUNCBatch;
 
     Tensor lossValue2Batch;
-    Tensor lossQDeviationLowerBatch;
-    Tensor lossQDeviationUpperBatch;
+    Tensor lossValueDBatch;
+    Tensor lossValue2DBatch;
+    Tensor lossAction2DBatch;
 
     Tensor lossTotal;
 
@@ -129,6 +130,8 @@ namespace CeresTrain.Trainer
                        Loss<Tensor, Tensor, Tensor> lossValue2,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationLower,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationUpper,
+                       Loss<Tensor, Tensor, Tensor> lossValueD,
+                       Loss<Tensor, Tensor, Tensor> lossValue2D,
                        DataLoader dataLoader,
                        Dataset tpgDataset,
                        LRScheduler scheduler,
@@ -254,16 +257,16 @@ namespace CeresTrain.Trainer
           lossValue2Batch = lossValue2.call(value2, value2Target);
 
           const float QDEV_LOSS_SCALE = 10.0f;
-          lossQDeviationLowerBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
-          lossQDeviationUpperBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
-
+          lossValueDBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
+          lossValue2DBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
+// lossAction2DBatch = lossAction.call()
           lossTotal = lossPolicyBatch * TrainingConfig.OptConfig.LossPolicyMultiplier
                     + lossValueBatch * TrainingConfig.OptConfig.LossValueMultiplier
                     + lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
                     + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier
                     + lossValue2Batch * TrainingConfig.OptConfig.LossValue2Multiplier
-                    + lossQDeviationLowerBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
-                    + lossQDeviationUpperBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
+                    + lossValueDBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                    + lossValue2DBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
 
 
           lossTotal.backward();
@@ -399,7 +402,9 @@ namespace CeresTrain.Trainer
                                             lossPolicyAdjRunning, policyAccAdjRunning,
                                             lossMLHAdjRunning, lossUNCAdjRunning,
                                             lossValue2AdjRunning,
-                                            lossQDeviationLowerAdjRunning, lossQDeviationUpperAdjRunning);
+                                            float.NaN, float.NaN,
+                                            valueDLossAdjRunning, value2DLossAdjRunning,
+                                            0  /* TODO: actionLossRunning*/);
 
       tpgDataset.Dispose();
       Dispose();
@@ -602,6 +607,7 @@ namespace CeresTrain.Trainer
           () => Train(TrainingConfig.ExecConfig.ID, model, optimizer, valueLoss,
                       policyLoss, mlhLoss, uncLoss, 
                       value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                      null, null, // TO DO: Fill in value difference tensors
                       train,
                       tpgDataset, scheduler, tbWriter,
                       TrainingConfig.OptConfig.NumTrainingPositions,
@@ -704,8 +710,8 @@ namespace CeresTrain.Trainer
       lossMLHBatch?.Dispose();
       lossUNCBatch?.Dispose();
       lossValue2Batch?.Dispose();
-      lossQDeviationLowerBatch?.Dispose();
-      lossQDeviationUpperBatch?.Dispose();
+      lossValueDBatch?.Dispose();
+      lossValue2DBatch?.Dispose();
       lossTotal?.Dispose();
     }
 

@@ -58,7 +58,7 @@ namespace CeresTrain.Trainer
       NumParameters = numParameters;
       TrainingTime = trainingTime;
       NumTrainingPositions = numTrainingPositions;
-      LossSummary = lossSummary;
+      LossSummary = lossSummary.ReplaceNaNWithMinus999();
       TrainingLogFileName = trainingLogFileName;
       NetFileName = netFileName;
       BestFileName = bestFileName;
