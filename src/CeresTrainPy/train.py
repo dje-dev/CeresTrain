@@ -126,10 +126,11 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device),torch.rand(256, 64, 64).to(convert_type).to(m.device)]
+    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device)]
+    if config.NetDef_PriorStateDim > 0:
+      sample_inputs.append(torch.rand(256, 64, config.PriorStateDim).to(convert_type).to(m.device))
                      
     try:
-#      if True: # torchscript saving broke upon introduction of multiboard support (starting 31 March 2024)
       if True:
         m_save = torch.jit.trace(m, sample_inputs)
       else:
@@ -152,27 +153,33 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
       
       # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
       if save_onnx: # possibly hangs or crashes, possibly on in certain compiled modes
-        head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper']
+        head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper']     
+        output_axes = {'squares' : {0 : 'batch_size'},    
+                       'policy' : {0 : 'batch_size'},
+                       'value' : {0 : 'batch_size'},
+                       'mlh' : {0 : 'batch_size'},
+                       'unc' : {0 : 'batch_size'},
+                       'value2' : {0 : 'batch_size'},
+                       'q_deviation_lower' : {0 : 'batch_size'},
+                       'q_deviation_upper': {0 : 'batch_size'}}         
+
         if config.Opt_LossActionMultiplier > 0:
           head_output_names.append('action')
-        head_output_names.append('prior_state')
-        
+          output_axes['action'] = {0: 'batch_size'}
+
+        if config.PriorStateDim > 0:
+          head_output_names.append('prior_state')
+          output_axes['prior_state'] = {0: 'batch_size'}
+          
         torch.onnx.export(m,
-                    [sample_inputs],
-                    ONNX_SAVE_PATH,
-                    do_constant_folding=True,
-                    export_params=True,
-                    opset_version=17,
-                    input_names = ['squares', 'prior_state'], 
-                    output_names = head_output_names, 
-                    dynamic_axes={'squares' : {0 : 'batch_size'},    
-                                  'policy' : {0 : 'batch_size'},
-                                  'value' : {0 : 'batch_size'},
-                                  'mlh' : {0 : 'batch_size'},
-                                  'unc' : {0 : 'batch_size'},
-                                  'value2' : {0 : 'batch_size'},
-                                  'q_deviation_lower' : {0 : 'batch_size'},
-                                  'q_deviation_upper': {0 : 'batch_size'}})
+                         [sample_inputs],
+                         ONNX_SAVE_PATH,
+                         do_constant_folding=True,
+                         export_params=True,
+                         opset_version=17,
+                         input_names = ['squares', 'prior_state'] if config.PriorStateDim > 0 else ['squares'],
+                         output_names = head_output_names, 
+                         dynamic_axes=output_axes)
         print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
 
         if False:
@@ -241,96 +248,18 @@ def Train():
           pytorch_param.data.copy_(torchscript_param.data)
     del torchscript_model
   
-  if False:
-    # Load the ONNX model
-    import onnxruntime as ort
-    ort_session = ort.InferenceSession("test.onnx")
-
-    # Read the CSV file and reshape the data into the required input shape
-    csv_file = '/mnt/superd/temp/input_data.csv'
-    data = []
-    with open(csv_file, 'r') as csvfile:
-        reader = csv.reader(csvfile)
-        for row in reader:
-            data.extend([float(x) for x in row])
-    input_data = np.array(data, dtype=np.float32).reshape(1, 64, 20)
-
-    # Run inference on the input data
-    input_name = ort_session.get_inputs()[0].name
-    output_names = [o.name for o in ort_session.get_outputs()]
-    outputs = ort_session.run(output_names, {input_name: input_data})
-
-    # Unpack the outputs
-    policy, value, mlh, inc = outputs
-
-    # Print outputs
-    print("Policy: ", policy)
-    print("Value: ", value)
-    print("Mlh: ", mlh)
-    print("Inc: ", inc)
-
-  
+    
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
   if config.Opt_PyTorchCompileMode is not None:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
 
-  if CONVERT_ONLY:
-    if len(sys.argv) < 5:
-      raise("Missing required argument indicating step count of checkpoint file. Arguments expected: <config_id> <out_path> CONVERT <step>")
-    net_step = sys.argv[4]
-    save_to_torchscript(fabric, model, state, net_step, True)
-    exit(0)
-
-    onnx_model = model.to_onnx(EXPORT_NAME + ".onnx", 
-      input_sample=[torch.zeros(1024, 64, 137).to("cuda").to(torch.float32)],
-      export_params=True,
-      opset_version=17,
-      input_names = ['squares'], 
-      output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action'], 
-      dynamic_axes={'squares' : {0 : 'batch_size'},    
-                    'policy' : {0 : 'batch_size'},
-                    'value' : {0 : 'batch_size'},
-                    'mlh' : {0 : 'batch_size'},
-                    'unc' : {0 : 'batch_size'},
-                    'value2' : {0 : 'batch_size'},
-                    'q_deviation_lower' : {0 : 'batch_size'},
-                    'q_deviation_upper': {0 : 'batch_size'}})
-    
-    # Export FP16 version
-    from onnxmltools.utils.float16_converter import convert_float_to_float16
-    from onnxmltools.utils import load_model, save_model
-    onnx_model = load_model(EXPORT_NAME + '.onnx')
-    onnx_model_16 = convert_float_to_float16(onnx_model)
-    save_model(onnx_model_16, EXPORT_NAME + '_16.onnx')
-
-    exit()
-
-  if False:
-    DEVICE = 0
-    model = model.cuda(DEVICE).half().eval()
-    import time
-    input = torch.randn(256, 64, 39 + (3 * 13)).cuda(DEVICE).half()   
-    model.eval()
-    for _ in range(20):
-      x = model(input)
-#      del x
-
-    while True:
-      with torch.no_grad():
-        torch.cuda.synchronize(DEVICE)
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        start_event.record()
-        for _ in range(100 * 4):
-          x = model(input)
-        end_event.record()
-        torch.cuda.synchronize()
-
-        elapsed_time = start_event.elapsed_time(end_event)
-        print(f"Elapsed time: {elapsed_time:.2f} ms")
-         
-        exit (3)
+  
+#  if CONVERT_ONLY:
+#    if len(sys.argv) < 5:
+#      raise("Missing required argument indicating step count of checkpoint file. Arguments expected: <config_id> <out_path> CONVERT <step>")
+#    net_step = sys.argv[4]
+#    save_to_torchscript(fabric, model, state, net_step, True)
+#    exit(0)
 
 
   # carefully set weight decay to apply only to appropriate subset of parameters
@@ -492,13 +421,14 @@ def Train():
         if config.Opt_LossActionMultiplier > 0:
           action2_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action2_played_move_indices.squeeze(-1)]
+          extracted_action1_out = extracted_action1_out[:, wdl_reverse]
         else:
           extracted_action1_out = None
           
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out2, extracted_action1_out[:, wdl_reverse],  # prior board action should target this value2 result
+                                   value2_out2, extracted_action1_out,
                                    num_pos, this_lr, show_losses)
         
         # Board 3
@@ -508,33 +438,36 @@ def Train():
         if config.Opt_LossActionMultiplier > 0:
           action3_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action2_out = action_out2[torch.arange(0, action_out2.size(0)), action3_played_move_indices.squeeze(-1)]
+          extracted_action2_out = extracted_action2_out[:, wdl_reverse]
         else:
           extracted_action2_out = None
 
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out3, extracted_action2_out[:, wdl_reverse], # prior board action should target this value2 result
+                                   value2_out3, extracted_action2_out,
                                    num_pos, this_lr, show_losses)
 
-        # Board 4
-        sub_batch = batch[3]
-        policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], None)
-
-
+        # Board 4 (only used if action loss is enabled)
         if config.Opt_LossActionMultiplier > 0:
+          sub_batch = batch[3]
+          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], None)
+
+
           action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action4_played_move_indices.squeeze(-1)]
-        else:
-          extracted_action1_out = None
+          extracted_action1_out = extracted_action1_out[:, wdl_reverse]
+          
+          loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
+                                     None, None, None, 
+                                     None, None,
+                                     value2_out4, extracted_action1_out,
+                                     num_pos, this_lr, show_losses)
 
-        loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
-                                   None, None, None, 
-                                   None, None,
-                                   value2_out4, extracted_action1_out[:, wdl_reverse],  # prior board action should target this value2 result
-                                   num_pos, this_lr, show_losses)
-
-        loss = (loss1 + loss2 + loss3 + loss4) / 3 # although there are 4 loss terms, the last one is typically very small so we only divide by 3
+        if config.Opt_LossActionMultiplier > 0:
+          loss = (loss1 + loss2 + loss3 + loss4) / 3 # although there are 4 loss terms, the last one is typically very small so we only divide by 3
+        else:          
+          loss = (loss1 + loss2 + loss3) / 3 # only 3 boards used
 
       fabric.backward(loss)
         
@@ -575,7 +508,7 @@ def Train():
         time_last_save_permanent = datetime.datetime.now()
 
       if should_save_transient and not should_save_permanent:
-        save_to_torchscript(fabric, model, state, "last", False)
+        save_to_torchscript(fabric, model, state, "last", True)
         time_last_save_transient  = datetime.datetime.now()
 
       if should_show_status:

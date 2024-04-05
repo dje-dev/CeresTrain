@@ -100,8 +100,7 @@ class CeresNet(pl.LightningModule):
     self.NUM_INPUT_BYTES_PER_SQUARE = 137 # N.B. also update in train.py
 
     self.NUM_TOKENS_INPUT = 64
-    self.NUM_TOKENS_NET = 64
-    
+    self.NUM_TOKENS_NET = 64   
   
     self.DROPOUT_RATE = config.Exec_DropoutRate
     self.EMBEDDING_DIM = config.NetDef_ModelDim
@@ -112,6 +111,9 @@ class CeresNet(pl.LightningModule):
 
     self.NUM_HEADS = config.NetDef_NumHeads
     self.FFN_MULT = config.NetDef_FFNMultiplier
+    self.DEEPNORM = config.NetDef_DeepNorm
+    self.denseformer = config.NetDef_DenseFormer
+    self.prior_state_dim = config.NetDef_PriorStateDim
     
     if (config.NetDef_HeadsActivationType == 'ReLU'):
       self.Activation = torch.nn.ReLU()
@@ -122,7 +124,7 @@ class CeresNet(pl.LightningModule):
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
 
-    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + 64, self.EMBEDDING_DIM)
+    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
     self.embedding_layer2  = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
     self.global_dim = config.NetDef_GlobalStreamDim
     self.heads_pure_global = config.NetDef_GlobalStreamDim > 0 and config.NetDef_HeadsNonPolicyGlobalStreamOnly
@@ -152,12 +154,12 @@ class CeresNet(pl.LightningModule):
       self.fcActionRELU2 = self.Activation
       self.fcActionFinal3 = nn.Linear(FINAL_ACTION_FC2_SIZE, 1858 * 3)
 
-
-    self.HEAD_PREMAP_DIVISOR_STATE = 8
-    HEAD_STATE_SIZE = self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_STATE
-    self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
-    self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
-    self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
+    if self.prior_state_dim > 0:
+      self.HEAD_PREMAP_DIVISOR_STATE = 8
+      HEAD_STATE_SIZE = self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_STATE
+      self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
+      self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
+      self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
 
     self.HEAD_PREMAP_DIVISOR_VALUE = 8
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
@@ -233,10 +235,7 @@ class CeresNet(pl.LightningModule):
     self.relu_qdev_upper = self.Activation
     self.out_qdev_upper_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE, FINAL_QDEV_FC2_SIZE)
     self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
-
-    self.DEEPNORM = config.NetDef_DeepNorm
-    self.denseformer = config.NetDef_DenseFormer
-    
+   
     if self.DEEPNORM:     
       self.alpha = math.pow(2 * self.NUM_LAYERS, 0.25)
     else:      
@@ -319,7 +318,6 @@ class CeresNet(pl.LightningModule):
     self.value2_diff_loss_weight = value2_diff_loss_weight
     self.action_loss_weight = action_loss_weight
 
-
     self.q_ratio = q_ratio
     self.optimizer = optimizer
     self.learning_rate = learning_rate
@@ -349,9 +347,11 @@ class CeresNet(pl.LightningModule):
     # Embedding layer.
     flow_squares = flow.reshape(-1, self.NUM_TOKENS_INPUT, (self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS_INPUT)
 
-    append_tensor = prior_state if prior_state is not None else torch.zeros(input_planes.shape[0], 64, 64).to(flow.device).to(torch.bfloat16)
-    append_tensor = append_tensor.reshape(input_planes.shape[0], self.NUM_TOKENS_INPUT, 64)
-    flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
+    if self.prior_state_dim > 0:
+      # Append prior state to the input if is available for this position.
+      append_tensor = prior_state if prior_state is not None else torch.zeros(input_planes.shape[0], self.prior_state_dim, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
+      append_tensor = append_tensor.reshape(input_planes.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim)
+      flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
     flow = self.embedding_layer(flow_squares)
 
@@ -410,7 +410,6 @@ class CeresNet(pl.LightningModule):
       ff2RELUAction = self.fcActionRELU2(ff2Action)
       action_out = self.fcActionFinal3(ff2RELUAction)
       action_out = action_out.reshape(-1, 1858, 3)
-
     else:
       action_out = None
 
@@ -420,14 +419,11 @@ class CeresNet(pl.LightningModule):
     if GLOBAL_ONLY:
       flow = flow.detach()
 
-#    self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
-#    self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
-#    self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
-
-    state_out = self.stateHeadPremap(flow)
-    state_out = self.out_state_layer1(state_out)
-    state_out = torch.nn.functional.relu(state_out)
-    state_out = self.out_state_layer2(state_out)
+    if self.prior_state_dim > 0:
+      state_out = self.stateHeadPremap(flow)
+      state_out = self.out_state_layer1(state_out)
+      state_out = torch.nn.functional.relu(state_out)
+      state_out = self.out_state_layer2(state_out)
     
     if GLOBAL_ONLY:
       value_out = self.out_value_layer1(flow_global)
@@ -512,7 +508,12 @@ class CeresNet(pl.LightningModule):
     q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
 
 
-    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out, state_out
+    ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
+
+    ret += (action_out if self.action_loss_weight > 0 else None,)
+    ret += (state_out if self.prior_state_dim > 0 else None,)     
+
+    return ret
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
