@@ -122,7 +122,7 @@ class CeresNet(pl.LightningModule):
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
 
-    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
+    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + 64, self.EMBEDDING_DIM)
     self.embedding_layer2  = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
     self.global_dim = config.NetDef_GlobalStreamDim
     self.heads_pure_global = config.NetDef_GlobalStreamDim > 0 and config.NetDef_HeadsNonPolicyGlobalStreamOnly
@@ -153,12 +153,19 @@ class CeresNet(pl.LightningModule):
       self.fcActionFinal3 = nn.Linear(FINAL_ACTION_FC2_SIZE, 1858 * 3)
 
 
+    self.HEAD_PREMAP_DIVISOR_STATE = 8
+    HEAD_STATE_SIZE = self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_STATE
+    self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
+    self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
+    self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
+
     self.HEAD_PREMAP_DIVISOR_VALUE = 8
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
     FINAL_VALUE_FC2_SIZE = 8 * HEAD_MULT
 
     GLOBAL_ONLY = config.NetDef_GlobalStreamDim > 0 and config.NetDef_HeadsNonPolicyGlobalStreamOnly
-    
+
+   
     if GLOBAL_ONLY:
       self.out_value_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_VALUE_FC1_SIZE)
     else:
@@ -322,7 +329,7 @@ class CeresNet(pl.LightningModule):
       self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
  
 
-  def forward(self, input_planes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+  def forward(self, input_planes: torch.Tensor, prior_state : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(input_planes, list):
       # when saving/restoring from ONNX the input will appear as a list instead of sequence of arguments
       input_planes = input_planes[0]
@@ -341,6 +348,10 @@ class CeresNet(pl.LightningModule):
 
     # Embedding layer.
     flow_squares = flow.reshape(-1, self.NUM_TOKENS_INPUT, (self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS_INPUT)
+
+    append_tensor = prior_state if prior_state is not None else torch.zeros(input_planes.shape[0], 64, 64).to(flow.device).to(torch.bfloat16)
+    append_tensor = append_tensor.reshape(input_planes.shape[0], self.NUM_TOKENS_INPUT, 64)
+    flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
     flow = self.embedding_layer(flow_squares)
 
@@ -408,6 +419,15 @@ class CeresNet(pl.LightningModule):
      
     if GLOBAL_ONLY:
       flow = flow.detach()
+
+#    self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
+#    self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
+#    self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
+
+    state_out = self.stateHeadPremap(flow)
+    state_out = self.out_state_layer1(state_out)
+    state_out = torch.nn.functional.relu(state_out)
+    state_out = self.out_state_layer2(state_out)
     
     if GLOBAL_ONLY:
       value_out = self.out_value_layer1(flow_global)
@@ -492,7 +512,7 @@ class CeresNet(pl.LightningModule):
     q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
 
 
-    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out
+    return policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out, state_out
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,

@@ -126,14 +126,18 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = torch.rand(256, 64, (137) * (64 // 64)).to(convert_type).to(m.device)
-    if False: # torchscript saving broke upon introduction of multiboard support (starting 31 March 2024)
+    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device),torch.rand(256, 64, 64).to(convert_type).to(m.device)]
+                     
+    try:
+#      if True: # torchscript saving broke upon introduction of multiboard support (starting 31 March 2024)
       if True:
         m_save = torch.jit.trace(m, sample_inputs)
       else:
         # NOTE: fails for some common Pytorch operations such as einops
         m_save = torch.jit.script(m)
       m_save.save(SAVE_TS_PATH)
+    except Exception as e:
+      print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
     # below simpler method fails, probably due to use of .compile
     #BATCH_SIZE = 16
@@ -151,6 +155,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
         head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper']
         if config.Opt_LossActionMultiplier > 0:
           head_output_names.append('action')
+        head_output_names.append('prior_state')
         
         torch.onnx.export(m,
                     [sample_inputs],
@@ -158,7 +163,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                     do_constant_folding=True,
                     export_params=True,
                     opset_version=17,
-                    input_names = ['squares'], 
+                    input_names = ['squares', 'prior_state'], 
                     output_names = head_output_names, 
                     dynamic_axes={'squares' : {0 : 'batch_size'},    
                                   'policy' : {0 : 'batch_size'},
@@ -461,7 +466,7 @@ def Train():
       if BOARDS_PER_BATCH == 1:
         batch = batch[0]
         num_processing_now = batch['squares'].shape[0]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out = model(batch['squares'])
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out, state_out = model(batch['squares'], None)
         loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, 
                                   None, None, 
@@ -473,7 +478,7 @@ def Train():
         
         #Board 1
         sub_batch = batch[0]
-        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, action_out1 = model(sub_batch['squares'])
+        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, action_out1, state_out1 = model(sub_batch['squares'], None)
         loss1 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
                                    value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, 
                                    None, None, 
@@ -482,7 +487,7 @@ def Train():
         
         # Board 2
         sub_batch = batch[1]
-        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2 = model(sub_batch['squares'])
+        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2, state_out2 = model(sub_batch['squares'], state_out1)
 
         if config.Opt_LossActionMultiplier > 0:
           action2_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
@@ -498,7 +503,7 @@ def Train():
         
         # Board 3
         sub_batch = batch[2]
-        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3 = model(sub_batch['squares'])
+        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3, _ = model(sub_batch['squares'], state_out2)
 
         if config.Opt_LossActionMultiplier > 0:
           action3_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
@@ -514,7 +519,7 @@ def Train():
 
         # Board 4
         sub_batch = batch[3]
-        policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4 = model(sub_batch['squares'])
+        policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], None)
 
 
         if config.Opt_LossActionMultiplier > 0:
