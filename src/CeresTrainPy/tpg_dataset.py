@@ -211,7 +211,7 @@ class TPGDataset(Dataset):
 
       # Creating the new dictionary with filtered tensors
       filtered_dict = {
-          'policies': filter_tensor(torch.tensor(policies), mod_value),
+          'policies': filter_tensor(policies, mod_value),
           'wdl_result': filter_tensor(torch.tensor(wdl_result), mod_value),
           'wdl_q': filter_tensor(torch.tensor(wdl_q), mod_value),
           'mlh': filter_tensor(torch.tensor(mlh), mod_value),

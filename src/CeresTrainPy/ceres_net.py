@@ -327,12 +327,14 @@ class CeresNet(pl.LightningModule):
       self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
  
 
-  def forward(self, input_planes: torch.Tensor, prior_state : torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    if isinstance(input_planes, list):
+  def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(squares, list):
       # when saving/restoring from ONNX the input will appear as a list instead of sequence of arguments
-      input_planes = input_planes[0]
-
-    flow = input_planes
+#      squares = squares[0]
+#      prior_state = squares[1]
+      squares = squares[0]
+      
+    flow = squares
 
 #    if self.test:
 #      flow[:, :, 109] = 0
@@ -349,8 +351,8 @@ class CeresNet(pl.LightningModule):
 
     if self.prior_state_dim > 0:
       # Append prior state to the input if is available for this position.
-      append_tensor = prior_state if prior_state is not None else torch.zeros(input_planes.shape[0], self.prior_state_dim, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
-      append_tensor = append_tensor.reshape(input_planes.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim)
+      append_tensor = prior_state if prior_state is not None else torch.zeros(squares.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
+      append_tensor = append_tensor.reshape(squares.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim)
       flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
     flow = self.embedding_layer(flow_squares)
@@ -364,7 +366,7 @@ class CeresNet(pl.LightningModule):
 #      flow = flow + self.pos_encoding(flow_position)
 
     if self.global_dim > 0:
-      flow_global = input_planes.reshape(-1, self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE)
+      flow_global = squares.reshape(-1, self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE)
       flow_global = self.embedding_layer_global(flow_global)
     else:
       flow_global = None  
@@ -510,8 +512,10 @@ class CeresNet(pl.LightningModule):
 
     ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
 
-    ret += (action_out if self.action_loss_weight > 0 else None,)
-    ret += (state_out if self.prior_state_dim > 0 else None,)     
+    # Note that we must return tensors for all tuple members 
+    # because upon export to torchscript or ONNX the None value is not accepted
+    ret += (action_out if self.action_loss_weight > 0 else torch.rand(1, 1, 1).to(value_out.dtype).to(value_out.device),)
+    ret += (state_out if self.prior_state_dim > 0 else torch.rand(1, 1, 1).to(value_out.dtype).to(value_out.device),)     
 
     return ret
 

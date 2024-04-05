@@ -50,8 +50,6 @@ torch.backends.cuda.enable_flash_sdp(True)
 #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
 #sys.argv = ['train.py', '/mnt/deve/cout/configs/ENT_256_10_16_FFN2_500mm_smol_moe_dualboth', '/mnt/deve/cout']
 
-BOARDS_PER_BATCH = 4
-
 
 if len(sys.argv) < 3:
   raise ValueError("train.py expected <config_path> <outputs_directory>")
@@ -100,6 +98,11 @@ assert config.Exec_DataType == 'BFloat16', 'Only BFloat16 training supported'
 
 MAX_POSITIONS = config.Opt_NumTrainingPositions
 
+if config.Opt_LossActionMultiplier > 0 or config.NetDef_PriorStateDim > 0:
+  BOARDS_PER_BATCH = 4
+else:
+  BOARDS_PER_BATCH = 1  
+
 LR = config.Opt_LearningRateBase
 WEIGHT_DECAY = config.Opt_WeightDecay
 
@@ -125,10 +128,19 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
   with torch.no_grad():
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
+
+    # always append a second input for prior state since the forward signature expects it.
+    # but if not actually using prior state, just use a dummy value of 1
+    state_dim_to_use = config.NetDef_PriorStateDim if config.NetDef_PriorStateDim > 0 else 1
+
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device)]
-    if config.NetDef_PriorStateDim > 0:
-      sample_inputs.append(torch.rand(256, 64, config.PriorStateDim).to(convert_type).to(m.device))
+    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), torch.rand(256, 64, state_dim_to_use).to(convert_type).to(m.device)]
+
+
+    # below simpler method fails, probably due to use of .compile
+#    model.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
+#    print('done save TS', SAVE_TS_PATH )
+    #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
                      
     try:
       if True:
@@ -140,20 +152,13 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     except Exception as e:
       print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
-    # below simpler method fails, probably due to use of .compile
-    #BATCH_SIZE = 16
-    #test_inputs_pytorch = torch.rand(BATCH_SIZE, NUM_TOKENS, 137 * (64 // NUM_TOKENS)).to(torch.float32).device(m.device)
-    #model.to_torchscript(file_path=SAVE_PATH, method='trace', example_inputs=test_inputs_pytorch)
-    #print('done save TS', SAVE_PATH )
-    #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
-
     try:
       ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
       ONNX16_SAVE_PATH = SAVE_TS_PATH + "_16.onnx"
       
       # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
       if save_onnx: # possibly hangs or crashes, possibly on in certain compiled modes
-        head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper']     
+        head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action', 'prior_state']
         output_axes = {'squares' : {0 : 'batch_size'},    
                        'policy' : {0 : 'batch_size'},
                        'value' : {0 : 'batch_size'},
@@ -161,15 +166,17 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                        'unc' : {0 : 'batch_size'},
                        'value2' : {0 : 'batch_size'},
                        'q_deviation_lower' : {0 : 'batch_size'},
-                       'q_deviation_upper': {0 : 'batch_size'}}         
+                       'q_deviation_upper': {0 : 'batch_size'},
+                       'action': {0 : 'batch_size'},
+                       'prior_state': {0 : 'batch_size'}}
 
-        if config.Opt_LossActionMultiplier > 0:
-          head_output_names.append('action')
-          output_axes['action'] = {0: 'batch_size'}
+#        if config.Opt_LossActionMultiplier > 0:
+#          head_output_names.append('action')
+#          output_axes['action'] = {0: 'batch_size'}
 
-        if config.PriorStateDim > 0:
-          head_output_names.append('prior_state')
-          output_axes['prior_state'] = {0: 'batch_size'}
+#        if config.NetDef_PriorStateDim > 0:
+#          head_output_names.append('prior_state')
+#          output_axes['prior_state'] = {0: 'batch_size'}
           
         torch.onnx.export(m,
                          [sample_inputs],
@@ -177,7 +184,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                          do_constant_folding=True,
                          export_params=True,
                          opset_version=17,
-                         input_names = ['squares', 'prior_state'] if config.PriorStateDim > 0 else ['squares'],
+                         input_names = ['squares', 'prior_state'], # if config.NetDef_PriorStateDim > 0 else ['squares'],
                          output_names = head_output_names, 
                          dynamic_axes=output_axes)
         print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
@@ -376,8 +383,7 @@ def Train():
   model.train()
 
   wdl_reverse = torch.tensor([2, 1, 0]) # for reversing perspective on WDL
-  
-
+ 
   # Train Network
   for batch_idx, (batch) in enumerate(dataloader):
     if (num_pos >= MAX_POSITIONS):
@@ -497,7 +503,7 @@ def Train():
       time_since_save_transient = (current_time - time_last_save_transient).seconds
       time_since_save_permanent = (current_time - time_last_save_permanent).seconds
 
-      STATUS_UPDATE_INTERVAL = 1
+      STATUS_UPDATE_INTERVAL = 5
       should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
 
       should_save_permanent = time_since_save_permanent > 120 * 60 # permanent save named by step every 2 hours
@@ -508,7 +514,7 @@ def Train():
         time_last_save_permanent = datetime.datetime.now()
 
       if should_save_transient and not should_save_permanent:
-        save_to_torchscript(fabric, model, state, "last", True)
+        save_to_torchscript(fabric, model, state, "last", False)
         time_last_save_transient  = datetime.datetime.now()
 
       if should_show_status:
