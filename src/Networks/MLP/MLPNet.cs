@@ -78,10 +78,10 @@ namespace CeresTrain.Networks.MLP
     }
 
 
-    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor input)
+    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward((Tensor squares, Tensor priorState) input)
     {
-      var batchSize = input.shape[0];
-      Tensor reshaped = input.to(ExecutionConfig.DataType).reshape(batchSize, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
+      var batchSize = input.squares.shape[0];
+      Tensor reshaped = input.squares.to(ExecutionConfig.DataType).reshape(batchSize, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
 
       Tensor trunkOutput = model.call(reshaped);
 
@@ -93,15 +93,16 @@ namespace CeresTrain.Networks.MLP
       Tensor qDeviationLower = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
       Tensor qDeviationUpper = zeros([batchSize, 1], ExecutionConfig.DataType, ExecutionConfig.Device, requires_grad: true);
 
-      return (value, policy, mlh, unc, value2, qDeviationLower, qDeviationUpper);
+      return (value, policy, mlh, unc, value2, qDeviationLower, qDeviationUpper, default, default);
     }
 
     public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
                      Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-                     FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
+                     Tensor action, Tensor boardState,
+                     FP16[] extraStats0, FP16[] extraStats1) Forward((Tensor squares, Tensor priorState) input)
     {
-      (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) ret = forward(inputSquares);
-      return (ret.Item1, ret.Item2, ret.Item3, ret.Item4, ret.Item5, ret.Item6, ret.Item7, null, null);
+      (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) ret = forward(input);
+      return (ret.Item1, ret.Item2, ret.Item3, ret.Item4, ret.Item5, ret.Item6, ret.Item7, ret.Item8, ret.Item9, null, null);
     }
   }
 

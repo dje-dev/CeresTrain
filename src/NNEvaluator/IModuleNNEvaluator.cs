@@ -18,7 +18,8 @@ namespace CeresTrain.NNEvaluators
     
     (Tensor value, Tensor policy, Tensor mlh, Tensor unc,
      Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-     FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves);
+     Tensor action, Tensor boardState,
+     FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC((Tensor squares, Tensor priorState) input);
   }
 
 }

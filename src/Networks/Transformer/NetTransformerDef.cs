@@ -249,6 +249,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.ReLU;
 
     /// <summary>
+    /// Dimension of the vector (per square) passed between consecutive positions.
+    /// </summary>
+    public readonly int PriorStateDim { get; init; } = 0; 
+
+    /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
     /// NOTE: the deepnorm implementation may be incomplete (weight initialization possibly missing).
     /// </summary>

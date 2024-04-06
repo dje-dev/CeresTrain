@@ -12,6 +12,11 @@ namespace CeresTrain.NNEvaluators
   public record class NNEvaluatorTorchsharpOptions
   {
     /// <summary>
+    /// If the action head should be used.
+    /// </summary>
+    public readonly bool HasAction = true;
+
+    /// <summary>
     /// Assumed magnitude (Q units) of adverse blunders that will follow in the game.
     /// </summary>
     public readonly float QNegativeBlunders;

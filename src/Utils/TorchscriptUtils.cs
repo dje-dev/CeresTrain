@@ -42,16 +42,16 @@ namespace CeresTrain.Utils
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <returns></returns>
-    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string tsFileName1, string tsFileName2, 
+    public static ScriptModule<T1, T2, TResult> TorchScriptFilesAveraged<T1, T2, TResult>(string tsFileName1, string tsFileName2, 
                                                                                 Device device, ScalarType dataType)
     {
       if (tsFileName2 == null)
       {
-        return load<T, TResult>(tsFileName1, device.type, device.index).to(dataType);
+        return load<T1, T2, TResult>(tsFileName1, device.type, device.index).to(dataType);
       }
       else
       {
-        return TorchScriptFilesAveraged<T, TResult>(new string[] { tsFileName1, tsFileName2 }, null, device, dataType);
+        return TorchScriptFilesAveraged<T1,T2, TResult>(new string[] { tsFileName1, tsFileName2 }, null, device, dataType);
       }
     }
 
@@ -65,7 +65,7 @@ namespace CeresTrain.Utils
     /// <param name="device"></param>
     /// <param name="dataType"></param>
     /// <returns></returns>
-    public static ScriptModule<T, TResult> TorchScriptFilesAveraged<T, TResult>(string[] tsFileNames, float[] tsWeights, Device device, ScalarType dataType)
+    public static ScriptModule<T1, T2, TResult> TorchScriptFilesAveraged<T1, T2, TResult>(string[] tsFileNames, float[] tsWeights, Device device, ScalarType dataType)
     {
       if (tsFileNames == null || tsFileNames.Length == 0)
       {
@@ -85,11 +85,11 @@ namespace CeresTrain.Utils
       bool allFileNamesAreSame = tsFileNames.All(fn => fn == tsFileNames[0]);
       if (allFileNamesAreSame)
       {
-        return load<T, TResult>(tsFileNames[0], device.type, device.index).to(dataType);
+        return load<T1, T2, TResult>(tsFileNames[0], device.type, device.index).to(dataType);
       }
 
       // Load each file as a module
-      ScriptModule<T, TResult>[] modules =  new ScriptModule<T, TResult>[tsFileNames.Length];
+      ScriptModule<T1, T2, TResult>[] modules =  new ScriptModule<T1, T2, TResult>[tsFileNames.Length];
       for (int i = 0; i < tsFileNames.Length; i++)
       {
         if (!File.Exists(tsFileNames[i]))
@@ -97,7 +97,7 @@ namespace CeresTrain.Utils
           throw new ArgumentException($"File {tsFileNames[i]} does not exist.", nameof(tsFileNames));
         }
 
-        modules[i] = load<T, TResult>(tsFileNames[i], device.type, device.index).to(dataType);
+        modules[i] = load<T1, T2, TResult>(tsFileNames[i], device.type, device.index).to(dataType);
       }
 
       // Apply weighted averaging to the modules
@@ -114,7 +114,7 @@ namespace CeresTrain.Utils
     /// <param name="weights"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentException"></exception>
-    public static ScriptModule<T, TResult> TorchScriptModulesAverage<T, TResult>(ScriptModule<T, TResult>[] modules, float[] weights = null)
+    public static ScriptModule<T1, T2, TResult> TorchScriptModulesAverage<T1, T2, TResult>(ScriptModule<T1, T2, TResult>[] modules, float[] weights = null)
     {
       if (modules == null || modules.Length == 0)
       {

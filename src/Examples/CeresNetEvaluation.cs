@@ -605,8 +605,9 @@ namespace CeresTrain.Examples
                                       ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
         bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
-        const bool HAS_UNCERTAINTY = false;
+        const bool HAS_UNCERTAINTY = false; // someday conditionally enable this
         const bool ENABLE_PROFILING = false;
+        const bool HAS_ACTION = false; // someday conditionally enable this
 
         string onnxFN = netFN + ".onnx"; 
         if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
@@ -624,7 +625,7 @@ namespace CeresTrain.Examples
           return new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
-                                           PRECISION, true, true, HAS_UNCERTAINTY, "policy", "value", "mlh", "unc", true,
+                                           PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
                                            true, evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2);
         };
@@ -776,7 +777,6 @@ namespace CeresTrain.Examples
       byte[] squareBytesAll;
       byte[] moveBytesAll;
       short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
-      throw new Exception("needs remediation, not yet updated for priorPosWinP, priorPosLossP");
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE, 
                                                           qNegativeBlunders, qPositiveBlunders,
                                                           out _, out squareBytesAll, out legalMoveIndices);

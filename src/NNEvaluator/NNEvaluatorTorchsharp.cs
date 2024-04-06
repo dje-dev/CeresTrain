@@ -78,6 +78,7 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     Func<long> getNumModelParams = null;
 
+    bool hasAction => Options.HasAction;
 
 
     /// <summary>
@@ -154,6 +155,7 @@ namespace CeresTrain.NNEvaluators
     public override bool HasM => true;
     public override bool IsWDL => true;
     public override bool HasUncertaintyV => true;
+    public override bool HasAction => hasAction;
 
     public bool hasValue2 = true; // TODO: cleanup
 
@@ -176,6 +178,7 @@ namespace CeresTrain.NNEvaluators
           && EngineType == evalTS.EngineType
           && IncludeHistory == evalTS.IncludeHistory
           && LastMovePliesEnabled == evalTS.LastMovePliesEnabled
+          && HasAction == evalTS.HasAction
           && evalTSModule.TorchscriptFileName1  == evalTSModuleOther.TorchscriptFileName1
           && evalTSModule.TorchscriptFileName2 == evalTSModuleOther.TorchscriptFileName2);
     }
@@ -485,6 +488,9 @@ namespace CeresTrain.NNEvaluators
       Tensor predictionQDeviationLower;
       Tensor predictionQDeviationUpper;
 
+      Tensor actions;
+      Tensor boardState;
+
       using (no_grad())
       {
         if (false && numPositions == 2)
@@ -530,7 +536,8 @@ namespace CeresTrain.NNEvaluators
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
           predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
-          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
+          actions, boardState,
+          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
@@ -688,10 +695,12 @@ namespace CeresTrain.NNEvaluators
         }
 
         //Console.WriteLine((w[0] - l[0]) + " " + (w2[0] - l2[0]) +
-//  "  U=" + uncertaintyV[0] + "  [-" + predictionQDeviationLowerCPU[0] + " +" + predictionQDeviationUpperCPU[0] + "]");
+        //  "  U=" + uncertaintyV[0] + "  [-" + predictionQDeviationLowerCPU[0] + " +" + predictionQDeviationUpperCPU[0] + "]");
 
-        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasValueSecondary,
-                                                                          numPositions, policiesToReturn,
+        FP16[] actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+
+        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary,
+                                                                          numPositions, policiesToReturn, actionsSpan,
                                                                           w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 

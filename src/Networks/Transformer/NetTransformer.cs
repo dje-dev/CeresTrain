@@ -145,10 +145,10 @@ namespace CeresTrain.Networks.Transformer
         else if (ExecutionConfig.SaveNetwork1FileName != null &&
                  ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts"))
         {
-          ScriptModule<Tensor, (Tensor, Tensor, Tensor, Tensor)> transformerTS
-            = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(ExecutionConfig.SaveNetwork1FileName,
-                                                                                                  ExecutionConfig.SaveNetwork2FileName,
-                                                                                                  ExecutionConfig.Device, ExecutionConfig.DataType);
+          ScriptModule<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)> transformerTS
+            = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>(ExecutionConfig.SaveNetwork1FileName,
+                                                                                                          ExecutionConfig.SaveNetwork2FileName,
+                                                                                                          ExecutionConfig.Device, ExecutionConfig.DataType);
           paramsToLoad = new();
           transformerTS.named_parameters().ToList().ForEach(p => paramsToLoad.Add(p.name, p.parameter));
         }
@@ -450,10 +450,10 @@ namespace CeresTrain.Networks.Transformer
 
     public Tensor globalStreamLayer8 = null;
 
-    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward(Tensor inputBoardSquares)
+    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward((Tensor squares, Tensor priorState) input)
     {
-      Tensor flowCS = layerEmbedding.call(inputBoardSquares);
-      Tensor flowState = this.TransformerConfig.GlobalStreamDim > 0 ? globalStateEmbedding.call(inputBoardSquares.reshape([-1, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD])) : null;
+      Tensor flowCS = layerEmbedding.call(input.squares);
+      Tensor flowState = this.TransformerConfig.GlobalStreamDim > 0 ? globalStateEmbedding.call(input.squares.reshape([-1, 64 * TPGRecord.BYTES_PER_SQUARE_RECORD])) : null;
 
 
       if (ALT_UP)
@@ -533,10 +533,13 @@ namespace CeresTrain.Networks.Transformer
 
       Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS, flowState);
       Tensor flowQDeviationUpperHead = layerQDeviationUpperHead.call(flowCS, flowState);
-
+      Tensor flowAction = default;
+      Tensor flowBoardState = default;
       flowCS.Dispose();
 
-      return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead, flowValue2Head, flowQDeviationLowerHead, flowQDeviationUpperHead);
+      return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead, flowValue2Head, 
+              flowQDeviationLowerHead, flowQDeviationUpperHead,
+              flowAction, flowBoardState);
     }
 
 
@@ -547,11 +550,13 @@ namespace CeresTrain.Networks.Transformer
 
     public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
                      Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-                    FP16[] extraStats0, FP16[] extraStats1) Forward(Tensor inputSquares, Tensor inputMoves)
-    {
-      (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU) = forward(inputSquares.to(ExecutionConfig.DataType));
+                     Tensor action, Tensor boardState,
 
-      return (v, p, m, u, v2, qL, qU, null, null);
+                    FP16[] extraStats0, FP16[] extraStats1) Forward((Tensor squares, Tensor priorState)input)
+    {
+      (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU, Tensor a, Tensor bs) = forward((input.squares.to(ExecutionConfig.DataType), input.priorState));
+
+      return (v, p, m, u, v2, qL, qU, a, bs, null, null);
     }
   }
 }
