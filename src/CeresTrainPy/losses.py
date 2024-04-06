@@ -107,13 +107,19 @@ class LossCalculator():
     return 100 * acc
 
 
-  def policy_loss(self, target: torch.Tensor, output: torch.Tensor):
+  def entropy(self, probabilities : torch.Tensor):
+    # entropy is same as cross entropy with itself
+    clipped_probabilities = torch.clamp(probabilities + 1e-6, min=1e-6)
+    return torch.nn.functional.cross_entropy(torch.log(clipped_probabilities),clipped_probabilities)
+
+  def policy_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
     legalMoves = target.greater(0)
     illegalMaskValue = torch.zeros_like(output).add_(self.MASK_POLICY_VALUE)
     output = torch.where(legalMoves, output, illegalMaskValue)
 
-    loss = self.ce_loss.forward(output, target)
-
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target) - entropy
+    
     self.PENDING_POLICY_LOSS += loss.item()
     self.PENDING_POLICY_ACC += self.calc_accuracy(target, output, True)
     self.PENDING_COUNT = self.PENDING_COUNT + 1 # increment only for policy, not other losses
@@ -126,31 +132,36 @@ class LossCalculator():
     return loss
 
 
-  def value_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = self.ce_loss.forward(output, target)
+  def value_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target) - entropy
     self.PENDING_VALUE_LOSS += loss.item()
     self.PENDING_VALUE_ACC += self.calc_accuracy(target, output, False)
     return loss
 
-  def value2_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = self.ce_loss.forward(output, target)
+  def value2_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target) - entropy
     self.PENDING_VALUE2_LOSS += loss.item()
     return loss
 
-  def value_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = self.ce_loss(output, F.softmax(target, dim=-1))
+  def value_diff_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target) - entropy
     
     self.PENDING_VALUE_DIFF_LOSS += loss.item()
     return loss
 
-  def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = self.ce_loss(output, F.softmax(target, dim=-1))
+  def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target) - entropy
    
     self.PENDING_VALUE2_DIFF_LOSS += loss.item()
     return loss
 
-  def action_loss(self, target: torch.Tensor, output: torch.Tensor):
-    loss = self.ce_loss(output, F.softmax(target, dim=-1))   
+  def action_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
+    entropy = self.entropy(target) if subtract_entropy else 0.0
+    loss = self.ce_loss(output, F.softmax(target, dim=-1)) - entropy
   
     self.PENDING_ACTION_LOSS += loss.item()
     return loss

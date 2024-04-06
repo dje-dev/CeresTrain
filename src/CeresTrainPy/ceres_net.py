@@ -534,10 +534,15 @@ class CeresNet(pl.LightningModule):
     q_deviation_lower_target = batch['q_deviation_lower']
     q_deviation_upper_target = batch['q_deviation_upper']
 
+    #	Subtract entropy from cross entropy to insulate loss magnitude 
+    #	from distributional shift and make the loss more interpretable 
+    #	because it takes out the portion that is irreducible.
+    SUBTRACT_ENTROPY = True
+    
     value_target = q_target * self.q_ratio + wdl_target * (1 - self.q_ratio)
-    p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out)
-    v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out)
-    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl2_target, value2_out)
+    p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY)
+    v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out, SUBTRACT_ENTROPY)
+    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl2_target, value2_out, SUBTRACT_ENTROPY)
     ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out)
     u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out)
     q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
@@ -547,10 +552,10 @@ class CeresNet(pl.LightningModule):
     # How to decide which to take as the target (more definitive)? 
     # It seems that self-consistency requires that this_board is the target because this will hold
     # if both the value and policy of prior_board were correct.
-    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out)
-    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out)
+    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY)
+    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY)
 
-    action_loss = 0 if self.action_loss_weight == 0 or action_target == None else loss_calc.action_loss(action_target, action_out)
+    action_loss = 0 if self.action_loss_weight == 0 or action_target == None else loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY)
       
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
