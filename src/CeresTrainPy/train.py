@@ -414,8 +414,10 @@ def Train():
         policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, action_out1, state_out1 = model(sub_batch['squares'], None)
         loss1 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
                                    value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, 
+
                                    None, None, 
                                    None, None, 
+
                                    num_pos, this_lr, show_losses)
         
         # Board 2
@@ -431,8 +433,10 @@ def Train():
           
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
-                                   value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
-                                   value_out2, extracted_action1_out,
+
+                                   value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
+                                   value_out2, extracted_action1_out,  # action target/output from previous board
+                                   
                                    num_pos, this_lr, show_losses)
         
         # Board 3
@@ -448,8 +452,10 @@ def Train():
 
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
-                                   value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse],  # comparing to previous positions
-                                   value_out3, extracted_action2_out,
+
+                                   value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
+                                   value_out3, extracted_action2_out, # action target/output from previous board
+
                                    num_pos, this_lr, show_losses)
 
         # Board 4 (only used if action loss is enabled)
@@ -464,8 +470,10 @@ def Train():
           
           loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                      None, None, None, 
+
                                      None, None,
-                                     value_out4, extracted_action1_out,
+                                     value_out4, extracted_action1_out, # action target/output from previous board
+                                     
                                      num_pos, this_lr, show_losses)
 
         if config.Opt_LossActionMultiplier > 0:

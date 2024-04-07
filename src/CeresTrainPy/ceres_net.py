@@ -551,9 +551,7 @@ class CeresNet(pl.LightningModule):
     q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
 
     # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
-    # How to decide which to take as the target (more definitive)? 
-    # It seems that self-consistency requires that this_board is the target because this will hold
-    # if both the value and policy of prior_board were correct.
+    # The value of this board is taken to be "more definitive" so it is the target (however this assumes policy was correct....)
     value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY)
     value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY)
 

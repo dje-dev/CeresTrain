@@ -146,15 +146,17 @@ class LossCalculator():
     return loss
 
   def value_diff_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
-    entropy = self.entropy(target) if subtract_entropy else 0.0
-    loss = self.ce_loss.forward(output, target) - entropy
+    target_softmax = F.softmax(target, dim=-1)
+    entropy = self.entropy(target_softmax) if subtract_entropy else 0.0
+    loss = self.ce_loss.forward(output, target_softmax) - entropy
     
     self.PENDING_VALUE_DIFF_LOSS += loss.item()
     return loss
 
   def value2_diff_loss(self, target: torch.Tensor, output: torch.Tensor, subtract_entropy : bool):
-    entropy = self.entropy(target) if subtract_entropy else 0.0
-    loss = self.ce_loss(output, target) - entropy
+    target_softmax = F.softmax(target, dim=-1)
+    entropy = self.entropy(target_softmax) if subtract_entropy else 0.0
+    loss = self.ce_loss(output, target_softmax) - entropy
    
     self.PENDING_VALUE2_DIFF_LOSS += loss.item()
     return loss
