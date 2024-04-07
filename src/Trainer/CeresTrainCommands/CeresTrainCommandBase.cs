@@ -81,7 +81,7 @@ namespace CeresTrain.Trainer
       Dictionary<string, Tensor> weightsStart = null;
       if (fnStartWeights != null)
       {
-        var transformerTS = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>
+        var transformerTS = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>
           (TrainingConfig.ExecConfig.SaveNetwork1FileName, TrainingConfig.ExecConfig.SaveNetwork1FileName,
            TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType);
 
