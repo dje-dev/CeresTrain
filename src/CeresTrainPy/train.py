@@ -129,12 +129,8 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
 
-    # always append a second input for prior state since the forward signature expects it.
-    # but if not actually using prior state, just use a dummy value of 1
-    state_dim_to_use = config.NetDef_PriorStateDim if config.NetDef_PriorStateDim > 0 else 1
-
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), torch.rand(256, 64, state_dim_to_use).to(convert_type).to(m.device)]
+    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
 
 
     # below simpler method fails, probably due to use of .compile
@@ -436,7 +432,7 @@ def Train():
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out2, extracted_action1_out,
+                                   value_out2, extracted_action1_out,
                                    num_pos, this_lr, show_losses)
         
         # Board 3
@@ -453,7 +449,7 @@ def Train():
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse],  # comparing to previous positions
-                                   value2_out3, extracted_action2_out,
+                                   value_out3, extracted_action2_out,
                                    num_pos, this_lr, show_losses)
 
         # Board 4 (only used if action loss is enabled)
@@ -469,7 +465,7 @@ def Train():
           loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                      None, None, None, 
                                      None, None,
-                                     value2_out4, extracted_action1_out,
+                                     value_out4, extracted_action1_out,
                                      num_pos, this_lr, show_losses)
 
         if config.Opt_LossActionMultiplier > 0:

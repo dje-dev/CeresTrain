@@ -159,7 +159,7 @@ class CeresNet(pl.LightningModule):
       HEAD_STATE_SIZE = self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_STATE
       self.stateHeadPremap = nn.Linear(self.EMBEDDING_DIM, HEAD_STATE_SIZE)
       self.out_state_layer1 = nn.Linear(HEAD_STATE_SIZE, 4 * HEAD_STATE_SIZE)
-      self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, HEAD_STATE_SIZE)
+      self.out_state_layer2 = nn.Linear(4 * HEAD_STATE_SIZE, config.NetDef_PriorStateDim)
 
     self.HEAD_PREMAP_DIVISOR_VALUE = 8
     FINAL_VALUE_FC1_SIZE = 32 * HEAD_MULT
@@ -517,7 +517,7 @@ class CeresNet(pl.LightningModule):
     # NOTE: potentially the zero tensors could be made shorter (since just dummies)
     #       but N.B. this caused problems in the past with reading back using torcshcript in C#
     ret += (action_out if self.action_loss_weight > 0 else torch.zeros(squares.shape[0], 1858, 3).to(value_out.device),)
-    ret += (state_out if self.prior_state_dim     > 0 else torch.zeros(squares.shape[0], 64, 64).to(value_out.device),)     
+    ret += (state_out if self.prior_state_dim     > 0 else torch.zeros(squares.shape[0], 64, self.prior_state_dim).to(value_out.device),)     
 
     return ret
 
