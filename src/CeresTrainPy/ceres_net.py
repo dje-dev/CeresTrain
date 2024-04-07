@@ -512,10 +512,12 @@ class CeresNet(pl.LightningModule):
 
     ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
 
-    # Note that we must return tensors for all tuple members 
+    # Note that we must return tensors (dummy if necessary) for all tuple members 
     # because upon export to torchscript or ONNX the None value is not accepted
-    ret += (action_out if self.action_loss_weight > 0 else torch.rand(1, 1, 1).to(value_out.dtype).to(value_out.device),)
-    ret += (state_out if self.prior_state_dim > 0 else torch.rand(1, 1, 1).to(value_out.dtype).to(value_out.device),)     
+    # NOTE: potentially the zero tensors could be made shorter (since just dummies)
+    #       but N.B. this caused problems in the past with reading back using torcshcript in C#
+    ret += (action_out if self.action_loss_weight > 0 else torch.zeros(squares.shape[0], 1858, 3).to(value_out.device),)
+    ret += (state_out if self.prior_state_dim     > 0 else torch.zeros(squares.shape[0], 64, 64).to(value_out.device),)     
 
     return ret
 

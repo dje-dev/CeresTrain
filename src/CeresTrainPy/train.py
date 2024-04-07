@@ -246,16 +246,7 @@ def Train():
                    action_loss_weight = config.Opt_LossActionMultiplier,
                    q_ratio=config.Data_FractionQ, optimizer='adamw', learning_rate=LR)
 
-
-  # Sample code to load from a saved TorchScript model
-  if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_32bn_smol_att2x_dualALT_DT_LR20min_steep_1972985856.ts')
-    with torch.no_grad():
-      for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
-          pytorch_param.data.copy_(torchscript_param.data)
-    del torchscript_model
-  
-    
+   
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
   if config.Opt_PyTorchCompileMode is not None:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
@@ -335,6 +326,17 @@ def Train():
   scheduler = LambdaLR(optimizer, lr_lambda)
 
   state = {"model": model, "optimizer": optimizer, "num_pos" : num_pos}
+
+  # Sample code to load from a saved TorchScript model (and possibly save back)
+  if False:
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_400mm_smol_att2x_DT_LR20min_v1x4_final.ts')
+    with torch.no_grad():
+      for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
+          pytorch_param.data.copy_(torchscript_param.data)
+    del torchscript_model
+#    save_to_torchscript(fabric, model, state, "fix", True)
+    exit(3)  
+    
  
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
