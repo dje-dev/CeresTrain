@@ -28,6 +28,7 @@ using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
 
+
 #endregion
 
 namespace CeresTrain.NNEvaluators
@@ -67,7 +68,11 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     IModuleNNEvaluator PytorchForwardEvaluator;
 
+    /// <summary>
+    /// Options for the evaluator.
+    /// </summary>
     public NNEvaluatorTorchsharpOptions Options;
+
 
     public override EvaluatorInfo Info => 
       getNumModelParams == null ? null : new EvaluatorInfo(getNumModelParams());  
@@ -78,10 +83,11 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     Func<long> getNumModelParams = null;
 
-    bool hasAction => Options.HasAction;
+    bool hasAction => Options.UseAction;
 
 
-    /// <summary>
+   
+    /// <summary
     /// Constructor.
     /// </summary>
     /// <param name="engineType"></param>
@@ -93,9 +99,11 @@ namespace CeresTrain.NNEvaluators
                                  ConfigNetExecution configNetExec,
                                  bool lastMovePliesEnabled = false,
                                  NNEvaluatorTorchsharpOptions options = default)
-      : this(engineType, new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
-             (NetTransformerDef)ceresTransformerNetDef),
-             configNetExec.Device, configNetExec.DataType, configNetExec.UseHistory, lastMovePliesEnabled, options)
+      : this(engineType, 
+            new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
+                                                 (NetTransformerDef)ceresTransformerNetDef),
+                                                  configNetExec.Device, configNetExec.DataType, 
+                                                  configNetExec.UseHistory, lastMovePliesEnabled, options)
     {
       getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
     }
@@ -114,7 +122,7 @@ namespace CeresTrain.NNEvaluators
                                  IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorTorchsharpOptions options = null)
+                                 NNEvaluatorTorchsharpOptions options = default)
     {
       ArgumentNullException.ThrowIfNull(options);
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
@@ -282,8 +290,7 @@ namespace CeresTrain.NNEvaluators
       short[] legalMoveIndices = null;
 
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled,
-                                                          Options == null ? 0 : Options.QNegativeBlunders,
-                                                          Options == null ? 0 : Options.QPositiveBlunders,
+                                                          Options.QNegativeBlunders, Options.QPositiveBlunders,
                                                           out mgPos, out squareBytesAll, out legalMoveIndices);
 #if DEBUG
       lastPosition = positions.PositionsBuffer.Span[0];
@@ -528,11 +535,12 @@ namespace CeresTrain.NNEvaluators
           using (new TimingBlock("xx"))
           {
             for (int i = 0; i < 100; i++)
-              (_, _, _, _, _, _, _, _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC(inputSquares, null);
+            {
+              var x = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+            }
           }
         }
 #endif
-
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
           predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
@@ -555,8 +563,8 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
-        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options?.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options?.ValueHead2Temperature, 
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature, 
                                                           Options.ShrinkExtremes ? predictionUNC : default);
 
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
@@ -697,12 +705,19 @@ namespace CeresTrain.NNEvaluators
         //Console.WriteLine((w[0] - l[0]) + " " + (w2[0] - l2[0]) +
         //  "  U=" + uncertaintyV[0] + "  [-" + predictionQDeviationLowerCPU[0] + " +" + predictionQDeviationUpperCPU[0] + "]");
 
-        FP16[] actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+        FP16[] actionsSpan = (object)actions == null  ? null : MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
 
         PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary,
                                                                           numPositions, policiesToReturn, actionsSpan,
                                                                           w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
+
+//        Console.WriteLine("aalx " + Options.UseAction);
+        if (Options.UseAction)
+        {
+//          resultBatch.RewriteWDLToBlendedValueAction();
+        }
+
 
         // These Tensors were created outside the DisposeScope
         // and therefore will not have been already disposed,

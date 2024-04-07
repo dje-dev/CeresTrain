@@ -258,7 +258,7 @@ namespace CeresTrain.Examples
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        NNEvaluatorTorchsharpOptions options = null; // TO DO: fill this in
+        NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
         InstallCustomEvaluator(1, engineType, "cuda", 0, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory, options);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
@@ -515,7 +515,7 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions, 
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      NNEvaluatorTorchsharpOptions options = null; // TO DO: fill this in
+      NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
 
       InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, "cuda", 0, netDef, execConfig, netFN, posGenerator,
                              lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory, options);

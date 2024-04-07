@@ -44,11 +44,19 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly CeresNeuralNet CeresNet;
 
+    /// <summary>
+    /// Transformer configuration.
+    /// </summary>
+    public readonly NetTransformerDef TransformerConfig;
+
 
     /// <summary>
     /// The loaded Torchscript module.
     /// </summary>
-    jit.ScriptModule<Tensor, Tensor[]> module;
+    jit.ScriptModule<Tensor, Tensor, Tensor[]> module;
+
+    
+    bool hasPriorStateOutput;
 
 
     /// <summary>
@@ -68,6 +76,9 @@ namespace CeresTrain.NNEvaluators
       TorchscriptFileName1 = executionConfig.SaveNetwork1FileName;
       TorchscriptFileName2 = executionConfig.SaveNetwork2FileName;
       DataType = executionConfig.DataType;
+      TransformerConfig = transformerConfig;
+
+      hasPriorStateOutput = transformerConfig.PriorStateDim > 0;
 
       //Environment.SetEnvironmentVariable("PYTORCH_NVFUSER_DISABLE_FALLBACK", "1");
 
@@ -86,7 +97,7 @@ namespace CeresTrain.NNEvaluators
       else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
         // NOTE: better to move to device first so type conversion can happen on potentially faster device
-        module = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor[]>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
+        module = TorchscriptUtils.TorchScriptFilesAveraged <Tensor, Tensor, Tensor[]>(executionConfig.SaveNetwork1FileName, executionConfig.SaveNetwork2FileName, executionConfig.Device, executionConfig.DataType);
         //      module = torch.jit.load<Tensor, (Tensor, Tensor, Tensor, Tensor)>(fileNameTorchscript, Device.type, Device.index).to(dataType);
 
         //module = TorchscriptUtils. TorchscriptFilesAveraged<Tensor, (Tensor, Tensor, Tensor, Tensor)>(tsFileName1, tsFileName2, device, dataType);
@@ -133,18 +144,23 @@ namespace CeresTrain.NNEvaluators
     }
 
 
+    Tensor lastPriorState;
+    int callCount = 0;
+    public static bool UsePriorState = false;
+
     /// <summary>
     /// Runs forward pass.
     /// </summary>
     /// <param name="inputSquares"></param>
-    /// <param name="inputMoves"></param>
+    /// <param name="priorState"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     public (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
             Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-            FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC(Tensor inputSquares, Tensor inputMoves)
+            Tensor action, Tensor boardState,
+            FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC((Tensor squares, Tensor priorState) input)
     {
-      if (inputMoves is not null)
+      if (input.priorState is not null)
       {
         throw new Exception("inputMoves not supported");
       }
@@ -158,16 +174,54 @@ namespace CeresTrain.NNEvaluators
         {
           lock (this)
           {
-            (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc, Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper) ret = default;
+            (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc, Tensor value2, 
+             Tensor qDeviationLower, Tensor qDeviationUpper,
+             Tensor actions, Tensor boardState) ret = default;
 
+            bool hasAction;
+            bool hasBoardState;
             if (module != null)
             {
-              Tensor [] rawRet = module.call(inputSquares); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
-              ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6]);
+              Tensor [] rawRet;
+              if (hasPriorStateOutput)
+              {
+
+                Tensor priorState;
+                if (TransformerConfig.PriorStateDim == 0)
+                {
+                  priorState = torch.zeros([input.squares.shape[0], 64, 1], dtype: DataType, device: Device);
+                }
+                else
+                {
+                  priorState =
+                                  UsePriorState ?
+                                  lastPriorState :
+                                  //                callCount++ == 0 || lastPriorState.size()[0] != input.squares.shape[0] ?
+                                  torch.zeros([input.squares.shape[0], 64, TransformerConfig.PriorStateDim], dtype: DataType, device: Device);
+                }
+                rawRet = module.forward(input.squares, priorState); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
+//                var xx = module.forward(new object[] { input.squares, priorState }); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
+
+                 lastPriorState = rawRet[8];
+                UsePriorState = false;
+              }
+              else
+              {
+                object rawRetObj = module.forward(input.squares);
+                rawRet = (Tensor[])rawRetObj;
+                hasBoardState = false;
+              }
+
+              ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
+                     rawRet.Length > 7 ? rawRet[7] : default,
+                     rawRet.Length > 8 ? rawRet[8] : default);
+              hasAction = rawRet.Length > 7;
+              hasBoardState = rawRet.Length > 8;
             }
             else
             {
-              ret = CeresNet.call(inputSquares);
+              throw new Exception("Needs remediation for addition of action head and board state");
+              //ret = CeresNet.call((input.squares, input.priorState));
             }
 
             // Save the intrinsic dimensionality of the final layer
@@ -182,8 +236,10 @@ namespace CeresTrain.NNEvaluators
                     ret.mlh.MoveToOuterDisposeScope(),
                     ret.unc.MoveToOuterDisposeScope(),
                     ret.value2.MoveToOuterDisposeScope(),
-                    ret.qDeviationLower.MoveToOuterDisposeScope(),
-                    ret.qDeviationUpper.MoveToOuterDisposeScope(),
+                    (object)ret.qDeviationLower == null ? null : ret.qDeviationLower.MoveToOuterDisposeScope(),
+                    (object)ret.qDeviationUpper == null ? null : ret.qDeviationUpper.MoveToOuterDisposeScope(),
+                    hasAction ? ret.actions.MoveToOuterDisposeScope() : null,
+                    hasBoardState ? ret.boardState.MoveToOuterDisposeScope() : null,
                     extraStats0, null);
           }
         }
