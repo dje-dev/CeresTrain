@@ -31,6 +31,7 @@ using Ceres.Chess.MoveGen;
 using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.NetEvaluation.Batch;
 using Ceres.Chess.NNEvaluators;
+using System.Threading.Tasks;
 
 #endregion
 
@@ -60,7 +61,6 @@ namespace CeresTrain.TPG.TPGGenerator
     public readonly bool EmitPlySinceLastMovePerSquare;
     public readonly bool EmitHistory;
 
-    public long NumWritten { get; private set; }
     public int NumPositionsWritten => numBuffersWritten * BUFFER_SIZE;
 
 
@@ -83,7 +83,6 @@ namespace CeresTrain.TPG.TPGGenerator
     CompressedPolicyVector?[][] buffersOverridePolicies;
 
     Stream[] outStreams;
-    EncodedPositionWithHistory[] pendingBatch;
 
     readonly object[] writingBuffersLocks;
     Func<TPGRecord[], bool> BatchPostprocessorDelegate;
@@ -183,6 +182,23 @@ namespace CeresTrain.TPG.TPGGenerator
       }
     }
 
+
+    public void Write(int targetSetIndex, float minLegalMoveProbability, bool emitMoves, 
+                      params ((EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, 
+                      int indexMoveInGame, short[] indexLastMoveBySquares), bool validate)[] items)
+    {
+      // Take the lock on the buffer associated with this target set
+      // so that we can't have two concurrent writes to the same target set.
+      lock (buffersTargets[targetSetIndex])
+      {
+        foreach (var item in items)
+        {
+          Write(item.Item1.record, item.Item1.targetInfo, item.Item1.indexMoveInGame, item.Item1.indexLastMoveBySquares, minLegalMoveProbability, targetSetIndex, emitMoves, item.validate);
+        }
+      }
+    }
+
+
     /// <summary>
     /// 
     /// </summary>
@@ -194,23 +210,25 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="targetSetIndex"></param>
     /// <param name="emitMoves"></param>
     public void Write(in EncodedTrainingPosition record, in TrainingPositionWriterNonPolicyTargetInfo targetInfo,
-                  int indexMoveInGame, short[] indexLastMoveBySquares, float minLegalMoveProbability,
-                  int targetSetIndex, bool emitMoves)
+                      int indexMoveInGame, short[] indexLastMoveBySquares, float minLegalMoveProbability,
+                      int targetSetIndex, bool emitMoves, bool validate)
     {
       if (shutdown)
       {
         return;
       }
 
-      // Just before writing validate record integrity one more time.
-      EncodedTrainingPosition.ValidateIntegrity(record.InputFormat, record.Version,
-                                                in record.PositionWithBoards, in record.Policies,
-                                                "TrainingPositionGenerator postprocessing validity check failure: " + OutputFileNameBase);
+      if (validate)
+      {
+        // Just before writing validate record integrity one more time.
+        EncodedTrainingPosition.ValidateIntegrity(record.InputFormat, record.Version,
+                                                  in record.PositionWithBoards, in record.Policies,
+                                                  "TrainingPositionGenerator postprocessing validity check failure: " + OutputFileNameBase);
+      }
 
       lock (buffersTargets[targetSetIndex])
       {
         int thisBufferIndex = countsInBuffer[targetSetIndex];
-        NumWritten++;
         buffers[targetSetIndex][thisBufferIndex] = record;
         buffersTargets[targetSetIndex][thisBufferIndex] = targetInfo;
 
@@ -232,7 +250,7 @@ namespace CeresTrain.TPG.TPGGenerator
           {
             // No NN evaluation needed, we can synchronously do the batch writing.
             ProcessWrite(buffers[targetSetIndex], buffersTargets[targetSetIndex], buffersOverridePolicies[targetSetIndex],
-                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves);
+                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves, validate);
           }
           else
           {
@@ -245,7 +263,7 @@ namespace CeresTrain.TPG.TPGGenerator
             buffers[targetSetIndex] = new EncodedTrainingPosition[BUFFER_SIZE];
 
             ProcessWrite(positions, buffersTargets[targetSetIndex], buffersOverridePolicies[targetSetIndex],
-                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves);
+                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves, validate);
 
 #if NOT
 Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks grows without bound.
@@ -261,36 +279,15 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
 
 
     /// <summary>
-    /// Return string description.
+    /// Applies postprocessing to the specified array of positions.
     /// </summary>
-    /// <returns></returns>
-    public override string ToString()
-    {
-      return $"<TrainingPositionWriter {OutputFormat} to {OutputFileNameBase} with {TotalNumPositionsToBeWritten} per set";
-    }
-
-
-    public void Shutdown()
-    {
-      shutdown = true;
-      if (outStreams != null)
-      {
-        lock (lockObj)
-        {
-          if (outStreams != null)
-          {
-            for (int i = 0; i < outStreams.Length; i++)
-            {
-              outStreams[i].Dispose();
-              outStreams[i] = null;
-            }
-          }
-          outStreams = null;
-        }
-      }
-    }
-
-
+    /// <param name="positions"></param>
+    /// <param name="startIndexNonNNResult"></param>
+    /// <param name="results"></param>
+    /// <param name="nonPolicyTarget"></param>
+    /// <param name="overridePolicyTarget"></param>
+    /// <param name="indicesPositionsToOmit"></param>
+    /// <exception cref="NotImplementedException"></exception>
     void Postprocessor(EncodedTrainingPosition[] positions,
                       int startIndexNonNNResult,
                       Memory<NNEvaluatorResult> results,
@@ -362,16 +359,20 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     }
 
 
+    /// <summary>
+    /// Runs the postprocessor on specified array of positions.
+    /// </summary>
+    /// <param name="targetSetIndex"></param>
+    /// <param name="positions"></param>
+    /// <param name="batch"></param>
+    /// <returns></returns>
     HashSet<int> PostprocessBatch(int targetSetIndex, EncodedTrainingPosition[] positions, EncodedPositionBatchFlat batch)
     {
       HashSet<int> indicesPositionsToOmit = new();
       if (Evaluator != null)
       {
         // Start out with assumption that policy target is not overridden.
-        for (int i = 0; i < BUFFER_SIZE; i++)
-        {
-          buffersOverridePolicies[targetSetIndex][i] = null;
-        }
+        Array.Clear(buffersOverridePolicies[targetSetIndex], 0, BUFFER_SIZE);
 
         Evaluator.EvaluateOversizedBatch(batch, (int startIndex, Memory<NNEvaluatorResult> results) 
                                         => Postprocessor(positions, startIndex, results,
@@ -388,114 +389,75 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     }
 
 
+
+    [ThreadStatic]
+    static TPGRecord[] tpgRecordsBuffer = null;
+
+    /// <summary>
+    /// Returns a new array of TPGRecords converted from the specified input data.
+    /// </summary>
+    /// <param name="positions"></param>
+    /// <param name="includeHistory"></param>
+    /// <param name="targetInfos"></param>
+    /// <param name="targetPolicyOverrides"></param>
+    /// <param name="minLegalMoveProbability"></param>
+    /// <param name="pliesSinceLastPieceMoveBySquare"></param>
+    /// <param name="emitMoves"></param>
+    /// <returns></returns>
     unsafe TPGRecord[] ConvertedTPGRecords(EncodedTrainingPosition[] positions,
                                            bool includeHistory,
                                            TrainingPositionWriterNonPolicyTargetInfo[] targetInfos,
                                            CompressedPolicyVector?[] targetPolicyOverrides,
                                            float minLegalMoveProbability,
                                            byte[][] pliesSinceLastPieceMoveBySquare,
-                                           bool emitMoves)
+                                           bool emitMoves, bool validate)
     {
       if (tpgRecordsBuffer == null)
       {
         tpgRecordsBuffer = new TPGRecord[positions.Length];
       }
 
-      for (int i = 0; i < positions.Length; i++)
+      TPGRecord[] bufferForParallelThreads = tpgRecordsBuffer;
+
+      // Convert in parallel. 
+      const int MAX_PARALLELISM = 8; // not too large, since there is already a lot of concurrency in these classes.
+      Parallel.For(0, positions.Length, new ParallelOptions() { MaxDegreeOfParallelism = MAX_PARALLELISM }, i =>
       {
         // Convert into TPG record format.
         TPGRecordConverter.ConvertToTPGRecord(in positions[i], includeHistory, in targetInfos[i], targetPolicyOverrides?[i],
-                                              minLegalMoveProbability, ref tpgRecordsBuffer[i],
+                                              minLegalMoveProbability, ref bufferForParallelThreads[i],
                                               pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare, emitMoves,
-                                              targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders);
+                                              targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders,
+                                              targetInfos[i].PriorPositionWinP,
+                                              targetInfos[i].PriorPositionDrawP,
+                                              targetInfos[i].PriorPositionLossP, validate);
+      });
 
-      }
       return tpgRecordsBuffer;
     }
 
-    [ThreadStatic]
-    static TPGRecord[] tpgRecordsBuffer = null;
 
 
-
-
-    internal static unsafe void ExtractRawBoard(in EncodedPositionWithHistory inputPos, ref TPGRecord tpgRecord)
-    {
-      throw new Exception("This code is almost certainly wrong, doesn't handle black.");
-#if NOT
-      int rawOffset = 0;
-
-      EncodedPositionBoard pos = inputPos.BoardsHistory.History_0;
-
-      // TODO: consider centralizing this logic for creating a flat representation
-      Write(pos.OurBishops, ref tpgComboRecord, ref rawOffset);
-      Write(pos.OurKing, ref tpgComboRecord, ref rawOffset);
-      Write(pos.OurKnights, ref tpgComboRecord, ref rawOffset);
-      Write(pos.OurPawns, ref tpgComboRecord, ref rawOffset);
-      Write(pos.OurQueens, ref tpgComboRecord, ref rawOffset);
-      Write(pos.OurRooks, ref tpgComboRecord, ref rawOffset);
-
-      Write(pos.TheirBishops, ref tpgComboRecord, ref rawOffset);
-      Write(pos.TheirKing, ref tpgComboRecord, ref rawOffset);
-      Write(pos.TheirKnights, ref tpgComboRecord, ref rawOffset);
-      Write(pos.TheirPawns, ref tpgComboRecord, ref rawOffset);
-      Write(pos.TheirQueens, ref tpgComboRecord, ref rawOffset);
-      Write(pos.TheirRooks, ref tpgComboRecord, ref rawOffset);
-
-      EncodedPositionMiscInfo miscInfo = inputPos.MiscInfo.InfoPosition;
-      tpgComboRecord.RawBoard.CastlingOurOO = miscInfo.Castling_US_OO;
-      tpgComboRecord.RawBoard.CastlingOurOOO = miscInfo.Castling_US_OOO;
-      tpgComboRecord.RawBoard.CastlingTheirOO = miscInfo.Castling_Them_OO;
-      tpgComboRecord.RawBoard.CastlingTheirOOO = miscInfo.Castling_Them_OOO;
-      tpgComboRecord.RawBoard.Move50 = miscInfo.Rule50Count;
-
-      EncodedPositionBoard board0 = inputPos.BoardsHistory.History_0;
-      EncodedPositionBoard board1 = inputPos.BoardsHistory.History_1;
-
-      tpgComboRecord.RawBoard.Repetition = board0.Repetitions.Data > 0 ? (byte)1 : (byte)0;
-
-      PositionMiscInfo.EnPassantFileIndexEnum epColIndex = EncodedPositionBoards.EnPassantOpportunityBetweenBoards(board0, board1);
-      if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileA)
-      {
-        tpgComboRecord.RawBoard.EnPassantA = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileB)
-      {
-        tpgComboRecord.RawBoard.EnPassantB = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileC)
-      {
-        tpgComboRecord.RawBoard.EnPassantC = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileD)
-      {
-        tpgComboRecord.RawBoard.EnPassantD = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileE)
-      {
-        tpgComboRecord.RawBoard.EnPassantE = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileF)
-      {
-        tpgComboRecord.RawBoard.EnPassantF = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileG)
-      {
-        tpgComboRecord.RawBoard.EnPassantG = 1;
-      }
-      else if (epColIndex == PositionMiscInfo.EnPassantFileIndexEnum.FileH)
-      {
-        tpgComboRecord.RawBoard.EnPassantH = 1;
-      }
-#endif
-    }
-
-
-    private void ProcessWrite(EncodedTrainingPosition[] positions,
-                              TrainingPositionWriterNonPolicyTargetInfo[] positionsTargets,
-                              CompressedPolicyVector?[] targetPolicyOverrides,
-                              float minLegalMoveProbability,
-                              byte[][] pliesSinceLastPieceMoveBySquare, int targetSetIndex, bool emitMoves)
+    /// <summary>
+    /// Write a specified buffer of positions to the specified output set.
+    /// Handles:
+    ///   - calling postprocessor (if any)
+    ///   - converting to TPG records (if TGP is the target format type)
+    /// </summary>
+    /// <param name="positions"></param>
+    /// <param name="positionsTargets"></param>
+    /// <param name="targetPolicyOverrides"></param>
+    /// <param name="minLegalMoveProbability"></param>
+    /// <param name="pliesSinceLastPieceMoveBySquare"></param>
+    /// <param name="targetSetIndex"></param>
+    /// <param name="emitMoves"></param>
+    /// <exception cref="NotImplementedException"></exception>
+    private unsafe void ProcessWrite(EncodedTrainingPosition[] positions,
+                                     TrainingPositionWriterNonPolicyTargetInfo[] positionsTargets,
+                                     CompressedPolicyVector?[] targetPolicyOverrides,
+                                     float minLegalMoveProbability,
+                                     byte[][] pliesSinceLastPieceMoveBySquare, int targetSetIndex, 
+                                     bool emitMoves, bool validate)
     {
       // Take a lock so that we insure we can't have two concurrent
       // postprocesses/writes to the same target set.
@@ -551,7 +513,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
         {
           // Convert to TPG.
           TPGRecord[] convertedToTPG = ConvertedTPGRecords(positions, EmitHistory, positionsTargets, targetPolicyOverrides, minLegalMoveProbability,
-                                                           pliesSinceLastPieceMoveBySquare, emitMoves);
+                                                           pliesSinceLastPieceMoveBySquare, emitMoves, validate);
 
           if (BatchPostprocessorDelegate != null)
           {
@@ -561,11 +523,15 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
               throw new NotImplementedException("Shutdown not yet implemented");
             }
           }
+
           if (outStreams != null)
           {
             // Write bytes to the file.
-            ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(convertedToTPG);
-            outStreams[targetSetIndex].Write(bufferAsBytes);
+            fixed (EncodedTrainingPosition* ptr = positions)
+            {
+              ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(convertedToTPG);
+              outStreams[targetSetIndex].Write(bufferAsBytes);
+            }
           }
         }
         else if (OutputFormat == TPGGeneratorOptions.OutputRecordFormat.EncodedTrainingPos)
@@ -578,8 +544,12 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
           if (outStreams != null)
           {
             // Write bytes to the file.
-            ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<EncodedTrainingPosition, byte>(positions);
-            outStreams[targetSetIndex].Write(bufferAsBytes);
+            fixed (EncodedTrainingPosition* ptr = positions)
+            {
+              ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<EncodedTrainingPosition, byte>(positions);
+              outStreams[targetSetIndex].Write(bufferAsBytes);
+            }
+
           }
         }
         else
@@ -594,6 +564,39 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
         Interlocked.Increment(ref numBuffersWritten);
       }
     }
+
+
+    /// <summary>
+    /// Return string description.
+    /// </summary>
+    /// <returns></returns>
+    public override string ToString()
+    {
+      return $"<TrainingPositionWriter {OutputFormat} to {OutputFileNameBase} with {TotalNumPositionsToBeWritten} per set";
+    }
+
+
+    public void Shutdown()
+    {
+      shutdown = true;
+      if (outStreams != null)
+      {
+        lock (lockObj)
+        {
+          if (outStreams != null)
+          {
+            for (int i = 0; i < outStreams.Length; i++)
+            {
+              outStreams[i].Dispose();
+              outStreams[i] = null;
+            }
+          }
+          outStreams = null;
+        }
+      }
+    }
+
+
   }
 
 

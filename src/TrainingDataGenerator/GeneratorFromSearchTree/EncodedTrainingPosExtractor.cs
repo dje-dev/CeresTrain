@@ -104,7 +104,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, int version, int inputFormat, byte invarianceInfo, PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
+    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, int version, int inputFormat, byte invarianceInfo, 
+                                                                  PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
     {
       EncodedPositionWithHistory newPosHistory = default;
       newPosHistory.SetFromSequentialPositions(searchPosition.Positions, false); // this also takes care of the misc info
@@ -119,7 +120,7 @@ namespace CeresTrain.TrainingDataGenerator
       epv.InitilializeAllNegativeOne();
       unsafe
       {
-        float* encodedProbs = epv.ProbabilitiesPtr;
+        float* encodedProbs = epv.ProbabilitiesPtr; // on stack so struct can't move
         foreach ((EncodedMove Move, float Probability) entry in targets.policy.ProbabilitySummary(0))
         {
           encodedProbs[entry.Move.IndexNeuralNet] = entry.Probability;
@@ -149,7 +150,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       EncodedTrainingPositionMiscInfo miscInfoAll = new(newPosHistory.MiscInfo.InfoPosition, trainingMiscInfo);
       newPosHistory.SetMiscInfo(miscInfoAll);
-
+      
       EncodedTrainingPosition ret = new EncodedTrainingPosition(version, inputFormat, newPosHistory, epv);
 
       return ret;

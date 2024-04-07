@@ -140,7 +140,8 @@ namespace CeresTrain.TPG
                                                  float qPositiveBlunders = 0,
                                                  float priorPosWinP = 0, 
                                                  float priorPosDrawP = 0,
-                                                 float priorPosLossP = 0)
+                                                 float priorPosLossP = 0,
+                                                 bool validate = true)
     {
       // N.B. Some logic here is the same as in method above (ConvertedToTPGRecord) and should be kept in sync.
 
@@ -161,7 +162,7 @@ namespace CeresTrain.TPG
       // Convert the values unrelated to moves and squares
       if (targetInfo != null)
       {
-        ConvertToTPGEvalInfo(targetInfo.Value, ref tpgRecord);
+        ConvertToTPGEvalInfo(targetInfo.Value, ref tpgRecord, validate);
       }
 
       if (policyVector is not null)
@@ -183,18 +184,11 @@ namespace CeresTrain.TPG
 #endif
 
 #if DEBUG
-      const bool validate = true;
-#else
-      const bool validate = false;
-#endif
-      // Randomly validate some even in non-debug mode.
-      //const int VALIDATE_PCT = 1;
-      //bool validate = (trainingPos.PositionWithBoards.GetPlanesForHistoryBoard(0).GetHashCode() % 100) < VALIDATE_PCT;
       if (validate)
       {
-        // Run validation.
         TPGRecordValidation.Validate(in encodedPosToConvert, in tpgRecord, policyVector is not null);
       }
+#endif
 
     }
 
@@ -309,10 +303,14 @@ namespace CeresTrain.TPG
                                                  bool emitPlySinceLastMovePerSquare,
                                                  bool emitMoves,
                                                  float qNegativeBlunders, float qPositivelBlunders,
-                                                 float priorPosWinP, float priorPosDrawP, float priorPosLossP)
+                                                 float priorPosWinP, float priorPosDrawP, float priorPosLossP,
+                                                 bool validate)
                                                  
     {
-      trainingPos.ValidateIntegrity("Validate in ConvertToTPGRecord");
+      if (validate)
+      {
+        trainingPos.ValidateIntegrity("Validate in ConvertToTPGRecord");
+      }
 
       // Clear out any prior values.
       tpgRecord = default;
@@ -339,7 +337,7 @@ namespace CeresTrain.TPG
       }
 
       // Convert the values unrelated to moves and squares
-      ConvertToTPGEvalInfo(in targetInfo, ref tpgRecord);
+      ConvertToTPGEvalInfo(in targetInfo, ref tpgRecord, validate);
 
       // Write squares.
       ConvertToTPGRecordSquares(trainingPos.PositionWithBoards, includeHistory, default, targetInfo, ref tpgRecord,
@@ -348,18 +346,8 @@ namespace CeresTrain.TPG
                                 priorPosWinP, priorPosDrawP, priorPosLossP);
 
 #if DEBUG
-      const bool validate = TPGRecord.NUM_SQUARES == 64;; // TODO: Generalize this for <64
-#else
-      const bool validate = false;
-      // Randomly validate some even in non-debug mode.
-      //const int VALIDATE_PCT = 1;
-      //bool validate = (trainingPos.PositionWithBoards.GetPlanesForHistoryBoard(0).GetHashCode() % 100) < VALIDATE_PCT;
-#endif
-      if (validate)
-      {
-        // Run validation.
-        TPGRecordValidation.Validate(in trainingPos.PositionWithBoards, ref tpgRecord, overridePolicyVector is not null);
-      }
+      TPGRecordValidation.Validate(in trainingPos.PositionWithBoards, in tpgRecord, overridePolicyVector is not null);
+#endif   
     }
 
 
@@ -397,17 +385,20 @@ namespace CeresTrain.TPG
     /// <param name="count"></param>
     unsafe static void PadPolicies(ref TPGRecord tpgRecord, int count)
     {
-      if (count < TPGRecord.MAX_MOVES)
+      if (count > 0)
       {
-        // Replicate the last entry into every remaining position
-        // so that scattering across all slots will result in correct policy.
-        short lastIndex = tpgRecord.PolicyIndices[count - 1];
-        Half lastValue = tpgRecord.PolicyValues[count - 1];
-        while (count < TPGRecord.MAX_MOVES)
+        if (count < TPGRecord.MAX_MOVES)
         {
-          tpgRecord.PolicyValues[count] = lastValue;
-          tpgRecord.PolicyIndices[count] = lastIndex;
-          count++;
+          // Replicate the last entry into every remaining position
+          // so that scattering across all slots will result in correct policy.
+          short lastIndex = tpgRecord.PolicyIndices[count - 1];
+          Half lastValue = tpgRecord.PolicyValues[count - 1];
+          while (count < TPGRecord.MAX_MOVES)
+          {
+            tpgRecord.PolicyValues[count] = lastValue;
+            tpgRecord.PolicyIndices[count] = lastIndex;
+            count++;
+          }
         }
       }
     }
@@ -548,13 +539,16 @@ namespace CeresTrain.TPG
     /// <param name="targetInfo"></param>
     /// <param name="tpgRecord"></param>
     /// <exception cref="Exception"></exception>
-    internal static unsafe void ConvertToTPGEvalInfo(in TrainingPositionWriterNonPolicyTargetInfo targetInfo, ref TPGRecord tpgRecord)
+    internal static unsafe void ConvertToTPGEvalInfo(in TrainingPositionWriterNonPolicyTargetInfo targetInfo, ref TPGRecord tpgRecord, bool validate)
     {
-      if (IsInvalid(targetInfo.ResultDeblunderedWDL)) throw new Exception("Bad ResultDeblunderedWDL " + targetInfo.ResultDeblunderedWDL);
-      if (IsInvalid(targetInfo.ResultNonDeblunderedWDL)) throw new Exception("Bad ResultNonDeblunderedWDL " + targetInfo.ResultNonDeblunderedWDL);
-      if (IsInvalid(targetInfo.BestWDL)) throw new Exception("Bad BestWDL " + targetInfo.BestWDL);
-      if (IsInvalid(targetInfo.MLH)) throw new Exception("Bad MLH " + targetInfo.MLH);
-      if (IsInvalid(targetInfo.DeltaQVersusV)) throw new Exception("Bad UNC " + targetInfo.DeltaQVersusV);
+      if (validate)
+      {
+        if (IsInvalid(targetInfo.ResultDeblunderedWDL)) throw new Exception("Bad ResultDeblunderedWDL " + targetInfo.ResultDeblunderedWDL);
+        if (IsInvalid(targetInfo.ResultNonDeblunderedWDL)) throw new Exception("Bad ResultNonDeblunderedWDL " + targetInfo.ResultNonDeblunderedWDL);
+        if (IsInvalid(targetInfo.BestWDL)) throw new Exception("Bad BestWDL " + targetInfo.BestWDL);
+        if (IsInvalid(targetInfo.MLH)) throw new Exception("Bad MLH " + targetInfo.MLH);
+        if (IsInvalid(targetInfo.DeltaQVersusV)) throw new Exception("Bad UNC " + targetInfo.DeltaQVersusV);
+      }
 
       tpgRecord.WDLResultNonDeblundered[0] = targetInfo.ResultNonDeblunderedWDL.w;
       tpgRecord.WDLResultNonDeblundered[1] = targetInfo.ResultNonDeblunderedWDL.d;
@@ -573,6 +567,8 @@ namespace CeresTrain.TPG
 
       tpgRecord.QDeviationLower = (Half)targetInfo.ForwardMinQDeviation;
       tpgRecord.QDeviationUpper = (Half)targetInfo.ForwardMaxQDeviation;
+
+      tpgRecord.PolicyIndexInParent = targetInfo.PolicyIndexInParent;
 
 #if NOT
 // Old fill in directly from training position. Seemingly not needed now.

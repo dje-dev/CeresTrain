@@ -27,6 +27,7 @@ using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.MoveGen.Converters;
 
 using CeresTrain.TPG.TPGGenerator;
+using Ceres.Base.Math;
 
 #endregion
 
@@ -165,7 +166,7 @@ namespace CeresTrain.TrainingDataGenerator
         moveCount++;
       }
 
-      Normalize(probs);
+      StatUtils.Normalize(probs);
 
 #if NOT_NEEDED_DONE_IN_TPG_WRITER
       for (int i = 0; i < scores.Length; i++)
@@ -277,25 +278,6 @@ namespace CeresTrain.TrainingDataGenerator
         {
           return 1; // not sure why this would happen, but just in case
         }
-      }
-    }
-
-
-    /// <summary>
-    /// Normalizes (make sum be 1.0) a set of values.
-    /// </summary>
-    /// <param name="values"></param>
-    static void Normalize(Span<float> values)
-    {
-      float allSum = TensorPrimitives.Sum(values);
-
-      // TODO: someday use Divide next
-      //       but currently seems buggy!
-      // TensorPrimitives.Divide(values, allSum, values);
-
-      for (int i = 0; i < values.Length; i++)
-      {
-        values[i] /= allSum;
       }
     }
 

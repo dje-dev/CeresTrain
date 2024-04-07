@@ -24,6 +24,9 @@ using Ceres.Chess.Positions;
 using Ceres.Chess.NetEvaluation.Batch;
 using Ceres.APIExamples;
 using Ceres.Chess.Data.Nets;
+using Ceres.Chess.EncodedPositions.Basic;
+using static Pblczero.NetworkFormat;
+using Ceres.Chess.MoveGen.Converters;
 
 #endregion
 
@@ -36,12 +39,14 @@ namespace CeresTrain.TrainingDataGenerator
     // const int UNUSED2_VALUE_MARKER = 255;
 
     public readonly NNEvaluator Evaluator;
-    //    public readonly NNEvaluator EvaluatorCeres;
 
+    /// <summary>
+    /// Constructor.
+    /// </summary>
+    /// <param name="nnEvaluator"></param>
     public LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator nnEvaluator)
     {
       Evaluator = nnEvaluator;
-      //      EvaluatorCeres = CeresNetworkTesting.Evaluator1;
     }
 
 
@@ -51,7 +56,16 @@ namespace CeresTrain.TrainingDataGenerator
                                                 position.ToPositionWithHistory(8), false, verbose);
     }
 
-    public EncodedTrainingPosition GenerateNextTrainingPosition(in EncodedTrainingPosition startPos, MGMove moveToPlay, bool overrideResultToBeWin = false, bool verbose = false)
+
+    /// <summary>
+    /// Generates the EncodedTrainingPosition corresponding to the position 
+    /// after the given move is played from a starting EncodedTrainingPosition. 
+    /// </summary>
+    /// <param name="position"></param>
+    /// <param name="verbose"></param>
+    /// <returns></returns>
+    public EncodedTrainingPosition GenerateNextTrainingPosition(in EncodedTrainingPosition startPos, MGMove moveToPlay, 
+                                                                bool overrideResultToBeWin = false, bool verbose = false)
     {
       // Get current position with history and the played move.
       PositionWithHistory currentPos = startPos.ToPositionWithHistory(8);
@@ -62,13 +76,14 @@ namespace CeresTrain.TrainingDataGenerator
 
       PositionWithHistory nextPosition = new PositionWithHistory(currentPos);
       nextPosition.AppendPosition(nextPos, moveToPlay);
-
+      
       return GenerateTrainingPositionFromNNEval(Evaluator, startPos.Version, startPos.InputFormat, startPos.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
                                                 nextPosition, overrideResultToBeWin, verbose);
     }
 
 
-    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, int version, int inputFormat, byte invarianceInfo, PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
+    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, int version, int inputFormat, byte invarianceInfo, 
+                                                                             PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
     {
       // Run neural net evaluation of this position (locking for concurrency control).
       NNEvaluatorResult evalResult;
@@ -81,7 +96,7 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
-    #region Helper methods
+    #region Helper methods (serious blunder dtection)
 
 
     /// <summary>

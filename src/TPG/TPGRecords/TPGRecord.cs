@@ -123,15 +123,26 @@ namespace CeresTrain.TPG
     public fixed float WDLQ[3];
 
     /// <summary>
-    /// Optional training input containing number of moves since each square had a piece change.
+    /// Training input if white was to move.
+    /// This is just informational, since the training positions are 
+    /// always from the perspective of the side to move.
     /// </summary>
-    public fixed byte MovesUntilNextSquareMove[NUM_SQUARES];
+    public byte IsWhiteToMove;
+
+    public byte Unused1;
+    public byte Unused2;
+    public byte Unused3;
+    public byte Unused4;
+    public byte Unused5;
+    public byte Unused6;
+    public byte Unused7;
+    public fixed byte UnusedArray[56];
 
     /// <summary>
     /// Moves (actually half-moves) left until game end training target.
     /// </summary>
     public float MLH;
-
+    
     /// <summary>
     /// Difference between Q of best move and V as a training target proxying for uncertainty.
     /// We record this rather than (say) the absolute difference for uncertainty
@@ -150,16 +161,9 @@ namespace CeresTrain.TPG
     public Half QDeviationUpper;
 
     /// <summary>
-    /// Training input if white was to move.
-    /// This is of secondary importance, since the training positions are 
-    /// always from the perspective of the side to move.
+    /// Neural net index (0...1857) of the move played from prior move in game (or -1 if none).
     /// </summary>
-    public byte IsWhiteToMove;
-
-    /// <summary>
-    /// Unusued field.
-    /// </summary>
-    public byte UnusedByte1;
+    public short PolicyIndexInParent;
 
     /// <summary>
     /// Policy training target with array of move indices having nozero probabilities.

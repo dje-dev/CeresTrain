@@ -78,6 +78,11 @@ namespace CeresTrain.TPG.TPGGenerator
     /// Value head estimate of loss probability (from our perspective) at the prior position.
     /// </summary>
     public float PriorPositionLossP;
+
+    /// <summary>
+    /// Neural net index (0...1857) of the move played from prior move in game (or -1 if none).
+    /// </summary>
+    public short PolicyIndexInParent;
   }
 
 

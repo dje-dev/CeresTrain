@@ -14,7 +14,6 @@
 #region Using directives
 
 using System;
-
 using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators.LC0DLL;
@@ -63,6 +62,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     public (float w, float d, float l)[] intermediateBestWDL = new (float w, float d, float l)[MAX_PLY];
     public float[] deltaQIntermediateBestWDL = new float[MAX_PLY];
+
 
     static (float w, float d, float l) Reverse((float w, float d, float l) v) => (v.l, v.d, v.w);
 
@@ -240,7 +240,7 @@ namespace CeresTrain.TPG.TPGGenerator
         }
 
         (float w, float d, float l) wdlBestCurrent = thisTrainingPos.MiscInfo.InfoTraining.BestWDL;
-        var wdlBestForward = positionsSpan[i + numForward].MiscInfo.InfoTraining.BestWDL;
+        (float w, float d, float l) wdlBestForward = positionsSpan[i + numForward].MiscInfo.InfoTraining.BestWDL;
 
         intermediateBestWDL[i] = numForward % 2 == 0 ? wdlBestForward : Reverse(wdlBestForward);
         float currentBestWL = wdlBestCurrent.w - wdlBestCurrent.l;
