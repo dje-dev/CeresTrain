@@ -12,6 +12,11 @@ namespace CeresTrain.NNEvaluators
   public record struct NNEvaluatorTorchsharpOptions
   {
     /// <summary>
+    /// If the prior state information should be used.
+    /// </summary>
+    public bool UsePriorState { get; init; } = false;
+
+    /// <summary>
     /// If the action head should be used.
     /// </summary>
     public bool UseAction { get; init; } = false;
@@ -70,6 +75,7 @@ namespace CeresTrain.NNEvaluators
     /// <param name="valueHead1Temperature"></param>
     /// <param name="shrinkExtremes"></param>
     /// <param name="useAction"></param>
+    /// <param name="usePriorState"></param>
     /// <exception cref="ArgumentException"></exception>
     public NNEvaluatorTorchsharpOptions(float qNegativeBlunders = 0, float qPositiveBlunders = 0, 
                                         float fractionUndeblunderedValueHead = 0,
@@ -78,7 +84,8 @@ namespace CeresTrain.NNEvaluators
                                         float valueHead2Temperature = 1,
                                         float valueHeadAveragePowerMeanOrder = 1,
                                         bool shrinkExtremes = false,
-                                        bool useAction = false)
+                                        bool useAction = false,
+                                        bool usePriorState = false)
     {
       if (valueHead1Temperature <= 0 || valueHead2Temperature <= 0)
       {
@@ -94,6 +101,7 @@ namespace CeresTrain.NNEvaluators
       ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
       ShrinkExtremes = shrinkExtremes;
       UseAction = useAction;
+      UsePriorState = usePriorState;
     }
   }
 

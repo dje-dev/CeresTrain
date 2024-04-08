@@ -144,10 +144,6 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    Tensor lastPriorState;
-    int callCount = 0;
-    public static bool UsePriorState = false;
-
     /// <summary>
     /// Runs forward pass.
     /// </summary>
@@ -160,11 +156,6 @@ namespace CeresTrain.NNEvaluators
             Tensor action, Tensor boardState,
             FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC((Tensor squares, Tensor priorState) input)
     {
-      if (input.priorState is not null)
-      {
-        throw new Exception("inputMoves not supported");
-      }
-
       FP16[] extraStats0 = null;
 
       DisposeScope disposeScopeEval;
@@ -185,25 +176,20 @@ namespace CeresTrain.NNEvaluators
               Tensor [] rawRet;
               if (hasPriorStateOutput)
               {
-
+                bool havePriorPassedIn = TransformerConfig.PriorStateDim > 0 && ((object)input.priorState) != null;
                 Tensor priorState;
-                if (TransformerConfig.PriorStateDim == 0)
+                if (havePriorPassedIn)
                 {
-                  priorState = torch.zeros([input.squares.shape[0], 64, 1], dtype: DataType, device: Device);
+                  priorState = input.priorState;
                 }
                 else
                 {
-                  priorState =
-                                  UsePriorState ?
-                                  lastPriorState :
-                                  //                callCount++ == 0 || lastPriorState.size()[0] != input.squares.shape[0] ?
-                                  torch.zeros([input.squares.shape[0], 64, TransformerConfig.PriorStateDim], dtype: DataType, device: Device);
+                  int size = TransformerConfig.PriorStateDim == 0 ? 1 : TransformerConfig.PriorStateDim;
+                  priorState = torch.zeros([input.squares.shape[0], 64, size], dtype: DataType, device: Device);
                 }
+
                 rawRet = module.forward(input.squares, priorState); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
 //                var xx = module.forward(new object[] { input.squares, priorState }); // N.B. Possible bug, calling this twice sometimes results in slightly different return values
-
-                 lastPriorState = rawRet[8];
-                UsePriorState = false;
               }
               else
               {

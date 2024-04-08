@@ -27,6 +27,8 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
+using System.Collections.Generic;
+using static CeresTrain.NNEvaluators.NNEvaluatorTorchsharp;
 
 
 #endregion
@@ -85,8 +87,9 @@ namespace CeresTrain.NNEvaluators
 
     bool hasAction => Options.UseAction;
 
+    public static FixedSizeQueue<(ulong, string, Tensor)> priorBoardStates;
 
-   
+
     /// <summary
     /// Constructor.
     /// </summary>
@@ -124,6 +127,12 @@ namespace CeresTrain.NNEvaluators
                                  bool lastMovePliesEnabled = false,
                                  NNEvaluatorTorchsharpOptions options = default)
     {
+      OID = DateTime.Now.Ticks.GetHashCode();
+      if (priorBoardStates == null)
+      {
+        priorBoardStates = new FixedSizeQueue<(ulong, string, Tensor)>(300);
+      }
+
       ArgumentNullException.ThrowIfNull(options);
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
 
@@ -168,6 +177,8 @@ namespace CeresTrain.NNEvaluators
     public bool hasValue2 = true; // TODO: cleanup
 
     public override bool HasValueSecondary => hasValue2;
+
+    int OID;
 
     public override bool IsEquivalentTo(NNEvaluator evaluator)
     {
@@ -241,14 +252,51 @@ namespace CeresTrain.NNEvaluators
 
     static bool haveInitialized = false;
     static bool haveWarned = false;
+    bool firstTime = true;
+    public EncodedPositionWithHistory lastPosition;
+    public static EncodedPositionWithHistory lastPositionStatic;
 
 #if DEBUG
-    public static EncodedPositionWithHistory lastPosition;
-    public static IPositionEvaluationBatch lastBatch; // for debugging only
+    public IPositionEvaluationBatch lastBatch; // for debugging only
+    public static IPositionEvaluationBatch lastBatchStatic; // for debugging only
 #endif
+
+    //    Dictionary<string, float[]> cachedPriorHistory = new Dictionary<string, float[]>();
 
     public override IPositionEvaluationBatch DoEvaluateIntoBuffers(IEncodedPositionBatchFlat positions, bool retrieveSupplementalResults = false)
     {
+      // Get the hash of the current position.
+      ulong thisHash = EncodedBoardZobrist.ZobristHash(in positions.PositionsBuffer.Span[0].BoardsHistory.History_0);
+      // .CalcZobristHash(PositionMiscInfo.HashMove50Mode.Ignore);
+      ulong priorHash = EncodedBoardZobrist.ZobristHash(in positions.PositionsBuffer.Span[0].BoardsHistory.History_1);
+
+
+      string thisFEN = positions.PositionsBuffer.Span[0].HistoryPosition(0).FEN;
+      string priorFEN = positions.PositionsBuffer.Span[0].HistoryPosition(1).FEN;
+
+      //      ulong priorHash = firstTime || lastPosition.BoardsHistory.BoardAtIndex(0).IsEmpty
+      //        ? (ulong)0
+      //        : EncodedBoardZobrist.ZobristHash(in lastPosition.BoardsHistory.History_0);
+
+      if (thisHash != 0 && priorHash != 0)
+      {
+//        Console.WriteLine();
+//        Console.WriteLine(OID + " " + thisHash + " " + positions.PositionsBuffer.Span[0].HistoryPosition(0).FEN);
+//        Console.WriteLine(OID + " " + priorHash + " " + lastPosition.HistoryPosition(0).FEN);
+      }
+
+      lastPosition = lastPositionStatic = positions.PositionsBuffer.Span[0];
+
+      if (positions.NumPos > 1)
+      {
+        thisHash = priorHash = 0;
+      }
+      firstTime = false;
+//      bool equal = !lastPosition.BoardsHistory.BoardAtIndex(0).IsEmpty &&
+//        positions.PositionsBuffer.Span[0].HistoryPosition(1).PiecesEqual(lastPosition.HistoryPosition(0));
+//      Console.WriteLine("equalxxx " + equal);
+
+
       if (LastMovePliesEnabled && !haveWarned)
       {
         const string ERR = @"Support for LastMovePliesEnabled probably not yet present in DoEvaluateIntoBuffers 
@@ -293,11 +341,14 @@ namespace CeresTrain.NNEvaluators
                                                           Options.QNegativeBlunders, Options.QPositiveBlunders,
                                                           out mgPos, out squareBytesAll, out legalMoveIndices);
 #if DEBUG
-      lastPosition = positions.PositionsBuffer.Span[0];
+      lastPosition = lastPositionStatic = positions.PositionsBuffer.Span[0];
+
 #endif
 
       IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.Moves.Span[i], positions.NumPos,
-                                                                    i => mgPos[i], squareBytesAll, legalMoveIndices);
+                                                                    i => mgPos[i], squareBytesAll, legalMoveIndices,
+                                                                    priorHash, thisHash,
+                                                                    priorFEN, thisFEN);
       if (false) // debug code, test against tablebase if accurate
       {
         if (tbEvaluator == null)
@@ -331,7 +382,7 @@ namespace CeresTrain.NNEvaluators
       }
 
 #if DEBUG
-      lastBatch = batch;
+      lastBatch = lastBatchStatic = batch;
 #endif
       return batch;
     }
@@ -438,11 +489,72 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
+    Tensor priorBoardState = default;
+
+    public class FixedSizeQueue<T>
+    {
+      const bool DUMP = false;
+
+      private readonly Queue<T> queue;
+      private readonly int maxSize;
+
+      private readonly object lockObj = new();
+
+      public FixedSizeQueue(int size)
+      {
+        maxSize = size;
+        queue = new Queue<T>(size);
+      }
+
+      public void Enqueue(T item)
+      {
+        lock (lockObj)
+        {
+          if (DUMP) Console.WriteLine("ENQUEUE " + item);
+          if (queue.Count == maxSize)
+          {
+            queue.Dequeue(); // Remove the oldest item if at capacity
+          }
+          queue.Enqueue(item);
+        }
+      }
+
+      public T Dequeue()
+      {
+        lock (lockObj)
+        {
+          return queue.Dequeue();
+        }
+      }
+
+
+      public T ExistingItem(Predicate<T> equalFunc, string itemDesc = null)
+      {
+        lock (lockObj)
+        {
+          if (DUMP) Console.WriteLine("PROBE " + itemDesc);
+          int index = 0;
+          foreach (T item in queue)
+          {
+            if (equalFunc(item))
+            {
+              if (DUMP) Console.WriteLine("FIND " + item);
+              return item;
+            }
+            index++;
+          }
+          return default;
+        }
+      }
+    }
+
+  public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
                                                                  int numPositions,
                                                                  Func<int, MGPosition> getMGPosAtIndex,
                                                                  byte[] squareBytesAll,
-                                                                 short[] legalMovesIndices = null)
+                                                                 short[] legalMovesIndices = null,
+                                                                 ulong priorHash = 0, ulong thisHash = 0,
+                                                                 string priorFEN = null, string thisFEN = null)
     {
       if (w == null)
       {
@@ -541,11 +653,38 @@ namespace CeresTrain.NNEvaluators
           }
         }
 #endif
+        
+        if (Options.UsePriorState && thisHash != 0)
+        {
+          // TODO: Fixup to rely upon has. Currently not equal for unknown reasons. **********8
+//          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item1 == priorHash, priorFEN);
+          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item2.Split(" ")[0] == priorFEN.Split(" ")[0], priorFEN);
+          if (existing.hash != 0)
+          {
+            priorBoardState = existing.state;
+//            Console.WriteLine("useit");
+          }
+          else
+          {
+            priorBoardState = null; 
+          }
+        }
+        else
+        {
+          priorBoardState = null;
+        }
+
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
           predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
           actions, boardState,
-          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, priorBoardState));
+
+        // Save back in queue if we retrieved a prior state.
+        if (Options.UsePriorState)
+        {
+          priorBoardStates.Enqueue((thisHash, thisFEN, boardState.clone().DetachFromDisposeScope())); 
+        }
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
@@ -707,6 +846,10 @@ namespace CeresTrain.NNEvaluators
 
         FP16[] actionsSpan = (object)actions == null  ? null : MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
 
+        if ((object)boardState != null)
+        {
+          priorBoardState = boardState.clone().DetachFromDisposeScope();
+        }
         PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary,
                                                                           numPositions, policiesToReturn, actionsSpan,
                                                                           w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
