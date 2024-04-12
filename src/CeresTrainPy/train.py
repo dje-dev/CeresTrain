@@ -404,10 +404,23 @@ def Train():
                                   value2_out, q_deviation_lower_out, q_deviation_upper_out, 
                                   None, None, 
                                   None, None,
-                                  num_pos, this_lr, show_losses)
+                                  0, num_pos, this_lr, show_losses)
 
       else:
-        num_processing_now = batch[0]['squares'].shape[0] * 4
+        assert BOARDS_PER_BATCH == 4
+
+        # Weights for the action loss terms.
+        # The training data has 2 positions which are always optimal (or nearly optimal) moves
+        # for every 1 which more evenly distributed over possible moves (of all quality).
+        # To compensate for this non-representative training data distribution,
+        # we give less weight to the over-sampled best continuation moves.
+        LOSS_WEIGHT_ACTION_BEST_CONTINUATION = 0.25
+        LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION = 1.0
+        
+        # Note the logic below is hardcoded to use value, not value2.
+        ACTION_HEAD_USES_PRIMARY_VALUE = True
+        
+        num_processing_now = batch[0]['squares'].shape[0] * BOARDS_PER_BATCH
         
         #Board 1
         sub_batch = batch[0]
@@ -418,7 +431,7 @@ def Train():
                                    None, None, 
                                    None, None, 
 
-                                   num_pos, this_lr, show_losses)
+                                   0, num_pos, this_lr, show_losses)
         
         # Board 2
         sub_batch = batch[1]
@@ -437,7 +450,7 @@ def Train():
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
                                    value_out2, extracted_action1_out,  # action target/output from previous board
                                    
-                                   num_pos, this_lr, show_losses)
+                                   LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
         
         # Board 3
         sub_batch = batch[2]
@@ -456,7 +469,7 @@ def Train():
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
                                    value_out3, extracted_action2_out, # action target/output from previous board
 
-                                   num_pos, this_lr, show_losses)
+                                   LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
 
         # Board 4 (only used if action loss is enabled)
         if config.Opt_LossActionMultiplier > 0:
@@ -465,16 +478,16 @@ def Train():
 
 
           action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
-          extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action4_played_move_indices.squeeze(-1)]
-          extracted_action1_out = extracted_action1_out[:, wdl_reverse]
+          extracted_action1_other_out = action_out1[torch.arange(0, action_out1.size(0)), action4_played_move_indices.squeeze(-1)]
+          extracted_action1_other_out = extracted_action1_other_out[:, wdl_reverse]
           
           loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                      None, None, None, 
 
                                      None, None,
-                                     value_out4, extracted_action1_out, # action target/output from previous board
+                                     value_out4, extracted_action1_other_out, # action target/output from previous board
                                      
-                                     num_pos, this_lr, show_losses)
+                                     LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION, num_pos, this_lr, show_losses)
 
         if config.Opt_LossActionMultiplier > 0:
           loss = (loss1 + loss2 + loss3 + loss4) / 3 # although there are 4 loss terms, the last one is typically very small so we only divide by 3

@@ -143,17 +143,6 @@ class CeresNet(pl.LightningModule):
     self.fcPolicyRELU2 = self.Activation
     self.fcPolicyFinal3 = nn.Linear(FINAL_POLICY_FC2_SIZE, 1858)
 
-
-    if action_loss_weight > 0:
-      FINAL_ACTION_FC1_SIZE = 128 * HEAD_MULT
-      FINAL_ACTION_FC2_SIZE = 64 * HEAD_MULT
-
-      self.fcActionFinal1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY, FINAL_ACTION_FC1_SIZE)
-      self.fcActionRELU1 = self.Activation
-      self.fcActionFinal2 = nn.Linear(FINAL_ACTION_FC1_SIZE, FINAL_ACTION_FC2_SIZE)
-      self.fcActionRELU2 = self.Activation
-      self.fcActionFinal3 = nn.Linear(FINAL_ACTION_FC2_SIZE, 1858 * 3)
-
     if self.prior_state_dim > 0:
       self.HEAD_PREMAP_DIVISOR_STATE = 8
       HEAD_STATE_SIZE = self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_STATE
@@ -187,6 +176,17 @@ class CeresNet(pl.LightningModule):
     self.out_value2_layer2 = nn.Linear(FINAL_VALUE_FC1_SIZE, FINAL_VALUE_FC2_SIZE)
     self.relu_value2_2 = self.Activation 
     self.out_value2_layer3 = nn.Linear(FINAL_VALUE_FC2_SIZE,3)
+
+    if action_loss_weight > 0:
+      FINAL_ACTION_FC1_SIZE = 128 * HEAD_MULT
+      FINAL_ACTION_FC2_SIZE = 64 * HEAD_MULT
+
+      self.fcActionFinal1 = nn.Linear(self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY 
+                                    + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE, FINAL_ACTION_FC1_SIZE)
+      self.fcActionRELU1 = self.Activation
+      self.fcActionFinal2 = nn.Linear(FINAL_ACTION_FC1_SIZE, FINAL_ACTION_FC2_SIZE)
+      self.fcActionRELU2 = self.Activation
+      self.fcActionFinal3 = nn.Linear(FINAL_ACTION_FC2_SIZE, 1858 * 3)
 
     self.HEAD_PREMAP_DIVISOR_MLH = 16
     FINAL_MLH_FC1_SIZE = 32 * HEAD_MULT
@@ -405,16 +405,6 @@ class CeresNet(pl.LightningModule):
     ff2RELUPolicy = self.fcPolicyRELU2(ff2Policy)
     policy_out = self.fcPolicyFinal3(ff2RELUPolicy)
 
-    if self.action_loss_weight > 0:
-      ff1Action = self.fcActionFinal1(flattenedPolicy) # shares premap with policy
-      ff1RELUAction = self.fcActionRELU1(ff1Action)
-      ff2Action = self.fcActionFinal2(ff1RELUAction)
-      ff2RELUAction = self.fcActionRELU2(ff2Action)
-      action_out = self.fcActionFinal3(ff2RELUAction)
-      action_out = action_out.reshape(-1, 1858, 3)
-    else:
-      action_out = None
-
     GLOBAL_ONLY = self.heads_pure_global
 
      
@@ -432,6 +422,7 @@ class CeresNet(pl.LightningModule):
     else:      
       value_out = self.valueHeadPremap(flow)
       value_out = value_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE)
+      flattened_value = value_out
       if self.global_dim > 0:
         value_out = torch.concat([value_out, flow_global], 1);       
       value_out = self.out_value_layer1(value_out)
@@ -452,6 +443,19 @@ class CeresNet(pl.LightningModule):
     value2_out = self.out_value2_layer2(value2_out)
     value2_out = self.relu_value2_2(value2_out)
     value2_out = self.out_value2_layer3(value2_out)
+
+
+    if self.action_loss_weight > 0:
+      concat_policy_value = torch.concat([flattenedPolicy, flattened_value], 1)
+      ff1Action = self.fcActionFinal1(concat_policy_value)
+      ff1RELUAction = self.fcActionRELU1(ff1Action)
+      ff2Action = self.fcActionFinal2(ff1RELUAction)
+      ff2RELUAction = self.fcActionRELU2(ff2Action)
+      action_out = self.fcActionFinal3(ff2RELUAction)
+      action_out = action_out.reshape(-1, 1858, 3)
+    else:
+      action_out = None
+
 
     if GLOBAL_ONLY:
       moves_left_out = self.out_mlh_layer1(flow_global)
@@ -526,6 +530,7 @@ class CeresNet(pl.LightningModule):
                    value2_out, q_deviation_lower_out, q_deviation_upper_out, 
                    prior_value_out, prior_value2_out,
                    action_target, action_out,
+                   mult_action_loss,
                    num_pos, last_lr, log_stats):
     policy_target = batch['policies']
     wdl_target = batch['wdl_result']
@@ -555,7 +560,7 @@ class CeresNet(pl.LightningModule):
     value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY)
     value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY)
 
-    action_loss = 0 if self.action_loss_weight == 0 or action_target == None else loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY)
+    action_loss = 0 if self.action_loss_weight == 0 or action_target == None else mult_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY)
       
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
