@@ -28,8 +28,6 @@ using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
 using System.Collections.Generic;
-using static CeresTrain.NNEvaluators.NNEvaluatorTorchsharp;
-
 
 #endregion
 
@@ -234,19 +232,26 @@ namespace CeresTrain.NNEvaluators
         throw new Exception($"NNEvaluatorTorchsharp: requested batch size of {tpgRecords.Length} exceeds maximum supported of {MAX_BATCH_SIZE}");
       }
 
+      Func<int, MGMoveList> getMoveListAtIndex = (i) =>
+      {
+        moveList.Clear();
+        MGMoveGen.GenerateMoves(in mgPos[i], moveList);
+        return moveList;
+      };
+
+      // TODO: This is memory/compute inefficient
+      short[] legalMoveIndices = new short[tpgRecords.Length * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
       for (int i = 0; i < tpgRecords.Length; i++)
       {
         // Extract as bytes.
         tpgRecords[i].CopySquares(squareBytesAll, i * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
         mgPos[i] = tpgRecords[i].FinalPosition.ToMGPosition;
+
+        TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tpgRecords, default, legalMoveIndices, i);
       }
 
-      return RunEvalAndExtractResultBatch((i) =>
-      {
-        moveList.Clear();
-        MGMoveGen.GenerateMoves(in mgPos[i], moveList);
-        return moveList;
-      }, tpgRecords.Length, i => mgPos[i], squareBytesAll);
+      return RunEvalAndExtractResultBatch(getMoveListAtIndex, tpgRecords.Length, i => mgPos[i], squareBytesAll,
+      legalMovesIndices: legalMoveIndices);
 
     }
 
@@ -569,6 +574,12 @@ namespace CeresTrain.NNEvaluators
         extraStats1 = new FP16[MAX_BATCH_SIZE];
       }
 
+      if (squareBytesAll.Length > numPositions * SQUARE_BYTES_PER_POSITION)
+      {
+        // TODO: could we create tensor belwo from a span directly instead?
+        Array.Resize(ref squareBytesAll, numPositions * SQUARE_BYTES_PER_POSITION);
+      }
+
       if (false)
       {
         // Test code to show any differences in raw input compared to last call (only first position checked).
@@ -759,11 +770,12 @@ namespace CeresTrain.NNEvaluators
             wdlProbabilitiesCPU[i] = (Half)DoShrinkExtremes((float)wdlProbabilitiesCPU[i], 0.70f, 0.85f);
           } 
         }
-        
+
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
         ReadOnlySpan<float> predictionsPolicyMasked = null;
         Tensor gatheredLegalMoveProbs = default;
+
         if (legalMovesIndices != null)
         {
           // The indices of legal moves were provided, therefore
@@ -781,7 +793,6 @@ namespace CeresTrain.NNEvaluators
         else
         {
           throw new NotImplementedException();
-          //predictionsPolicy = MemoryMarshal.Cast<byte, Half>(predictionPolicy.to(ScalarType.Float16).cpu().bytes);
         }
 
         // Create a result batch to receive results.
@@ -841,10 +852,8 @@ namespace CeresTrain.NNEvaluators
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
-        //Console.WriteLine((w[0] - l[0]) + " " + (w2[0] - l2[0]) +
-        //  "  U=" + uncertaintyV[0] + "  [-" + predictionQDeviationLowerCPU[0] + " +" + predictionQDeviationUpperCPU[0] + "]");
 
-        FP16[] actionsSpan = (object)actions == null  ? null : MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+        FP16[] actionsSpan = (object)actions == null ? null : MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
 
         if ((object)boardState != null)
         {
@@ -855,7 +864,6 @@ namespace CeresTrain.NNEvaluators
                                                                           w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
-//        Console.WriteLine("aalx " + Options.UseAction);
         if (Options.UseAction)
         {
 //          resultBatch.RewriteWDLToBlendedValueAction();

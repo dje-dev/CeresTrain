@@ -47,6 +47,7 @@ using Ceres.Base.Math;
 using Ceres.Chess.LC0NetInference;
 using Chess.Ceres.NNEvaluators;
 using System.Runtime.InteropServices;
+using CeresTrain.Networks.Transformer;
 
 #endregion 
 
@@ -607,7 +608,7 @@ namespace CeresTrain.Examples
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
         const bool HAS_UNCERTAINTY = false; // someday conditionally enable this
         const bool ENABLE_PROFILING = false;
-        const bool HAS_ACTION = false; // someday conditionally enable this
+        const bool HAS_ACTION = true;
 
         string onnxFN = netFN + ".onnx"; 
         if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
