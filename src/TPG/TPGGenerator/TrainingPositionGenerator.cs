@@ -512,6 +512,10 @@ namespace CeresTrain.TPG.TPGGenerator
                 TrainingPositionWriterNonPolicyTargetInfo target3 = default;
                 target3.PolicyIndexInParent = (short)ConverterMGMoveEncodedMove.MGChessMoveToEncodedMove(move3).IndexNeuralNet;
 
+                // When evaluating this board, use the same blunder statistics as the first board saw (not zeros!).
+                target3.ForwardSumPositiveBlunders = item1.targetInfo.ForwardSumPositiveBlunders;
+                target3.ForwardSumNegativeBlunders = item1.targetInfo.ForwardSumNegativeBlunders;
+
                 EncodedTrainingPosition pos3 = TrainingPositionAfterMove(game.TrainingPosition(i), move3);
                 return (pos3, target3, -1, null);
               }
