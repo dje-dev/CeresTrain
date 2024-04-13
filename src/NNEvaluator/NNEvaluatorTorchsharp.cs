@@ -852,8 +852,12 @@ namespace CeresTrain.NNEvaluators
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
-
-        FP16[] actionsSpan = (object)actions == null ? null : MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+        FP16[] actionsSpan = null;
+        if ((object)actions != null)
+        {
+          actions = torch.nn.functional.softmax(actions, -1);
+          actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+        }
 
         if ((object)boardState != null)
         {
