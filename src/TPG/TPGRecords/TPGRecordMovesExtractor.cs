@@ -32,10 +32,21 @@ namespace CeresTrain.TPG
     /// </summary>
     public const int NUM_MOVE_SLOTS_PER_REQUEST = 80;
 
-    public static void ExtractLegalMoveIndicesForIndex(TPGRecord[] recs, Memory<MGMoveList> moves, short[] legalMoveIndices, int i)
+
+    /// <summary>
+    /// Extracts legal move indices for a single TPGRecord within specified array,
+    /// storing them in legalMoveIndices at an offset appropriate for that position
+    /// (assuming each position has NUM_MOVE_SLOTS_PER_REQUEST slots).
+    /// </summary>
+    /// <param name="recs"></param>
+    /// <param name="moves"></param>
+    /// <param name="legalMoveIndices"></param>
+    /// <param name="i"></param>
+    /// <exception cref="Exception"></exception>
+    public static void ExtractLegalMoveIndicesForIndex(ReadOnlySpan<TPGRecord> recs, MGMoveList moves, short[] legalMoveIndices, int i)
     {
       MGMoveList theseMoves;
-      if (moves.IsEmpty)
+      if (moves == null || moves.IsEmpty)
       {
         MGPosition mgPos = recs[i].FinalPosition.ToMGPosition;
         theseMoves = new MGMoveList();
@@ -43,7 +54,7 @@ namespace CeresTrain.TPG
       }
       else
       {
-        theseMoves = moves.Span[i];
+        theseMoves = moves;
       }
 
       int numMovesToProcess = theseMoves.NumMovesUsed;

@@ -281,7 +281,7 @@ namespace CeresTrain.TPG
         tpgRecord.CopyMoves(moveBytesAll, i * TPGRecord.MAX_MOVES * Marshal.SizeOf<TPGMoveRecord>());
 #endif
 
-        TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tempTPGRecords, moves, legalMoveIndicesInternal, i);
+        TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tempTPGRecords, moves.Span[i], legalMoveIndicesInternal, i);
       });
     }
 
