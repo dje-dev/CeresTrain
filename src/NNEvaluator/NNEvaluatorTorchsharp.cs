@@ -692,7 +692,7 @@ namespace CeresTrain.NNEvaluators
           _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, priorBoardState));
 
         // Save back in queue if we retrieved a prior state.
-        if (Options.UsePriorState)
+        if (Options.UsePriorState && thisFEN != null && numPositions == 1)
         {
           priorBoardStates.Enqueue((thisHash, thisFEN, boardState.clone().DetachFromDisposeScope())); 
         }

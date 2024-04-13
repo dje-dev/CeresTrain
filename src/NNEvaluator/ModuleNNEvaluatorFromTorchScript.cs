@@ -184,7 +184,7 @@ namespace CeresTrain.NNEvaluators
                 }
                 else
                 {
-                  int size = TransformerConfig.PriorStateDim == 0 ? 1 : TransformerConfig.PriorStateDim;
+                  int size = TransformerConfig.PriorStateDim == 0 ? 32 : TransformerConfig.PriorStateDim;
                   priorState = torch.zeros([input.squares.shape[0], 64, size], dtype: DataType, device: Device);
                 }
 
