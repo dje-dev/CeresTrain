@@ -414,7 +414,7 @@ def Train():
         # for every 1 which more evenly distributed over possible moves (of all quality).
         # To compensate for this non-representative training data distribution,
         # we give less weight to the over-sampled best continuation moves.
-        LOSS_WEIGHT_ACTION_BEST_CONTINUATION = 0.25
+        LOSS_WEIGHT_ACTION_BEST_CONTINUATION = 0.15
         LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION = 1.0
         
         # Note the logic below is hardcoded to use value, not value2.
