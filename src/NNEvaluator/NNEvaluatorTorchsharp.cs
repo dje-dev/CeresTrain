@@ -28,6 +28,7 @@ using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
 using System.Collections.Generic;
+using Spectre.Console.Rendering;
 
 #endregion
 
@@ -456,6 +457,8 @@ namespace CeresTrain.NNEvaluators
     //       (maybe because the arrays were created as oversized).
     [ThreadStatic] static CompressedPolicyVector[] policiesToReturn;
 
+    [ThreadStatic] static CompressedActionVector[] actionsToReturn;
+
     // TODO: Use a ThreadStatic buffer instead.
     [ThreadStatic] static FP16[] w;
     [ThreadStatic] static FP16[] l;
@@ -564,6 +567,7 @@ namespace CeresTrain.NNEvaluators
       if (w == null)
       {
         policiesToReturn = new CompressedPolicyVector[MAX_BATCH_SIZE];
+        actionsToReturn = new CompressedActionVector[MAX_BATCH_SIZE];
         w = new FP16[MAX_BATCH_SIZE];
         l = new FP16[MAX_BATCH_SIZE];
         w2 = new FP16[MAX_BATCH_SIZE];
@@ -806,13 +810,22 @@ namespace CeresTrain.NNEvaluators
 
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
+        FP16[] actionsSpan = null;
+        if ((object)actions != null)
+        {
+          const float TEMPERATURE = 1;// 0.8f;
+          actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
+          actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+        }
+
         bool getMGPosAtIndexWasProvided = getMGPosAtIndex != null;
         for (int i = 0; i < numPositions; i++)
         {
 
           if (legalMovesIndices != null)
           {
-            InitPolicyProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, policiesToReturn);
+            InitPolicyAndActionProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, 
+                                             policiesToReturn, actionsSpan, actionsToReturn, hasAction);
           }
           else
           {
@@ -852,19 +865,12 @@ namespace CeresTrain.NNEvaluators
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
-        FP16[] actionsSpan = null;
-        if ((object)actions != null)
-        {
-          actions = torch.nn.functional.softmax(actions, -1);
-          actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
-        }
-
         if ((object)boardState != null)
         {
           priorBoardState = boardState.clone().DetachFromDisposeScope();
         }
         PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary,
-                                                                          numPositions, policiesToReturn, actionsSpan,
+                                                                          numPositions, policiesToReturn, actionsToReturn,
                                                                           w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
@@ -1002,11 +1008,14 @@ namespace CeresTrain.NNEvaluators
 
     }
 
-    static void InitPolicyProbabilities(int i,
+    static void InitPolicyAndActionProbabilities(int i,
                                         Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
                                         short[] legalMoveIndices,
                                         ReadOnlySpan<float> spanPoliciesMaskedAndExponentiated,
-                                        CompressedPolicyVector[] policiesToReturn)
+                                        CompressedPolicyVector[] policiesToReturn,
+                                        Span<FP16> actionValues,
+                                        CompressedActionVector[] actionsToReturn,
+                                        bool hasActions)
     {
       // TODO: Use Span2D from performance tools NuGet package
       int baseIndex = i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST;
@@ -1023,6 +1032,15 @@ namespace CeresTrain.NNEvaluators
           break;
         }
 
+        if (!actionValues.IsEmpty)
+        {
+          int actionBaseIndex = i * 1858 + index * 3;
+          FP16 w = actionValues[actionBaseIndex];
+          FP16 l = actionValues[actionBaseIndex + 2];
+          Debug.Assert(w >= 0 && l >= 0); // expected already converted from logits to probabilities
+          actionsToReturn[i][m] = (w, l);
+        }
+
         //  float probAdjusted = MathF.Exp((float)spanPoliciesMasked[baseIndex + m] - maxProb);
         float thisProb = spanPoliciesMaskedAndExponentiated[baseIndex + m];  
         probs[m] = new PolicyVectorCompressedInitializerFromProbs.ProbEntry((short)index, thisProb);
@@ -1030,6 +1048,7 @@ namespace CeresTrain.NNEvaluators
       }
 
       PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i],
+                                                                          ref actionsToReturn[i], hasActions,
                                                                           numUsedSlots, CompressedPolicyVector.NUM_MOVE_SLOTS, probs);
     }
 
@@ -1041,7 +1060,9 @@ namespace CeresTrain.NNEvaluators
                                         Func<int, MGPosition> getMGPosAtIndex,
                                         Func<int, MGMoveList> getMoveListAtIndex,
                                         ReadOnlySpan<Half> spanPolicies1858,
-                                        CompressedPolicyVector[] policiesToReturn)
+                                        CompressedPolicyVector[] policiesToReturn,
+                                        CompressedActionVector[] actionsToReturn,
+                                        bool hasAction)
     {
       // Retrieve or generate legal moves in this position.
       MGMoveList movesThisPosition;
@@ -1092,7 +1113,10 @@ namespace CeresTrain.NNEvaluators
       }
 
       // Finally, initialize the policy vector for thi sposition from the probs array.
-      PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i], numMovesToProcess,
+      PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i], 
+                                                                          ref actionsToReturn[i],
+                                                                          hasAction,
+                                                                          numMovesToProcess,
                                                                           CompressedPolicyVector.NUM_MOVE_SLOTS, probs);
     }
 
