@@ -28,7 +28,8 @@ using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
 using System.Collections.Generic;
-using Spectre.Console.Rendering;
+using System.Linq;
+using SharpCompress;
 
 #endregion
 
@@ -718,8 +719,8 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
         Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature, 
-                                                          Options.ShrinkExtremes ? predictionUNC : default);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature); 
+                                                          //Options.ShrinkExtremes ? predictionUNC : default);
 
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
@@ -826,7 +827,12 @@ namespace CeresTrain.NNEvaluators
           {
             InitPolicyAndActionProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, 
                                              policiesToReturn, actionsSpan, actionsToReturn, hasAction);
-          }
+
+            if (hasAction && Options.ShrinkExtremes)
+            { 
+              SmoothActions(ref actionsToReturn[i], in policiesToReturn[i]);
+            }  
+        }
           else
           {
             throw new Exception("this code should be retested");
@@ -1005,8 +1011,65 @@ namespace CeresTrain.NNEvaluators
       }
  
       return (winPAdj, drawPAdj, lossPAdj); 
-
     }
+
+
+    internal static void Smooth(ref CompressedActionVector actions, 
+                                in CompressedPolicyVector policies, 
+                                float maxDistance, 
+                                float smoothedValueWeight)
+    {
+      // TODO: make this more efficient
+      float[] probs = policies.ProbabilitySummary().AsEnumerable().Select(x => x.Probability).ToArray();
+      int numMoves = probs.Length;
+
+      CompressedActionVector tempAValue = default;
+
+      for (int i = 0; i < numMoves; i++)
+      {
+        float sumW = 0;
+        float sumL = 0;
+        int count = 0;
+
+        // Find elements within the specified distance in PROBS
+        for (int j = 0; j < numMoves; j++)
+        {
+          if (Math.Abs(probs[i] - probs[j]) < maxDistance)
+          {
+            sumW += actions[j].W;
+            sumL += actions[j].L;
+            count++;
+          }
+        }
+
+        if (count > 1) // If there was some action value other than ourself
+        {
+          float averageW = sumW / count;
+          float averageL = sumL / count;
+
+          // Calculate the new value using the weighted average formula
+          tempAValue[i].W = (FP16)((1 - smoothedValueWeight) * actions[i].W + smoothedValueWeight * averageW);
+          tempAValue[i].L = (FP16)((1 - smoothedValueWeight) * actions[i].L + smoothedValueWeight * averageL);
+        }
+        else
+        {
+          tempAValue[i] = actions[i]; // no change
+        }
+      }
+
+      // Copy the temporary array back to AVALUE
+      for (int i = 0; i < numMoves; i++)
+      {
+        actions[i] = tempAValue[i];
+      }     
+    }
+
+    static void SmoothActions(ref CompressedActionVector actions, in CompressedPolicyVector policies)
+    {
+      Smooth(ref actions, in policies, 0.15f, 0.3f);
+      Smooth(ref actions, in policies, 0.02f, 0.5f);
+    }
+
 
     static void InitPolicyAndActionProbabilities(int i,
                                         Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
