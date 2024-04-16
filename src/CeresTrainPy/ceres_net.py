@@ -133,8 +133,8 @@ class CeresNet(pl.LightningModule):
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
     self.HEAD_PREMAP_DIVISOR_POLICY = 8
-    FINAL_POLICY_FC1_SIZE = 2 * 128 * HEAD_MULT
-    FINAL_POLICY_FC2_SIZE = 2 * 64 * HEAD_MULT
+    FINAL_POLICY_FC1_SIZE = 128 * HEAD_MULT
+    FINAL_POLICY_FC2_SIZE = 64 * HEAD_MULT
     self.policyHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY)
 
     self.fcPolicyFinal1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY, FINAL_POLICY_FC1_SIZE)
@@ -178,8 +178,8 @@ class CeresNet(pl.LightningModule):
     self.out_value2_layer3 = nn.Linear(FINAL_VALUE_FC2_SIZE,3)
 
     if action_loss_weight > 0:
-      FINAL_ACTION_FC1_SIZE = 2 * 128 * HEAD_MULT
-      FINAL_ACTION_FC2_SIZE = 2 * 64 * HEAD_MULT
+      FINAL_ACTION_FC1_SIZE = 128 * HEAD_MULT
+      FINAL_ACTION_FC2_SIZE = 64 * HEAD_MULT
 
       self.fcActionFinal1 = nn.Linear(self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_POLICY 
                                     + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_VALUE, FINAL_ACTION_FC1_SIZE)
