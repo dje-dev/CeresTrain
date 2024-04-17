@@ -139,9 +139,12 @@ class TPGDataset(Dataset):
 
               wdl_q = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
+
+              played_q_suboptimality = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
+              offset+= 1 * 4
            
               #ply_next_square_move = np.ascontiguousarray(this_batch[:, offset : offset + 64 * 1]).view(dtype=np.byte).reshape(-1, 64).astype(DTYPE)
-              offset+= 64
+              offset+= 60
 
               mlh = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               mlh = np.square(mlh / 0.1) # undo preprocessing
@@ -177,7 +180,7 @@ class TPGDataset(Dataset):
               assert(offset == BYTES_PER_POS)
 
               yield  ((policies_indices, policies_values, wdl_result, wdl_q, mlh, uncertainty, 
-                       wdl2_result, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent))
+                       wdl2_result, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent, played_q_suboptimality))
 
 
   def __getitem__(self, idx):
@@ -193,6 +196,7 @@ class TPGDataset(Dataset):
     q_deviation_upper = batch[8]
     squares = batch[9]
     policy_index_in_parent = batch[10]
+    played_q_suboptimality = batch[11]
     
     policies_indices = torch.tensor(policies_indices, dtype=torch.int64).reshape(self.batch_size, MAX_MOVES)
     policies_values  = torch.tensor(policies_values, dtype=torch.float16).reshape(self.batch_size, MAX_MOVES)
@@ -220,7 +224,8 @@ class TPGDataset(Dataset):
           'q_deviation_lower': filter_tensor(torch.tensor(q_deviation_lower), mod_value).to(torch.float32),
           'q_deviation_upper': filter_tensor(torch.tensor(q_deviation_upper), mod_value).to(torch.float32),
           'squares': filter_tensor(torch.tensor(squares), mod_value),
-          'policy_index_in_parent': filter_tensor(torch.tensor(policy_index_in_parent), mod_value)
+          'policy_index_in_parent': filter_tensor(torch.tensor(policy_index_in_parent), mod_value),
+          'played_q_suboptimality': filter_tensor(torch.tensor(played_q_suboptimality), mod_value)
       }  
       return filtered_dict
     
