@@ -30,6 +30,8 @@ namespace CeresTrain.TPG
   {
     /// <summary>
     /// If experimental feature to include the WDL from prior position in the TPGRecord is enabled.
+    /// 
+    /// TODO: REMOVE THIS
     /// </summary>
     internal const bool ENABLE_PRIOR_VALUE_POSITION = false;
 

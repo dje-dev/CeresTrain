@@ -123,19 +123,21 @@ namespace CeresTrain.TPG
     public fixed float WDLQ[3];
 
     /// <summary>
+    /// Estimated suboptimality of Q (in range 0 to 2) from the training data
+    /// of this position relative to the estimated Q of the position which
+    /// would have arisen if the best possible move had been played.
+    /// </summary>
+    public float PlayedMoveQSuboptimality;
+
+    /// <summary>
     /// Training input if white was to move.
     /// This is just informational, since the training positions are 
     /// always from the perspective of the side to move.
     /// </summary>
     public byte IsWhiteToMove;
-
     public byte Unused1;
     public byte Unused2;
     public byte Unused3;
-    public byte Unused4;
-    public byte Unused5;
-    public byte Unused6;
-    public byte Unused7;
     public fixed byte UnusedArray[56];
 
     /// <summary>

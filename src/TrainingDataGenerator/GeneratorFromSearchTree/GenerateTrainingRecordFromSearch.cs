@@ -27,6 +27,7 @@ using Ceres.APIExamples;
 using CeresTrain.TPG;
 using CeresTrain.TPG.TPGGenerator;
 using Ceres.Chess.Data.Nets;
+using System;
 
 #endregion
 
@@ -89,6 +90,10 @@ namespace CeresTrain.TrainingDataGenerator
           target.BestWDL = infoTraining.BestWDL;
           target.IntermediateWDL = default;
           target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);
+
+          throw new Exception("Possibly need to remediate and set the ForwardMinQDeviation properly just below.");
+          target.ForwardMinQDeviation = 0;
+
           target.DeltaQVersusV = infoTraining.Uncertainty;
           target.DeltaQForwardAbs = default;
           target.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;

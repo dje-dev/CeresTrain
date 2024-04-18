@@ -565,8 +565,13 @@ namespace CeresTrain.TPG
       tpgRecord.MLH = targetInfo.MLH;
       tpgRecord.DeltaQVersusV = targetInfo.DeltaQVersusV;
 
+      // Note that suboptimality will almost always be positive, but take absolute value to be sure.
+      // (to compensate for numerical rounding or the chosen best N move not being quite best Q).
+      tpgRecord.PlayedMoveQSuboptimality = MathF.Abs(MathF.Round(targetInfo.PlayedMoveQSuboptimality, 3));
+
       tpgRecord.QDeviationLower = (Half)targetInfo.ForwardMinQDeviation;
       tpgRecord.QDeviationUpper = (Half)targetInfo.ForwardMaxQDeviation;
+
 
       tpgRecord.PolicyIndexInParent = targetInfo.PolicyIndexInParent;
 
