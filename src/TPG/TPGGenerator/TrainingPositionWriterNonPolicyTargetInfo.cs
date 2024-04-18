@@ -53,12 +53,18 @@ namespace CeresTrain.TPG.TPGGenerator
     public (float w, float d, float l) BestWDL;
     public float MLH;
     public float DeltaQVersusV;
+    public float ForwardMinQDeviation;
     public (float, float, float) IntermediateWDL;
     public float DeltaQForwardAbs;
     public TargetSourceInfo Source;
 
-    public float ForwardMinQDeviation;
     public float ForwardMaxQDeviation;
+
+    /// <summary>
+    /// Esimated Q by which the move played to get this position was 
+    /// worse than the best move available at the parent.
+    /// </summary>
+    public float PlayedMoveQSuboptimality;
 
     // TODO: clean this up, possibly store somewhere else. Technically these are not targets but rather inputs.
     public float ForwardSumPositiveBlunders;

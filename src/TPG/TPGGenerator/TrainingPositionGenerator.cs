@@ -443,25 +443,28 @@ namespace CeresTrain.TPG.TPGGenerator
                 throw new NotImplementedException("Only 4 related positions per block supported.");
               }
 
-              if (i >= game.NumPositions - 2)
+              // We assume 3 consecutive position in first 3 boards (and 4th board taken from after first board)
+              // So need at least 3 remaining boards to do the full sequence.
+              if (i > game.NumPositions - (Options.NumRelatedPositionsPerBlock - 1))
               {
-                // If doing in pairs, can only accept this position if there is another position following.
                 continue;
               }
 
               // Check the next 2 moves and abort unless the are both:
               //   -- acceptable on a standalone bases, and
-              //   -- not too far off the optimal play line
+              //   -- (possibly, if this feature enabled) not too far off the optimal play line
               double PlayedMoveSuboptimalityAtIndex(int i) => game.PositionAtIndex(i).MiscInfo.InfoTraining.QSuboptimality;
-              const float MAX_PRIOR_MOVE_SUBOPTIMALITY = 0.02f;
+
+              const bool FILTER_OUT_SUBOPTIMAL_MOVES = false;
+              const float MOVE_SUBOPTIMALITY_THRESHOLD = FILTER_OUT_SUBOPTIMAL_MOVES ? 0.02f : 999;
               if (!PositionAtIndexShouldBeProcessed(i + 1, game, false, positionUsedCountsByHash, numWrittenThisFile)
-                && PlayedMoveSuboptimalityAtIndex(i) < MAX_PRIOR_MOVE_SUBOPTIMALITY)
+                && PlayedMoveSuboptimalityAtIndex(i) < MOVE_SUBOPTIMALITY_THRESHOLD)
               {
                 // Continue since we want to also use the single-next position but it is not acceptable.
                 continue;
               }
               if (!PositionAtIndexShouldBeProcessed(i + 2, game, false, positionUsedCountsByHash, numWrittenThisFile)
-                && PlayedMoveSuboptimalityAtIndex(i + 1) < MAX_PRIOR_MOVE_SUBOPTIMALITY)
+                && PlayedMoveSuboptimalityAtIndex(i + 1) < MOVE_SUBOPTIMALITY_THRESHOLD)
 
               {
                 // Continue since we want to also use the double-next position
@@ -631,6 +634,7 @@ namespace CeresTrain.TPG.TPGGenerator
       target.IntermediateWDL = gameAnalyzer.intermediateBestWDL[i];
       target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);
       target.DeltaQVersusV = infoTraining.Uncertainty;
+      target.PlayedMoveQSuboptimality = i == 0 ? 0 : gameAnalyzer.PositionRef(i - 1).MiscInfo.InfoTraining.QSuboptimality;
 
       // Emit prior position Win/Loss if requested in options
       // and this move was not a big blunder (which makes prior evaluation not informative).
