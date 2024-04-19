@@ -16,6 +16,8 @@ If not, see <http://www.gnu.org/licenses/>.
 import math
 from typing import Tuple, NamedTuple
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 from torch import nn
@@ -261,18 +263,10 @@ class CeresNet(pl.LightningModule):
       self.smolgenPrepLayer = None
 
     if config.NetDef_UseRPE:
-      RPE_INNER_DIM = 512
-      self.rpe_factor_q = nn.Linear(RPE_INNER_DIM, 64*64)
-      self.rpe_factor_q.weight.data.zero_()
-      self.rpe_factor_q.bias.data.zero_()
-      
-      self.rpe_factor_k = nn.Linear(RPE_INNER_DIM, 64*64)
-      self.rpe_factor_k.weight.data.zero_()
-      self.rpe_factor_k.bias.data.zero_()
-
-      self.rpe_factor_v = nn.Linear(RPE_INNER_DIM, 64*64)
-      self.rpe_factor_v.weight.data.zero_()
-      self.rpe_factor_v.bias.data.zero_()
+      RPE_INNER_DIM = 15
+      self.rpe_factor_q = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)     
+      self.rpe_factor_k = self.rpe_factor_q
+      self.rpe_factor_v = self.rpe_factor_q
 
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET
@@ -595,3 +589,20 @@ class CeresNet(pl.LightningModule):
         
     return total_loss
 
+
+"""
+Prepare static relative position (RPE) encoding map.
+This RPE idea and initialization code taken from work of Daniel Monroe, see:
+https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd003cb8d2f/tf/tfprocess.py
+""" 
+
+def make_rpe_map():
+  # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
+  out = np.zeros((225, 64*64), dtype=float)
+  for i in range(8):
+    for j in range(8):
+      for k in range(8):
+        for l in range(8):
+          out[15 * (i-k+7) + (j - l + 7), 64 * (i*8+j) + k*8+l] = 1
+  return out                  
+                    

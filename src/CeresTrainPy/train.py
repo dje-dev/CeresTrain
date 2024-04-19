@@ -271,6 +271,8 @@ def Train():
               no_decay.add(fpn)
           elif "rpe" in fpn:
               decay.add(fpn)
+          elif "rpe_factor" in fpn:
+              pass
           elif "alphas" in fpn: # for Denseformer
               decay.add(fpn)
           elif "qkv" in fpn:
@@ -291,8 +293,8 @@ def Train():
                                               % (str(param_dict.keys() - union_params), ) 
         
   optim_groups = [
-      {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": WEIGHT_DECAY},
-      {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+      {"params": [param_dict[pn] for pn in sorted(list(decay))  if "rpe_factor" not in pn], "weight_decay": WEIGHT_DECAY},
+      {"params": [param_dict[pn] for pn in sorted(list(no_decay)) if "rpe_factor" not in pn], "weight_decay": 0.0},
   ]
 
   # Loss and optimizer

@@ -100,20 +100,14 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      assert num_tokens_q == num_tokens_kv, "RPE requires equal number of tokens for Q and K"     
-      self.rpe_factor_q = LinearWrapper(rpe_factor_q)
-      self.rpe_factor_k = LinearWrapper(rpe_factor_k)
-      self.rpe_factor_v = LinearWrapper(rpe_factor_v)
+      self.rpe_factor_q = rpe_factor_q
+      self.rpe_factor_k = rpe_factor_k        
+      self.rpe_factor_v = rpe_factor_v
       
-      RPE_INNER_DIM = 512
-      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
-      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier, self.num_heads, RPE_INNER_DIM))
-      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k, self.num_heads, RPE_INNER_DIM))
-
-      with torch.no_grad():
-        torch.nn.init.zeros_(self.rpe_q)
-        torch.nn.init.zeros_(self.rpe_k)
-        torch.nn.init.zeros_(self.rpe_v)
+      RPE_INNER_DIM = 15
+      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -139,7 +133,7 @@ class DotProductAttention(torch.nn.Module):
 
 
 
-  def sdp_smolgen(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, smolgen:torch.Tensor): # -> torch.Tensor, torch.Tensor:
+  def sdp_and_smol_or_rpe(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, smolgen:torch.Tensor): # -> torch.Tensor, torch.Tensor:
     # Note that scaling could be done separately on Q and K to possibly improve stability. See:
     #   https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/118
     #scaleDivisor = 1 # math.pow(self.d_k, 0.25) # apply sqrt twice since we are dividing twice
@@ -148,8 +142,14 @@ class DotProductAttention(torch.nn.Module):
     scores = torch.matmul(Q, K.transpose(2, 3))
 
     if self.use_rpe:
-      scores = scores + self.rpe_factor_q.linear(einsum(Q, self.rpe_q, "b h q d, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
-      scores = scores + self.rpe_factor_k.linear(einsum(K, self.rpe_k, "b h k d, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+      rpe_q = self.rpe_q @ self.rpe_factor_q.data
+      rpe_q = rpe_q.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
+
+      rpe_k = self.rpe_k @ self.rpe_factor_k.data
+      rpe_k = rpe_k.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
+      
+      scores = scores + einsum(Q, rpe_q, "b h q d, d h q k->b h q k")
+      scores = scores + einsum(K, rpe_k, "b h k d, d h q k->b h q k")
       # consider using scaling below as (3 * self.d_k) due to extra terms
       
     scores = scores / math.sqrt(self.d_k)
@@ -160,19 +160,15 @@ class DotProductAttention(torch.nn.Module):
       scores = scores + smolgen_logits_repeated
      
     A = self.softmax(scores)
-#    print('A', A.shape) # 1024 16 64 64
-
-    if self.use_rpe:
-      A = A + self.rpe_factor_v.linear(einsum(A, self.rpe_v, "b h q k, d h z -> b h z")).reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
 
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    
-#    print('H', H.shape) # 1024 16 64 24
-
-#    if self.use_rpe:
-#      H = H + einsum(A, self.rpe_v, "b h q k, d h q k -> b h q d") 
+    if self.use_rpe:
+      rpe_v = self.rpe_v @ self.rpe_factor_v.data
+      rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
+      
+      H = H + einsum(A, rpe_v, "b h q k, d h q k->b h q d")
 
     return H, A
   
@@ -219,10 +215,10 @@ class DotProductAttention(torch.nn.Module):
       smolgen = smolgen.reshape(-1, self.num_heads, self.smolgen_intermediate_dim // self.smolgen_head_divisor)
       smolgen = self.smolgenPrepLayer(smolgen) # shared
       smolgen = smolgen.reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
-      H_cat, A = self.sdp_smolgen(Q, K, V, smolgen)
+      H_cat, A = self.sdp_and_smol_or_rpe(Q, K, V, smolgen)
     else:
       if self.use_rpe:
-        H_cat, A = self.sdp_smolgen(Q, K, V, None)
+        H_cat, A = self.sdp_and_smol_or_rpe(Q, K, V, None)
       else:
         H_cat = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
 
