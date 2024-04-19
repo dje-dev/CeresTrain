@@ -455,8 +455,12 @@ namespace CeresTrain.TPG.TPGGenerator
               //   -- (possibly, if this feature enabled) not too far off the optimal play line
               double PlayedMoveSuboptimalityAtIndex(int i) => game.PositionAtIndex(i).MiscInfo.InfoTraining.QSuboptimality;
 
-              const bool FILTER_OUT_SUBOPTIMAL_MOVES = false;
+              // Note: it was found necessary to filter out suboptimal moves (set this to true)
+              //       otherwise the net will not learn to borrow information from prior state 
+              //       presumably because it is too noisy.
+              const bool FILTER_OUT_SUBOPTIMAL_MOVES = true;
               const float MOVE_SUBOPTIMALITY_THRESHOLD = FILTER_OUT_SUBOPTIMAL_MOVES ? 0.02f : 999;
+
               if (!PositionAtIndexShouldBeProcessed(i + 1, game, false, positionUsedCountsByHash, numWrittenThisFile)
                 && PlayedMoveSuboptimalityAtIndex(i) < MOVE_SUBOPTIMALITY_THRESHOLD)
               {
