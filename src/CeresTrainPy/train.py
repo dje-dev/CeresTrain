@@ -207,32 +207,6 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     model.train()
 
 
-
-def set_state_value_info(S : torch.Tensor, V : torch.Tensor, A : torch.Tensor) -> torch.Tensor:
-#  S = S.clone()
-  V_softmax = torch.nn.functional.softmax(V, dim=-1)
-  
-  # Set the first three elements of every state vector to the prior board's evaluation
-  state_indices_for_V_in_parent = torch.tensor([0, 1, 2])
-  S[:, :, state_indices_for_V_in_parent] = V_softmax.unsqueeze(1).expand(-1, 64, -1)
-
-  if A is not None:
-    # Index for setting suboptimality information
-    INDEX_FOR_SUBOPTIMALITY = 4       
-
-    # Calculate the win-loss difference for V and A
-    A_softmax = torch.nn.functional.softmax(A, dim=-1)
-    a_wl = A_softmax[:, 0] - A_softmax[:, 2]
-    v_wl = V_softmax[:, 0] - V_softmax[:, 2]
-
-    # Calculate the absolute difference between v_wl and a_wl for suboptimality
-    a_suboptimality = torch.abs(v_wl - a_wl).unsqueeze(1)
-
-    # Set the estimated suboptimality in the 4th index of every state vector
-    S[:, :, INDEX_FOR_SUBOPTIMALITY] = a_suboptimality.expand(-1, 64)
-
-
-
 def Train():
   global num_pos
   global fraction_complete
@@ -461,64 +435,57 @@ def Train():
         
         # Board 2
         sub_batch = batch[1]
-        
+        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2, state_out2 = model(sub_batch['squares'], state_out1)
+
         if config.Opt_LossActionMultiplier > 0:
           action2_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action1_out = action_out1[torch.arange(0, action_out1.size(0)), action2_played_move_indices.squeeze(-1)]
-          extracted_action1_out_reversed = extracted_action1_out[:, wdl_reverse]
+          extracted_action1_out = extracted_action1_out[:, wdl_reverse]
         else:
           extracted_action1_out = None
-          extracted_action1_out_reversed = None
-
-        state_for_2 = set_state_value_info(state_out1, value_out1, extracted_action1_out)
-        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2, state_out2 = model(sub_batch['squares'], state_for_2)
-
+          
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
-                                   value_out2, extracted_action1_out_reversed,  # action target/output from previous board
+                                   value_out2, extracted_action1_out,  # action target/output from previous board
                                    
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
         
         # Board 3
         sub_batch = batch[2]
+        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3, _ = model(sub_batch['squares'], state_out2)
 
         if config.Opt_LossActionMultiplier > 0:
           action3_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action2_out = action_out2[torch.arange(0, action_out2.size(0)), action3_played_move_indices.squeeze(-1)]
-          extracted_action2_out_reversed = extracted_action2_out[:, wdl_reverse]
+          extracted_action2_out = extracted_action2_out[:, wdl_reverse]
         else:
           extracted_action2_out = None
-          extracted_action2_out_reversed = None
-
-        state_for_3 = set_state_value_info(state_out2, value_out2, extracted_action2_out)
-        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3, _ = model(sub_batch['squares'], state_for_3)
 
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
 
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
-                                   value_out3, extracted_action2_out_reversed, # action target/output from previous board
+                                   value_out3, extracted_action2_out, # action target/output from previous board
 
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
 
         # Board 4 (only used if action loss is enabled)
         if config.Opt_LossActionMultiplier > 0:
           sub_batch = batch[3]
-          
+          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], None)
+
+
           action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
           extracted_action1_other_out = action_out1[torch.arange(0, action_out1.size(0)), action4_played_move_indices.squeeze(-1)]
-          extracted_action1_other_out_reversed = extracted_action1_other_out[:, wdl_reverse] 
+          extracted_action1_other_out = extracted_action1_other_out[:, wdl_reverse]
           
-          state_for_4 = set_state_value_info(state_out1, value_out1, extracted_action1_other_out)
-          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], state_for_4)
-
           loss4 = model.compute_loss(loss_calc, sub_batch, None, None, None, None,
                                      None, None, None, 
 
                                      None, None,
-                                     value_out4, extracted_action1_other_out_reversed, # action target/output from previous board
+                                     value_out4, extracted_action1_other_out, # action target/output from previous board
                                      
                                      LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION, num_pos, this_lr, show_losses)
 
