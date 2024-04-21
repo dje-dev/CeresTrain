@@ -52,9 +52,6 @@ class DotProductAttention(torch.nn.Module):
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
                use_rpe : bool = False,
-               rpe_factor_q : torch.Tensor = None,
-               rpe_factor_k : torch.Tensor = None,
-               rpe_factor_v : torch.Tensor = None,
                test : bool = False) -> None:
     super().__init__()
 
@@ -107,10 +104,6 @@ class DotProductAttention(torch.nn.Module):
       self.rpe_factor_k = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
       self.rpe_factor_v = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
 
-#      self.rpe_factor_q = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
-#      self.rpe_factor_k = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
-#      self.rpe_factor_v = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
-      
       RPE_INNER_DIM = 16
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))

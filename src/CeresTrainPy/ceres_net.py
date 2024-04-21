@@ -16,8 +16,6 @@ If not, see <http://www.gnu.org/licenses/>.
 import math
 from typing import Tuple, NamedTuple
 
-import numpy as np
-
 import torch
 import torch.nn as nn
 from torch import nn
@@ -262,12 +260,6 @@ class CeresNet(pl.LightningModule):
     else:
       self.smolgenPrepLayer = None
 
-    if config.NetDef_UseRPE:
-      RPE_INNER_DIM = 16
-      self.rpe_factor_q = None #torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)     
-      self.rpe_factor_k = None #self.rpe_factor_q
-      self.rpe_factor_v = None # self.rpe_factor_q
-
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET
     self.transformer_layer = torch.nn.Sequential(
@@ -288,9 +280,6 @@ class CeresNet(pl.LightningModule):
                       smolgen_activation_type = config.NetDef_SmolgenActivationType,
                       alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
                       use_rpe=config.NetDef_UseRPE, 
-                      rpe_factor_q = self.rpe_factor_q if config.NetDef_UseRPE else None,
-                      rpe_factor_k = self.rpe_factor_k if config.NetDef_UseRPE else None,
-                      rpe_factor_v = self.rpe_factor_v if config.NetDef_UseRPE else None,
                       dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
@@ -588,22 +577,4 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("action_loss", action_loss, step=num_pos)
         
     return total_loss
-
-
-"""
-Prepare static relative position (RPE) encoding map.
-This RPE idea and initialization code taken from work of Daniel Monroe, see:
-https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd003cb8d2f/tf/tfprocess.py
-""" 
-
-def make_rpe_map():
-  # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
-  # (rounded from 15 up to 16 to be a power of 2)
-  out = np.zeros((16*16, 64*64), dtype=float)
-  for i in range(8):
-    for j in range(8):
-      for k in range(8):
-        for l in range(8):
-          out[15 * (i-k+7) + (j - l + 7), 64 * (i*8+j) + k*8+l] = 1
-  return out                  
                     
