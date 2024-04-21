@@ -37,9 +37,6 @@ class EncoderLayer(torch.nn.Module):
                 smoe_mode : str = 'None', smoe_num_experts : int = 0,
                 alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0,
                 use_rpe : bool = False, 
-                rpe_factor_q : torch.Tensor = None,
-                rpe_factor_k : torch.Tensor = None,
-                rpe_factor_v : torch.Tensor = None,
                 dual_attention_mode : str = 'None', test : bool = False):
     super().__init__()
 
@@ -62,7 +59,7 @@ class EncoderLayer(torch.nn.Module):
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv, global_stream_dim, num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, global_stream_attention_per_square,
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
-                                         use_rpe, rpe_factor_q, rpe_factor_k, rpe_factor_v, test)
+                                         use_rpe,  test)
     self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dual_attention_mode in ('DualAttentionAndFFN', 'DualAttentionOnly'):

@@ -100,9 +100,9 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      self.rpe_factor_q = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
-      self.rpe_factor_k = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
-      self.rpe_factor_v = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
+      self.rpe_factor_q = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
+      self.rpe_factor_k = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
+      self.rpe_factor_v = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
       RPE_INNER_DIM = 16
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -142,10 +142,10 @@ class DotProductAttention(torch.nn.Module):
     scores = torch.matmul(Q, K.transpose(2, 3))
 
     if self.use_rpe:
-      rpe_q = self.rpe_q @ self.rpe_factor_q.data
+      rpe_q = self.rpe_q @ self.rpe_factor_q
       rpe_q = rpe_q.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
 
-      rpe_k = self.rpe_k @ self.rpe_factor_k.data
+      rpe_k = self.rpe_k @ self.rpe_factor_k
       rpe_k = rpe_k.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       scores = scores + einsum(Q, rpe_q, "b h q d, d h q k->b h q k")
@@ -165,7 +165,7 @@ class DotProductAttention(torch.nn.Module):
     H = torch.matmul(A, V)
 
     if self.use_rpe:
-      rpe_v = self.rpe_v @ self.rpe_factor_v.data
+      rpe_v = self.rpe_v @ self.rpe_factor_v
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       H = H + einsum(A, rpe_v, "b h q k, d h q k->b h q d")
@@ -240,10 +240,12 @@ https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd
 def make_rpe_map():
   # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
   # (rounded from 15 up to 16 to be a power of 2)
-  out = np.zeros((16*16, 64*64), dtype=float)
+  out = torch.zeros((16*16, 64*64))
   for i in range(8):
     for j in range(8):
       for k in range(8):
         for l in range(8):
-          out[15 * (i-k+7) + (j - l + 7), 64 * (i*8+j) + k*8+l] = 1
-  return out                  
+          out[15 * (i - k + 7) + (j - l + 7), 64 * (i * 8 + j) + k * 8 + l] = 1
+  return out
+
+
