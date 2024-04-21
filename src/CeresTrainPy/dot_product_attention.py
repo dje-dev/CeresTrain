@@ -11,8 +11,11 @@ If not, see <http://www.gnu.org/licenses/>.
 
 # End of License Notice
 
-import torch
 import math
+import numpy as np
+
+import torch
+
 from einops import einsum, rearrange
 from rms_norm import RMSNorm
 
@@ -100,11 +103,15 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      self.rpe_factor_q = rpe_factor_q
-      self.rpe_factor_k = rpe_factor_k        
-      self.rpe_factor_v = rpe_factor_v
+      self.rpe_factor_q = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
+      self.rpe_factor_k = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
+      self.rpe_factor_v = torch.nn.Parameter(torch.Tensor(make_rpe_map().tolist()), requires_grad=False)
+
+#      self.rpe_factor_q = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
+#      self.rpe_factor_k = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
+#      self.rpe_factor_v = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)
       
-      RPE_INNER_DIM = 15
+      RPE_INNER_DIM = 16
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -229,3 +236,21 @@ class DotProductAttention(torch.nn.Module):
     H = self.W_h(H_cat)
 
     return H
+
+
+"""
+Prepare static relative position (RPE) encoding map.
+This RPE idea and initialization code taken from work of Daniel Monroe, see:
+https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd003cb8d2f/tf/tfprocess.py
+""" 
+
+def make_rpe_map():
+  # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
+  # (rounded from 15 up to 16 to be a power of 2)
+  out = np.zeros((16*16, 64*64), dtype=float)
+  for i in range(8):
+    for j in range(8):
+      for k in range(8):
+        for l in range(8):
+          out[15 * (i-k+7) + (j - l + 7), 64 * (i*8+j) + k*8+l] = 1
+  return out                  

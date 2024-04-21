@@ -263,10 +263,10 @@ class CeresNet(pl.LightningModule):
       self.smolgenPrepLayer = None
 
     if config.NetDef_UseRPE:
-      RPE_INNER_DIM = 15
-      self.rpe_factor_q = torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)     
-      self.rpe_factor_k = self.rpe_factor_q
-      self.rpe_factor_v = self.rpe_factor_q
+      RPE_INNER_DIM = 16
+      self.rpe_factor_q = None #torch.nn.Parameter(torch.from_numpy(make_rpe_map()).to(torch.bfloat16), requires_grad=False)     
+      self.rpe_factor_k = None #self.rpe_factor_q
+      self.rpe_factor_v = None # self.rpe_factor_q
 
     num_tokens_q = self.NUM_TOKENS_NET
     num_tokens_kv = self.NUM_TOKENS_NET
@@ -598,7 +598,8 @@ https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd
 
 def make_rpe_map():
   # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
-  out = np.zeros((225, 64*64), dtype=float)
+  # (rounded from 15 up to 16 to be a power of 2)
+  out = np.zeros((16*16, 64*64), dtype=float)
   for i in range(8):
     for j in range(8):
       for k in range(8):
