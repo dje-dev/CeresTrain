@@ -118,35 +118,37 @@ time_last_save_transient = datetime.datetime.now()
 def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any], net_step : str, save_onnx : str):
   CKPT_NAME = "ckpt_" + NAME + "_" + net_step
 
-  # save as TorchScript file
-  SAVE_TS_NAME = CKPT_NAME + ".ts"
-  SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', SAVE_TS_NAME)
-  print()
-  print ('INFO: TORCHSCRIPT_FILENAME', SAVE_TS_NAME)
-
-  # TODO: consider using lightning/fabric directly?  to_torchscript(file_path=None, method='script', example_inputs=None, **kwargs)
   with torch.no_grad():
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
 
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
+    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
+                     torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
 
 
     # below simpler method fails, probably due to use of .compile
-#    model.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
-#    print('done save TS', SAVE_TS_PATH )
-    #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
-                     
-    try:
-      if True:
-        m_save = torch.jit.trace(m, sample_inputs)
-      else:
-        # NOTE: fails for some common Pytorch operations such as einops
-        m_save = torch.jit.script(m)
-      m_save.save(SAVE_TS_PATH)
-    except Exception as e:
-      print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
+    if True:
+      try:
+        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME)
+        m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
+        print('done save TS', SAVE_TS_PATH )
+        #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
+      except Exception as e:
+        print(f"Warning: to_torchscript save failed, skipping. Exception details: {e}")
+
+    if True:     
+      try:
+        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + "_jit.ts")
+
+        if True:
+          m_save = torch.jit.trace(m, sample_inputs)
+        else:
+          # NOTE: fails for some common Pytorch operations such as einops
+          m_save = torch.jit.script(m)
+        m_save.save(SAVE_TS_PATH)
+      except Exception as e:
+        print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
     try:
       ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
@@ -173,17 +175,49 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
 #        if config.NetDef_PriorStateDim > 0:
 #          head_output_names.append('prior_state')
 #          output_axes['prior_state'] = {0: 'batch_size'}
-          
-        torch.onnx.export(m,
-                         [sample_inputs],
-                         ONNX_SAVE_PATH,
-                         do_constant_folding=True,
-                         export_params=True,
-                         opset_version=17,
-                         input_names = ['squares', 'prior_state'], # if config.NetDef_PriorStateDim > 0 else ['squares'],
-                         output_names = head_output_names, 
-                         dynamic_axes=output_axes)
-        print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
+#          , output_names=head_output_names)        
+
+        # TorchDynamo based export. Works, but when try to do inference from C# it fails on second call (reshape)
+        if False:
+          try:
+            export_options = torch.onnx.ExportOptions(dynamic_shapes=True)
+            onnx_model = torch.onnx.dynamo_export(m, sample_inputs[0], sample_inputs[1], export_options=export_options)
+            onnx_model.save(ONNX_SAVE_PATH)
+            print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
+          except Exception as e:
+            print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
+
+        # AOT export. Works (generates .so file)
+        if False:
+          try:
+            batch_dim = torch.export.Dim("batch", min=1, max=1024)
+            so_path = torch._export.aot_compile(model,
+                                                (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
+                                                 torch.rand(256, 64, 32).to(convert_type).to(m.device)),
+                                                #dynamic_shapes={"flow": {0: batch_dim}}, 
+#                                                dynamic_shapes=[{"flow": {0: batch_dim}}, {"appended_inputs": {0: batch_dim}}], 
+                                                options={"aot_inductor.output_path": os.path.join(os.getcwd(), "model.so")})    
+            print('INFO: AOT_BINARY', 'model.so')
+          except Exception as e:
+            print(f"Warning: torch._export.aot_compile save failed, skipping. Exception details: {e}")
+  
+        # Legacy ONNX export. Fails:
+        #   ONNX save failed, skipping. Exception details: CeresNet.forward() missing 1 required positional argument: 'prior_state'  
+        if False:
+          try:
+            torch.onnx.export(m,
+                             [sample_inputs],
+                             ONNX_SAVE_PATH,
+                             do_constant_folding=True,
+                             export_params=True,
+                             opset_version=17,
+                             input_names = ('squares', 'prior_state'), # if config.NetDef_PriorStateDim > 0 else ['squares'],
+                             output_names = head_output_names, 
+                             dynamic_axes=output_axes)
+            print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
+          except Exception as e:
+            print(f"Warning: torch.onnx.export save failed, skipping. Exception details: {e}")
+            
 
         if False:
           from onnxmltools.utils.float16_converter import convert_float_to_float16
@@ -200,7 +234,8 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # N.B. If running multi-GPU, this tends to hang for unknown reasons.
     #      Therefore if multi-GPU do not checkpoint (unless triggered with special file)
     if devices.count == 1 or os.path.isfile("FORCE_CHECKPOINT"): # or net_step == "final" 
-      fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state)
+      state_no_compile = {"model": m, "optimizer": state['optimizer'], "num_pos" : num_pos}
+      fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
       print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
 
 
