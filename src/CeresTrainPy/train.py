@@ -130,7 +130,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # below simpler method fails, probably due to use of .compile
     if True:
       try:
-        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME)
+        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
         m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
         print('done save TS', SAVE_TS_PATH )
         #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
