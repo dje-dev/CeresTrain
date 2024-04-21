@@ -44,16 +44,16 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("Positions").RightAligned());
       table.AddColumn(new TableColumn("Pos/sec").RightAligned());
       table.AddColumn(new TableColumn("Loss").RightAligned());
-      table.AddColumn(new TableColumn("PolicyLoss").RightAligned());
-      table.AddColumn(new TableColumn("ValueLoss").RightAligned());
-      table.AddColumn(new TableColumn("Value2Loss").RightAligned());
+      table.AddColumn(new TableColumn("PolLoss").RightAligned());
+      table.AddColumn(new TableColumn("ValLoss").RightAligned());
+      table.AddColumn(new TableColumn("Val2Loss").RightAligned());
       table.AddColumn(new TableColumn("MLHLoss").RightAligned());
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
-      table.AddColumn(new TableColumn("PolicyAcc").RightAligned());
-      table.AddColumn(new TableColumn("ValueAcc").RightAligned());
-      table.AddColumn(new TableColumn("ValueD").RightAligned());
-      table.AddColumn(new TableColumn("Value2D").RightAligned());
-      table.AddColumn(new TableColumn("ActionLoss").RightAligned());
+      table.AddColumn(new TableColumn("PolAcc").RightAligned());
+      table.AddColumn(new TableColumn("ValAcc").RightAligned());
+      table.AddColumn(new TableColumn("ValD").RightAligned());
+      table.AddColumn(new TableColumn("Val2D").RightAligned());
+      table.AddColumn(new TableColumn("ActLoss").RightAligned());
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
