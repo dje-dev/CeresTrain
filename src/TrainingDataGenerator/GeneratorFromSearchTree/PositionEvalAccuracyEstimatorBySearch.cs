@@ -34,6 +34,7 @@ using Ceres.MCTS.MTCSNodes;
 
 using CeresTrain.TPG;
 using Ceres.Features.GameEngines;
+using Ceres.Chess.MoveGen.Converters;
 
 #endregion
 
@@ -90,7 +91,7 @@ namespace CeresTrain.TrainingDataGenerator
     int numEvaluatedPositions = 0;
     float sumAbsoluteValueDiffsCeres = 0;
     float sumCrossEntropyErrorCeres = 0;
-
+    int sumTopMoveAgree = 0;
     float sumAbsoluteValueDiffsSF = 0;
 
 
@@ -103,6 +104,11 @@ namespace CeresTrain.TrainingDataGenerator
     /// Average cross-entropy error.
     /// </summary>
     public float PolicyAverageCrossEntropyErrorCeres => sumCrossEntropyErrorCeres / numEvaluatedPositions;
+
+    /// <summary>
+    /// Fraction of top moves that agree.
+    /// </summary>
+    public float FractionTopMovesAgree => sumTopMoveAgree / (float)numEvaluatedPositions;
 
     /// <summary>
     /// Average mean absolute error.
@@ -161,6 +167,7 @@ namespace CeresTrain.TrainingDataGenerator
       sumAbsoluteValueDiffsCeres = 0;
       sumCrossEntropyErrorCeres = 0;
       sumAbsoluteValueDiffsSF = 0;
+      sumTopMoveAgree = 0;
     }
 
 
@@ -186,7 +193,8 @@ namespace CeresTrain.TrainingDataGenerator
 
       float trainingQ = GetValueTarget(in infoTraining);
 
-      return DoSearchEvaluation(posWithHistory, searchLimit, searchLimitSF, trainingQ, targetProbabilitiesMirrored);
+      return DoSearchEvaluation(posWithHistory, searchLimit, searchLimitSF, trainingQ, 
+                                targetProbabilitiesMirrored, in infoTraining);
     }
 
 
@@ -281,7 +289,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// <exception cref="Exception"></exception>
     public bool DoSearchEvaluation(PositionWithHistory posWithHistory,
                                    SearchLimit searchLimit, SearchLimit searchLimitSF,
-                                   float trainingQ, float[] targetProbabilitiesMirrored)
+                                   float trainingQ, float[] targetProbabilitiesMirrored,
+                                   in EncodedPositionEvalMiscInfoV6 infoTraining)
     {
       //      if (posWithHistory.FinalPosition.CalcTerminalStatus() != GameResult.Unknown) { }
 
@@ -302,7 +311,15 @@ namespace CeresTrain.TrainingDataGenerator
 
         float[] policyHeadOutputs = evalResult.Policy.Mirrored.DecodedAndNormalized;
         float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, policyHeadOutputs);
+
+        // Subtract off entropy of target policy to focus on error part.
+        float targetEntropy = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, targetProbabilitiesMirrored);
+        thisPolicyErrorSearch -= targetEntropy;
+
         sumCrossEntropyErrorCeres += thisPolicyErrorSearch;
+
+        bool topMoveMatches = evalResult.Policy.TopMove(posWithHistory.FinalPosition) == ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(infoTraining.BestMove, posWithHistory.FinalPosition.ToMGPosition); 
+        sumTopMoveAgree += topMoveMatches ? 1 : 0;
 
         if (LastSFSearchResult != null)
         {
@@ -340,6 +357,11 @@ namespace CeresTrain.TrainingDataGenerator
       (float w, float d, float l, float m, float unc, CompressedPolicyVector policy) trainingTargets;
       trainingTargets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(LastSearchResult.Search.Manager.Context.Tree, LastSearchResult.Search.SearchRootNode);
       float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, trainingTargets.policy.Mirrored.DecodedAndNormalized);
+
+      // Subtract off entropy of target policy to focus on error part.
+      float targetEntropy= StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, targetProbabilitiesMirrored);
+      thisPolicyErrorSearch -= targetEntropy;
+
       if (float.IsNaN(thisPolicyErrorSearch))
       {
         throw new Exception("Search returned no policy " + posWithHistory.FinalPosition.FEN);
@@ -348,6 +370,9 @@ namespace CeresTrain.TrainingDataGenerator
       float qdiffCeres = trainingQ - LastSearchResult.ScoreQ;
       sumAbsoluteValueDiffsCeres += MathF.Abs(qdiffCeres);
       sumCrossEntropyErrorCeres += thisPolicyErrorSearch;
+
+      bool topMoveMatches = trainingTargets.policy.TopMove(posWithHistory.FinalPosition) == LastSearchResult.BestMove.BestMove;
+      sumTopMoveAgree += topMoveMatches ? 1 : 0;
 
       if (LastSFSearchResult != null)
       {
