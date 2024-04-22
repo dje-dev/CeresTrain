@@ -100,9 +100,7 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
-      self.rpe_factor_q = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
-      self.rpe_factor_k = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
-      self.rpe_factor_v = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
+      self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
       RPE_INNER_DIM = 16
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -141,11 +139,11 @@ class DotProductAttention(torch.nn.Module):
     #K = K / scaleDivisor
     scores = torch.matmul(Q, K.transpose(2, 3))
 
-    if self.use_rpe:
-      rpe_q = self.rpe_q @ self.rpe_factor_q
+    if False and self.use_rpe:
+      rpe_q = self.rpe_q @ self.rpe_factor
       rpe_q = rpe_q.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
 
-      rpe_k = self.rpe_k @ self.rpe_factor_k
+      rpe_k = self.rpe_k @ self.rpe_factor
       rpe_k = rpe_k.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       scores = scores + einsum(Q, rpe_q, "b h q d, d h q k->b h q k")
@@ -165,7 +163,7 @@ class DotProductAttention(torch.nn.Module):
     H = torch.matmul(A, V)
 
     if self.use_rpe:
-      rpe_v = self.rpe_v @ self.rpe_factor_v
+      rpe_v = self.rpe_v @ self.rpe_factor
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       H = H + einsum(A, rpe_v, "b h q k, d h q k->b h q d")

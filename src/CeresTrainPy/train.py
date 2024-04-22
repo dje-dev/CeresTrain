@@ -43,7 +43,8 @@ from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
 
 print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cuda.enable_flash_sdp(True)
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(True) # efficient seems faster than flash for short sequences
 
 # Settings to facilitate interactive debugging:
 # NOTE: need to also disable compile 
