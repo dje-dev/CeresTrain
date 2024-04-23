@@ -235,6 +235,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # N.B. If running multi-GPU, this tends to hang for unknown reasons.
     #      Therefore if multi-GPU do not checkpoint (unless triggered with special file)
     if devices.count == 1 or os.path.isfile("FORCE_CHECKPOINT"): # or net_step == "final" 
+      fabric.barrier() # try to prevent problems with hanging
       state_no_compile = {"model": m, "optimizer": state['optimizer'], "num_pos" : num_pos}
       fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
       print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
