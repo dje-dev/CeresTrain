@@ -778,7 +778,7 @@ namespace CeresTrain.Examples
       byte[] squareBytesAll;
       byte[] moveBytesAll;
       short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
-      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, default, EMIT_PLY_SINCE, 
+      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, batch.Moves, EMIT_PLY_SINCE, 
                                                           qNegativeBlunders, qPositiveBlunders,
                                                           out _, out squareBytesAll, out legalMoveIndices);
 

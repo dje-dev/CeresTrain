@@ -87,7 +87,7 @@ namespace CeresTrain.NNEvaluators
 
     bool hasAction => Options.UseAction;
 
-    public static FixedSizeQueue<(ulong, string, Tensor)> priorBoardStates;
+    public static FixedSizeQueue<(ulong hash, string fen, Tensor state, (float,float,float)wdl, float policy)> priorBoardStates;
 
 
     /// <summary
@@ -130,7 +130,8 @@ namespace CeresTrain.NNEvaluators
       OID = DateTime.Now.Ticks.GetHashCode();
       if (priorBoardStates == null)
       {
-        priorBoardStates = new FixedSizeQueue<(ulong, string, Tensor)>(300);
+        const int MAX_POS = 5000;
+        priorBoardStates = new FixedSizeQueue<(ulong hash, string fen, Tensor state, (float, float, float) wdl, float policy)>(MAX_POS);
       }
 
       ArgumentNullException.ThrowIfNull(options);
@@ -674,11 +675,26 @@ namespace CeresTrain.NNEvaluators
         {
           // TODO: Fixup to rely upon has. Currently not equal for unknown reasons. **********8
 //          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item1 == priorHash, priorFEN);
-          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item2.Split(" ")[0] == priorFEN.Split(" ")[0], priorFEN);
+          (ulong hash, string fen, Tensor state, (float, float, float) wdl, float policy) existing = priorBoardStates.ExistingItem(x => x.Item2.Split(" ")[0] == priorFEN.Split(" ")[0], priorFEN);
           if (existing.hash != 0)
           {
             priorBoardState = existing.state;
-//            Console.WriteLine("useit");
+#if NOT
+            void setValue(int index, float value)
+            {
+              Tensor indices_to_copy = torch.tensor(new long[] { index }, device: priorBoardState.device);
+              Tensor valueTensor = torch.tensor(new float[] { value }, device: priorBoardState.device);
+              priorBoardState.index_put_(valueTensor, (torch.TensorIndex[])[TensorIndex.Colon, TensorIndex.Colon, index]);
+            }
+            //float[] before = priorBoardState.cpu().cpu().to(ScalarType.Float32).FloatArray(); 
+            setValue(0, existing.wdl.Item1);
+            setValue(1, existing.wdl.Item2);
+            setValue(2, existing.wdl.Item3);
+            setValue(4, 0);
+            //float[] after = priorBoardState.cpu().cpu().to(ScalarType.Float32).FloatArray(); 
+//Tensor indices_to_zero = torch.tensor(new long[] { 0, 1, 2, 4 }, device: priorBoardState.device);
+//priorBoardState.index_fill_(2, indices_to_zero, 0);
+#endif
           }
           else
           {
@@ -699,7 +715,11 @@ namespace CeresTrain.NNEvaluators
         // Save back in queue if we retrieved a prior state.
         if (Options.UsePriorState && thisFEN != null && numPositions == 1)
         {
-          priorBoardStates.Enqueue((thisHash, thisFEN, boardState.clone().DetachFromDisposeScope())); 
+//          float[] wdlArray = predictionValue.softmax(-1).cpu().cpu().to(ScalarType.Float32).FloatArray();
+          float[] wdlArray = predictionValue.softmax(-1).cpu().to(ScalarType.Float32).FloatArray();
+          (float w, float d, float l) wdl  = (wdlArray[0], wdlArray[1], wdlArray[2]);
+          float policy = float.NaN; // TODO
+          priorBoardStates.Enqueue((thisHash, thisFEN, boardState.clone().DetachFromDisposeScope(), wdl, policy)); 
         }
 
         cpuTensor.Dispose();
@@ -812,7 +832,7 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
         FP16[] actionsSpan = null;
-        if ((object)actions != null)
+        if (Options.UseAction &&  (object)actions != null)
         {
           const float TEMPERATURE = 1;// 0.8f;
           actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
@@ -1066,8 +1086,8 @@ namespace CeresTrain.NNEvaluators
 
     static void SmoothActions(ref CompressedActionVector actions, in CompressedPolicyVector policies)
     {
-      Smooth(ref actions, in policies, 0.15f, 0.3f);
-      Smooth(ref actions, in policies, 0.02f, 0.5f);
+      Smooth(ref actions, in policies, 0.15f, 0.3f * 0.5f);
+      Smooth(ref actions, in policies, 0.02f, 0.5f * 0.5f);
     }
 
 
