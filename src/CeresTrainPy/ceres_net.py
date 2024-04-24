@@ -114,6 +114,9 @@ class CeresNet(pl.LightningModule):
     self.DEEPNORM = config.NetDef_DeepNorm
     self.denseformer = config.NetDef_DenseFormer
     self.prior_state_dim = config.NetDef_PriorStateDim
+    self.moves_left_loss_weight = moves_left_loss_weight
+    self.q_deviation_loss_weight = q_deviation_loss_weight
+
     
     if (config.NetDef_HeadsActivationType == 'ReLU'):
       self.Activation = torch.nn.ReLU()
@@ -192,14 +195,15 @@ class CeresNet(pl.LightningModule):
     FINAL_MLH_FC1_SIZE = 32 * HEAD_MULT
     FINAL_MLH_FC2_SIZE = 8 * HEAD_MULT
 
-    if GLOBAL_ONLY:
-      self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_MLH_FC1_SIZE)
-    else:  
-      self.mlhHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
-      self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,FINAL_MLH_FC1_SIZE)
-    self.relu_mlh = self.Activation
-    self.out_mlh_layer2 = nn.Linear(FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE)
-    self.out_mlh_layer3 = nn.Linear(FINAL_MLH_FC2_SIZE, 1)
+    if moves_left_loss_weight > 0:
+      if GLOBAL_ONLY:
+        self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_MLH_FC1_SIZE)
+      else:  
+        self.mlhHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
+        self.out_mlh_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH,FINAL_MLH_FC1_SIZE)
+      self.relu_mlh = self.Activation
+      self.out_mlh_layer2 = nn.Linear(FINAL_MLH_FC1_SIZE, FINAL_MLH_FC2_SIZE)
+      self.out_mlh_layer3 = nn.Linear(FINAL_MLH_FC2_SIZE, 1)
 
     self.HEAD_PREMAP_DIVISOR_UNC = 16
     FINAL_UNC_FC1_SIZE = 32 * HEAD_MULT
@@ -218,23 +222,24 @@ class CeresNet(pl.LightningModule):
     FINAL_QDEV_FC1_SIZE = 32 * HEAD_MULT
     FINAL_QDEV_FC2_SIZE = 8 * HEAD_MULT
 
-    if GLOBAL_ONLY:
-      self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)        
-    else:
-      self.qDevLowerHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-      self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
-    self.relu_qdev_lower = self.Activation
-    self.out_qdev_lower_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE,FINAL_QDEV_FC2_SIZE)
-    self.out_qdev_lower_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
+    if q_deviation_loss_weight > 0:      
+      if GLOBAL_ONLY:
+        self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)        
+      else:
+        self.qDevLowerHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+        self.out_qdev_lower_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
+      self.relu_qdev_lower = self.Activation
+      self.out_qdev_lower_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE,FINAL_QDEV_FC2_SIZE)
+      self.out_qdev_lower_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
 
-    if GLOBAL_ONLY:
-      self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)      
-    else: 
-      self.qDevUpperHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-      self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
-    self.relu_qdev_upper = self.Activation
-    self.out_qdev_upper_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE, FINAL_QDEV_FC2_SIZE)
-    self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
+      if GLOBAL_ONLY:
+        self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim, FINAL_QDEV_FC1_SIZE)      
+      else: 
+        self.qDevUpperHeadPremap = nn.Linear(self.EMBEDDING_DIM, self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+        self.out_qdev_upper_layer1 = nn.Linear(config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV, FINAL_QDEV_FC1_SIZE)
+      self.relu_qdev_upper = self.Activation
+      self.out_qdev_upper_layer2 = nn.Linear(FINAL_QDEV_FC1_SIZE, FINAL_QDEV_FC2_SIZE)
+      self.out_qdev_upper_layer3 = nn.Linear(FINAL_QDEV_FC2_SIZE, 1)
    
     if self.DEEPNORM:     
       self.alpha = math.pow(2 * self.NUM_LAYERS, 0.25)
@@ -441,20 +446,6 @@ class CeresNet(pl.LightningModule):
 
 
     if GLOBAL_ONLY:
-      moves_left_out = self.out_mlh_layer1(flow_global)
-    else:      
-      moves_left_out = self.mlhHeadPremap(flow)
-      moves_left_out = moves_left_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
-      if self.global_dim > 0:
-        moves_left_out = torch.concat([moves_left_out, flow_global], 1);       
-      moves_left_out = self.out_mlh_layer1(moves_left_out)
-    moves_left_out = self.relu_mlh(moves_left_out)
-    moves_left_out = self.out_mlh_layer2(moves_left_out)
-    moves_left_out = self.relu_mlh(moves_left_out)
-    moves_left_out = self.out_mlh_layer3(moves_left_out)
-    moves_left_out = torch.nn.functional.relu(moves_left_out) # truncate at zero, can't be negative
-
-    if GLOBAL_ONLY:
       unc_out = self.out_unc_layer1(flow_global)
     else:      
       unc_out = self.uncHeadPremap(flow)
@@ -468,34 +459,57 @@ class CeresNet(pl.LightningModule):
     unc_out = self.out_unc_layer3(unc_out)
     unc_out = torch.nn.functional.relu(unc_out) # truncate at zero, can't be negative
 
-    if GLOBAL_ONLY:
-      q_deviation_lower_out = self.out_qdev_lower_layer1(flow_global)
-    else:      
-      q_deviation_lower_out = self.qDevLowerHeadPremap(flow)
-      q_deviation_lower_out = q_deviation_lower_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-      if self.global_dim > 0:
-        q_deviation_lower_out = torch.concat([q_deviation_lower_out, flow_global], 1);       
-      q_deviation_lower_out = self.out_qdev_lower_layer1(q_deviation_lower_out)
-    q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
-    q_deviation_lower_out = self.out_qdev_lower_layer2(q_deviation_lower_out)
-    q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
-    q_deviation_lower_out = self.out_qdev_lower_layer3(q_deviation_lower_out)
-    q_deviation_lower_out = torch.nn.functional.relu(q_deviation_lower_out) # truncate at zero, can't be negative
-    
-    if GLOBAL_ONLY:
-      q_deviation_upper_out = self.out_qdev_upper_layer1(flow_global)
-    else:      
-      q_deviation_upper_out = self.qDevUpperHeadPremap(flow)
-      q_deviation_upper_out = q_deviation_upper_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
-      if self.global_dim > 0:
-        q_deviation_upper_out = torch.concat([q_deviation_upper_out, flow_global], 1);       
-      q_deviation_upper_out = self.out_qdev_upper_layer1(q_deviation_upper_out)
-    q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
-    q_deviation_upper_out = self.out_qdev_upper_layer2(q_deviation_upper_out)
-    q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
-    q_deviation_upper_out = self.out_qdev_upper_layer3(q_deviation_upper_out)
-    q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
 
+    if self.moves_left_loss_weight > 0:
+      if GLOBAL_ONLY:
+        moves_left_out = self.out_mlh_layer1(flow_global)
+      else:      
+        moves_left_out = self.mlhHeadPremap(flow)
+        moves_left_out = moves_left_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_MLH)
+        if self.global_dim > 0:
+          moves_left_out = torch.concat([moves_left_out, flow_global], 1);       
+        moves_left_out = self.out_mlh_layer1(moves_left_out)
+      moves_left_out = self.relu_mlh(moves_left_out)
+      moves_left_out = self.out_mlh_layer2(moves_left_out)
+      moves_left_out = self.relu_mlh(moves_left_out)
+      moves_left_out = self.out_mlh_layer3(moves_left_out)
+      moves_left_out = torch.nn.functional.relu(moves_left_out) # truncate at zero, can't be negative
+    else:
+      moves_left_out = unc_out # unc_out used as fill-in, consider using None instead
+
+    if self.q_deviation_loss_weight > 0:
+      if GLOBAL_ONLY:
+        q_deviation_lower_out = self.out_qdev_lower_layer1(flow_global)
+      else:      
+        q_deviation_lower_out = self.qDevLowerHeadPremap(flow)
+        q_deviation_lower_out = q_deviation_lower_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+        if self.global_dim > 0:
+          q_deviation_lower_out = torch.concat([q_deviation_lower_out, flow_global], 1);       
+        q_deviation_lower_out = self.out_qdev_lower_layer1(q_deviation_lower_out)
+      q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
+      q_deviation_lower_out = self.out_qdev_lower_layer2(q_deviation_lower_out)
+      q_deviation_lower_out = self.relu_qdev_lower(q_deviation_lower_out)
+      q_deviation_lower_out = self.out_qdev_lower_layer3(q_deviation_lower_out)
+      q_deviation_lower_out = torch.nn.functional.relu(q_deviation_lower_out) # truncate at zero, can't be negative
+    else:
+      q_deviation_lower_out = unc_out # unc_out used as fill-in, consider using None instead
+    
+    if self.q_deviation_loss_weight > 0:
+      if GLOBAL_ONLY:
+        q_deviation_upper_out = self.out_qdev_upper_layer1(flow_global)
+      else:      
+        q_deviation_upper_out = self.qDevUpperHeadPremap(flow)
+        q_deviation_upper_out = q_deviation_upper_out.reshape(-1, self.NUM_TOKENS_NET * self.EMBEDDING_DIM // self.HEAD_PREMAP_DIVISOR_QDEV)
+        if self.global_dim > 0:
+          q_deviation_upper_out = torch.concat([q_deviation_upper_out, flow_global], 1);       
+        q_deviation_upper_out = self.out_qdev_upper_layer1(q_deviation_upper_out)
+      q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
+      q_deviation_upper_out = self.out_qdev_upper_layer2(q_deviation_upper_out)
+      q_deviation_upper_out = self.relu_qdev_upper(q_deviation_upper_out)
+      q_deviation_upper_out = self.out_qdev_upper_layer3(q_deviation_upper_out)
+      q_deviation_upper_out = torch.nn.functional.relu(q_deviation_upper_out) # truncate at zero, can't be negative
+    else:
+      q_deviation_upper_out = unc_out # unc_out used as fill-in, consider using None instead
 
     ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out
 
