@@ -68,8 +68,6 @@
     <ProjectReference Include="..\..\Ceres\src\Ceres\Ceres.csproj" />    
     <ProjectReference Include="..\..\Ceres\src\Ceres.Base\Ceres.Base.csproj" />
     <ProjectReference Include="..\..\Ceres\src\Ceres.Chess\Ceres.Chess.csproj" />
-    <ProjectReference Include="..\..\Ceres\src\Ceres.Features\Ceres.Features.csproj" />
-    <ProjectReference Include="..\..\Ceres\src\Ceres.MCTS\Ceres.MCTS.csproj" />
   </ItemGroup>
   
   <ItemGroup>
