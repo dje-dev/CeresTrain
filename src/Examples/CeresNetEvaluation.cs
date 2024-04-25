@@ -48,6 +48,8 @@ using Ceres.Chess.LC0NetInference;
 using Chess.Ceres.NNEvaluators;
 using System.Runtime.InteropServices;
 using CeresTrain.Networks.Transformer;
+using CeresTrain.TrainCommands;
+using CeresTrain.UserSettings;
 
 #endregion 
 
@@ -544,6 +546,108 @@ namespace CeresTrain.Examples
                                           new ParamsSelect(), null, "CeresEG.log.txt");
       return new EnginePlayerDef(engineDef, limit);
     }
+
+
+    /// <summary>
+    /// Installs Ceres network as a custom evaluator (CUSTOM1 or CUSTOM2).
+    /// </summary>
+    /// <param name="evaluatorIndex"></param>
+    /// <param name="configID"></param>
+    public static void InstallCustomEvaluatorEx(int evaluatorIndex, string configID,
+                                               NNEvaluatorInferenceEngineType engineType,
+                                               string deviceType,
+                                               int deviceID,
+                                               bool useHistory,
+                                               string net1ReplacementNumStepsNetToUse = null,
+                                               string net2ReplacementNumStepsNetToUse = null,
+                                               bool monitorStats = false,
+                                               NNEvaluatorTorchsharpOptions options = default,
+                                               string netFNOverride = null,
+                                               string netFNOverride2 = null)
+    {
+      // Automatically strip off extension ".onnx" if found since this is appended back on later.
+      if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
+        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
+      {
+        if (netFNOverride.ToLower().EndsWith(".onnx"))
+        {
+          netFNOverride = netFNOverride.Substring(0, netFNOverride.IndexOf(".onnx"));
+        }
+        if (netFNOverride2 != null && netFNOverride2.ToLower().EndsWith(".onnx"))
+        {
+          netFNOverride2 = netFNOverride2.Substring(0, netFNOverride2.IndexOf(".onnx"));
+        }
+
+      }
+
+      string configsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs");
+      string fullConfigPath = Path.Combine(configsDir, configID);
+      TrainingResultSummary? resultsFile;
+      ConfigTraining config = default;
+      if (!CeresTrainCommandUtils.CheckConfigFound(configID, configsDir))
+      {
+        throw new Exception($"Config not found: {configID} at {fullConfigPath}");
+      }
+
+      resultsFile = CeresTrainCommandUtils.ReadResultsForConfig(configID);
+      if (resultsFile == null && netFNOverride == null)
+      {
+        throw new Exception("Unable to load results for " + configID);
+      }
+
+      string netFileNameBase;
+      if (netFNOverride != null)
+      {
+        netFileNameBase = netFNOverride;
+      }
+      else
+      {
+        // Determine network full path, remapping saved path to directory under main output directory.
+        netFileNameBase = resultsFile.Value.NetFileName;
+        netFileNameBase = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "nets", Path.GetFileName(netFileNameBase.Replace("\\", "/")));
+      }
+
+      string netFileName1 = netFileNameBase;
+      string netFileName2 = null; // Default is not to use a second net.
+
+      // Potentially use a different saved net (at a specified number of steps).
+      if (net1ReplacementNumStepsNetToUse != null)
+      {
+        netFileName1 = netFileName1.Replace("_final", $"_{net1ReplacementNumStepsNetToUse}");
+      }
+
+      // Potentially use a different saved net (at a specified number of steps).
+      if (net2ReplacementNumStepsNetToUse != null)
+      {
+        netFileName2 = netFileNameBase.Replace("_final", $"_{net2ReplacementNumStepsNetToUse}");
+      }
+
+      if (netFNOverride2 != null)
+      {
+        netFileName2 = netFNOverride2;
+      }
+
+      config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, "KPkp", null); // TODO: don't require pieces
+      if (config.ExecConfig.SaveNetwork2FileName != null)
+      {
+        throw new NotImplementedException("SaveNetwork2FileName support not completed (how to reconcile netFileName above and this value?)");
+      }
+
+      InstallCustomEvaluator(evaluatorIndex,
+                             engineType,
+                             deviceType, deviceID,
+                             config.NetDefConfig,
+                             config.ExecConfig with
+                             {
+                               MonitorActivationStats = monitorStats,
+                               SaveNetwork1FileName = netFileName1,
+                               SaveNetwork2FileName = netFileName2,
+                             },
+                             netFileName1, null, null, null, useHistory, options);
+    }
+
 
 
     /// <summary>
