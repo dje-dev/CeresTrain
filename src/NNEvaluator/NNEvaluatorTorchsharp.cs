@@ -2,10 +2,15 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
+
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+using SharpCompress;
 
 using Ceres.Base.DataTypes;
 using Ceres.Base.Benchmarking;
-using System.Runtime.InteropServices;
 
 using TorchSharp;
 using static TorchSharp.torch;
@@ -20,16 +25,12 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.NNEvaluators.LC0DLL;
-using Ceres.MCTS.MTCSNodes.Annotation;
 
 using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
-using System.Collections.Generic;
-using System.Linq;
-using SharpCompress;
 
 #endregion
 
@@ -146,11 +147,6 @@ namespace CeresTrain.NNEvaluators
         throw new Exception("NNEvaluatorTorchsharp currently only supports BFloat16 data type because it is "
                            + "assumed Ceres nets are trained in this data type and running inference in other  data types "
                            + "types typically results in slight performance degradation (even if other type is higher precision).");
-      }
-
-      if (lastMovePliesEnabled && !LastMovePliesTracker.PlyTrackingFeatureEnabled)
-      {
-        throw new NotImplementedException("Need to rebuild Ceres with LAST_MOVE_PLY_TRACKING defined in LastMovePliesTracker.");
       }
 
       CeresTrainInitialization.PrepareToUseDevice(device);
