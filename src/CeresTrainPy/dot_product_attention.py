@@ -30,7 +30,7 @@ class LinearWrapper:
     return self._layer
 
 
-RPE_ONLY_V = True # if RPE is used, only apply to V (not Q and K). Faster, possibly same quality.
+RPE_USE_V = False
 
 class DotProductAttention(torch.nn.Module):
   """
@@ -105,10 +105,10 @@ class DotProductAttention(torch.nn.Module):
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
       RPE_INNER_DIM = 16
-      if not RPE_ONLY_V:
-        self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
-        self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
-      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      if RPE_USE_V:
+        self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -142,7 +142,7 @@ class DotProductAttention(torch.nn.Module):
     #K = K / scaleDivisor
     scores = torch.matmul(Q, K.transpose(2, 3))
 
-    if self.use_rpe and not RPE_ONLY_V:
+    if self.use_rpe:
       rpe_q = self.rpe_q @ self.rpe_factor
       rpe_q = rpe_q.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
 
@@ -165,7 +165,7 @@ class DotProductAttention(torch.nn.Module):
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    if self.use_rpe:
+    if self.use_rpe and RPE_USE_V:
       rpe_v = self.rpe_v @ self.rpe_factor
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
