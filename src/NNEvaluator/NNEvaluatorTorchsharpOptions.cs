@@ -9,17 +9,17 @@ namespace CeresTrain.NNEvaluators
   /// <summary>
   /// Set of options for NNEvaluatorTorchsharp.
   /// </summary>
-  public record struct NNEvaluatorTorchsharpOptions
+  public readonly record struct NNEvaluatorTorchsharpOptions
   {
     /// <summary>
     /// If the prior state information should be used.
     /// </summary>
-    public bool UsePriorState { get; init; } = false;
+    public readonly bool UsePriorState { get; init; } = false;
 
     /// <summary>
     /// If the action head should be used.
     /// </summary>
-    public bool UseAction { get; init; } = false;
+    public readonly bool UseAction { get; init; } = false;
 
     /// <summary>
     /// Assumed magnitude (Q units) of adverse blunders that will follow in the game.
@@ -41,15 +41,25 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly bool MonitorActivations { get; init; } = false;
 
-    /// <summary>
-    /// Temperature for the value head 1.
-    /// </summary>
-    public readonly float ValueHead1Temperature { get; init; } = 1;
 
     /// <summary>
     /// Temperature for the value head 2.
     /// </summary>
-    public readonly float ValueHead2Temperature { get; init; } = 1;
+    public readonly float ValueHead1Temperature
+    {
+      get => valueHead1Temperature;
+      init => valueHead1Temperature = value <= 0 ? throw new ArgumentException("Temperature must be strictly positive.") : value;
+    }
+
+    /// <summary>
+    /// Temperature for the value head 2.
+    /// </summary>
+    public readonly float ValueHead2Temperature
+    {
+      get => valueHead2Temperature;
+      init => valueHead2Temperature = value <= 0 ? throw new ArgumentException("Temperature must be strictly positive.") : value;
+    }
+
 
     /// <summary>
     /// The order of the power mean used to combine the value heads.
@@ -62,6 +72,9 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly bool ShrinkExtremes { get; init; } = false;
 
+
+    private readonly float valueHead2Temperature = 1;
+    private readonly float valueHead1Temperature = 1;
 
 
     /// <summary>
