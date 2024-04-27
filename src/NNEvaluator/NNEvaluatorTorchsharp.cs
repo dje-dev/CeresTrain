@@ -171,6 +171,8 @@ namespace CeresTrain.NNEvaluators
     public override bool HasUncertaintyV => true;
     public override bool HasAction => hasAction;
 
+    public override bool HasState => true;
+
     public bool hasValue2 = true; // TODO: cleanup
 
     public override bool HasValueSecondary => hasValue2;
@@ -555,6 +557,7 @@ namespace CeresTrain.NNEvaluators
       }
     }
 
+      
   public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
                                                                  int numPositions,
                                                                  Func<int, MGPosition> getMGPosAtIndex,
@@ -829,12 +832,12 @@ namespace CeresTrain.NNEvaluators
 
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
-        FP16[] actionsSpan = null;
+        Half[] actionsSpan = null;
         if (Options.UseAction &&  (object)actions != null)
         {
           const float TEMPERATURE = 1;// 0.8f;
           actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
-          actionsSpan = MemoryMarshal.Cast<byte, FP16>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
+          actionsSpan = MemoryMarshal.Cast<byte, Half>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
         }
 
         bool getMGPosAtIndexWasProvided = getMGPosAtIndex != null;
@@ -1062,8 +1065,8 @@ namespace CeresTrain.NNEvaluators
         {
           if (Math.Abs(probs[i] - probs[j]) < maxDistance)
           {
-            sumW += actions[j].W;
-            sumL += actions[j].L;
+            sumW += (float)actions[j].W;
+            sumL += (float)actions[j].L;
             count++;
           }
         }
@@ -1074,8 +1077,8 @@ namespace CeresTrain.NNEvaluators
           float averageL = sumL / count;
 
           // Calculate the new value using the weighted average formula
-          tempAValue[i].W = (FP16)((1 - smoothedValueWeight) * actions[i].W + smoothedValueWeight * averageW);
-          tempAValue[i].L = (FP16)((1 - smoothedValueWeight) * actions[i].L + smoothedValueWeight * averageL);
+          tempAValue[i].W = (Half)((1 - smoothedValueWeight) * (float)actions[i].W + smoothedValueWeight * averageW);
+          tempAValue[i].L = (Half)((1 - smoothedValueWeight) * (float)actions[i].L + smoothedValueWeight * averageL);
         }
         else
         {
@@ -1102,7 +1105,7 @@ namespace CeresTrain.NNEvaluators
                                         short[] legalMoveIndices,
                                         ReadOnlySpan<float> spanPoliciesMaskedAndExponentiated,
                                         CompressedPolicyVector[] policiesToReturn,
-                                        Span<FP16> actionValues,
+                                        Span<Half> actionValues,
                                         CompressedActionVector[] actionsToReturn,
                                         bool hasActions)
     {
@@ -1124,9 +1127,9 @@ namespace CeresTrain.NNEvaluators
         if (!actionValues.IsEmpty)
         {
           int actionBaseIndex = i * 1858 + index * 3;
-          FP16 w = actionValues[actionBaseIndex];
-          FP16 l = actionValues[actionBaseIndex + 2];
-          Debug.Assert(w >= 0 && l >= 0); // expected already converted from logits to probabilities
+          Half w = actionValues[actionBaseIndex];
+          Half l = actionValues[actionBaseIndex + 2];
+          Debug.Assert(w >= Half.Zero && l >= Half.Zero); // expected already converted from logits to probabilities
           actionsToReturn[i][m] = (w, l);
         }
 
