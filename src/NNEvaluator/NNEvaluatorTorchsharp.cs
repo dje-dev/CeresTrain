@@ -464,6 +464,7 @@ namespace CeresTrain.NNEvaluators
     [ThreadStatic] static FP16[] l2;
     [ThreadStatic] static FP16[] m;
     [ThreadStatic] static FP16[] uncertaintyV;
+    [ThreadStatic] static Half[] state;
 
 
     [ThreadStatic] static FP16[] extraStats0;
@@ -572,6 +573,7 @@ namespace CeresTrain.NNEvaluators
         l2 = new FP16[MAX_BATCH_SIZE];
         m = new FP16[MAX_BATCH_SIZE];
         uncertaintyV = new FP16[MAX_BATCH_SIZE];
+        state = new Half[MAX_BATCH_SIZE * 64 * 32]; // TODO: improve, hardcoded to largest expected state size (4k each position)
         extraStats0 = new FP16[MAX_BATCH_SIZE];
         extraStats1 = new FP16[MAX_BATCH_SIZE];
       }
@@ -887,13 +889,21 @@ namespace CeresTrain.NNEvaluators
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
+        Half[][] states = null;
         if ((object)boardState != null)
         {
+          states = new Half[numPositions][];
           priorBoardState = boardState.clone().DetachFromDisposeScope();
+          state = MemoryMarshal.Cast<byte, Half>(boardState.to(ScalarType.Float16).cpu().bytes).ToArray();
+          int stateSize = state.Length / numPositions;
+          for (int i=0;i<numPositions;i++)
+          {
+            states[i] = state.AsSpan(i * stateSize, stateSize).ToArray();
+          } 
         }
-        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary,
+        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary, HasState,
                                                                           numPositions, policiesToReturn, actionsToReturn,
-                                                                          w, l, w2, l2, m, uncertaintyV, null, new TimingStats(),
+                                                                          w, l, w2, l2, m, uncertaintyV, states, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
         if (Options.UseAction)
