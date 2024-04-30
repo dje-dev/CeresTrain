@@ -171,7 +171,7 @@ namespace CeresTrain.NNEvaluators
     public override bool HasUncertaintyV => true;
     public override bool HasAction => hasAction;
 
-    public override bool HasState => true;
+    public override bool HasState => Options.UsePriorState;
 
     public bool hasValue2 = true; // TODO: cleanup
 
@@ -251,7 +251,8 @@ namespace CeresTrain.NNEvaluators
         TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tpgRecords, default, legalMoveIndices, i);
       }
 
-      return RunEvalAndExtractResultBatch(getMoveListAtIndex, tpgRecords.Length, i => mgPos[i], squareBytesAll,
+      // TODO: The state get Func in next line is null, there is currently no way to pass in state to this method. Enhance someday.
+      return RunEvalAndExtractResultBatch(null, getMoveListAtIndex, tpgRecords.Length, i => mgPos[i], squareBytesAll,
       legalMovesIndices: legalMoveIndices);
 
     }
@@ -351,7 +352,9 @@ namespace CeresTrain.NNEvaluators
 
 #endif
 
-      IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.Moves.Span[i], positions.NumPos,
+      IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.States.Length == 0 ? default : positions.States.Span[i], 
+                                                                    i => positions.Moves.Span[i], 
+                                                                    positions.NumPos,
                                                                     i => mgPos[i], squareBytesAll, legalMoveIndices,
                                                                     priorHash, thisHash,
                                                                     priorFEN, thisFEN);
@@ -434,6 +437,11 @@ namespace CeresTrain.NNEvaluators
         i => throw new NotImplementedException();
 #endif
 
+      if (HasState)
+      {
+        throw new NotImplementedException("Need remediation for RunEvalAndExtractResultBatch below");
+
+      }
       // Extract the square records (as byte arrays) from each of the TPGRecords.
       TPGRecord[] recs = (TPGRecord[])positionsNativeInput;
       byte[] rawBytes = new byte[numPositions * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD];
@@ -441,7 +449,7 @@ namespace CeresTrain.NNEvaluators
       {
         recs[i].CopySquares(rawBytes, i * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
       }
-      IPositionEvaluationBatch ret = RunEvalAndExtractResultBatch(null, numPositions, null, rawBytes, null);
+      IPositionEvaluationBatch ret = RunEvalAndExtractResultBatch(null, null, numPositions, null, rawBytes, null);
 
       return ret;
     }
@@ -497,8 +505,6 @@ namespace CeresTrain.NNEvaluators
       return MemoryMarshal.Cast<byte, float>(exp_logits.to(ScalarType.Float32).cpu().bytes);
     }
 
-
-    Tensor priorBoardState = default;
 
     public class FixedSizeQueue<T>
     {
@@ -558,13 +564,14 @@ namespace CeresTrain.NNEvaluators
     }
 
       
-  public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, MGMoveList> getMoveListAtIndex,
-                                                                 int numPositions,
-                                                                 Func<int, MGPosition> getMGPosAtIndex,
-                                                                 byte[] squareBytesAll,
-                                                                 short[] legalMovesIndices = null,
-                                                                 ulong priorHash = 0, ulong thisHash = 0,
-                                                                 string priorFEN = null, string thisFEN = null)
+  public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, Half[]> getState,
+                                                               Func<int, MGMoveList> getMoveListAtIndex,
+                                                               int numPositions,
+                                                               Func<int, MGPosition> getMGPosAtIndex,
+                                                               byte[] squareBytesAll,
+                                                               short[] legalMovesIndices = null,
+                                                               ulong priorHash = 0, ulong thisHash = 0,
+                                                               string priorFEN = null, string thisFEN = null)
     {
       if (w == null)
       {
@@ -576,9 +583,13 @@ namespace CeresTrain.NNEvaluators
         l2 = new FP16[MAX_BATCH_SIZE];
         m = new FP16[MAX_BATCH_SIZE];
         uncertaintyV = new FP16[MAX_BATCH_SIZE];
-        state = new Half[MAX_BATCH_SIZE * 64 * 32]; // TODO: improve, hardcoded to largest expected state size (4k each position)
         extraStats0 = new FP16[MAX_BATCH_SIZE];
         extraStats1 = new FP16[MAX_BATCH_SIZE];
+        if (Options.UsePriorState && getState != null)
+        {
+          state = new Half[MAX_BATCH_SIZE * 64 * 32]; // TODO: improve, hardcoded to largest expected state size (4k each position)
+        }
+
       }
 
       if (squareBytesAll.Length > numPositions * SQUARE_BYTES_PER_POSITION)
@@ -626,20 +637,11 @@ namespace CeresTrain.NNEvaluators
       Tensor predictionQDeviationUpper;
 
       Tensor actions;
-      Tensor boardState;
+      Tensor boardStateInput;
+      Tensor boardStateOutput;
 
       using (no_grad())
       {
-        if (false && numPositions == 2)
-        {
-          Console.WriteLine("refixul ");
-          for (int i= 0; i < 64 * TPGRecord.BYTES_PER_SQUARE_RECORD; i++)
-          {
-            squareBytesAll[64 * TPGRecord.BYTES_PER_SQUARE_RECORD + i] = squareBytesAll[i];
-          }
-          squareBytesAll[64 * TPGRecord.BYTES_PER_SQUARE_RECORD + 1] = 33;
-        }
-
         // Create a Tensor of bytes still on CPU.
 
         //        long ja = 0;
@@ -671,60 +673,78 @@ namespace CeresTrain.NNEvaluators
           }
         }
 #endif
-        
-        if (Options.UsePriorState && thisHash != 0)
+
+        const bool ENABLE_LOCAL_STATE_CACHE = false;
+        if (ENABLE_LOCAL_STATE_CACHE && Options.UsePriorState && thisHash != 0)
         {
           // TODO: Fixup to rely upon has. Currently not equal for unknown reasons. **********8
 //          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item1 == priorHash, priorFEN);
           (ulong hash, string fen, Tensor state, (float, float, float) wdl, float policy) existing = priorBoardStates.ExistingItem(x => x.Item2.Split(" ")[0] == priorFEN.Split(" ")[0], priorFEN);
           if (existing.hash != 0)
           {
-            priorBoardState = existing.state;
-#if NOT
-            void setValue(int index, float value)
-            {
-              Tensor indices_to_copy = torch.tensor(new long[] { index }, device: priorBoardState.device);
-              Tensor valueTensor = torch.tensor(new float[] { value }, device: priorBoardState.device);
-              priorBoardState.index_put_(valueTensor, (torch.TensorIndex[])[TensorIndex.Colon, TensorIndex.Colon, index]);
-            }
-            //float[] before = priorBoardState.cpu().cpu().to(ScalarType.Float32).FloatArray(); 
-            setValue(0, existing.wdl.Item1);
-            setValue(1, existing.wdl.Item2);
-            setValue(2, existing.wdl.Item3);
-            setValue(4, 0);
-            //float[] after = priorBoardState.cpu().cpu().to(ScalarType.Float32).FloatArray(); 
-//Tensor indices_to_zero = torch.tensor(new long[] { 0, 1, 2, 4 }, device: priorBoardState.device);
-//priorBoardState.index_fill_(2, indices_to_zero, 0);
-#endif
+            boardStateInput = existing.state;
           }
           else
           {
-            priorBoardState = null; 
+            boardStateInput = null; 
           }
         }
         else
         {
-          priorBoardState = null;
+          boardStateInput = null;
+        }
+
+        if (Options.UsePriorState && getState != null && getState(0) != null)
+        {
+          // Allocate buffer to hold values across states for all positions.
+          int stateLength = getState(0).Length;
+          Half[] allStates;
+
+          if (numPositions == 1)
+          {
+            allStates = getState(0);
+          }
+          else
+          {
+            allStates = new Half[numPositions * stateLength];
+
+            // Copy each position's state into the buffer.
+            for (int i = 0; i < numPositions; i++)
+            {
+              Half[] thisState = getState(i);
+              Array.Copy(thisState, 0, allStates, i * stateLength, stateLength);
+            }
+          }
+
+          // Set boardState to a tensor created from allStates
+          boardStateInput = tensor(allStates, [numPositions, stateLength]).to(Device).to(DataType);
         }
 
         // Evaluate using neural net.
         (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
-          predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
-          actions, boardState,
-          _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, priorBoardState));
+        predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
+        actions, boardStateOutput,
+        _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, boardStateInput));
+
+        if (!Options.UsePriorState)
+        {
+          boardStateOutput.Dispose();
+          boardStateOutput = null;
+        } 
 
         // Save back in queue if we retrieved a prior state.
-        if (Options.UsePriorState && thisFEN != null && numPositions == 1)
+        if (ENABLE_LOCAL_STATE_CACHE && Options.UsePriorState && thisFEN != null && numPositions == 1)
         {
 //          float[] wdlArray = predictionValue.softmax(-1).cpu().cpu().to(ScalarType.Float32).FloatArray();
           float[] wdlArray = predictionValue.softmax(-1).cpu().to(ScalarType.Float32).FloatArray();
           (float w, float d, float l) wdl  = (wdlArray[0], wdlArray[1], wdlArray[2]);
           float policy = float.NaN; // TODO
-          priorBoardStates.Enqueue((thisHash, thisFEN, boardState.clone().DetachFromDisposeScope(), wdl, policy)); 
+          priorBoardStates.Enqueue((thisHash, thisFEN, boardStateOutput.clone().DetachFromDisposeScope(), wdl, policy)); 
         }
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
+        boardStateInput?.Dispose();
       }
 
 
@@ -893,11 +913,12 @@ namespace CeresTrain.NNEvaluators
         }
 
         Half[][] states = null;
-        if ((object)boardState != null)
+        if ((object)boardStateOutput != null)
         {
+          // Network returned state information, store in the states (for inclusion in batch result).
           states = new Half[numPositions][];
-          priorBoardState = boardState.clone().DetachFromDisposeScope();
-          state = MemoryMarshal.Cast<byte, Half>(boardState.to(ScalarType.Float16).cpu().bytes).ToArray();
+          var outputBoardState = boardStateOutput.clone().DetachFromDisposeScope();
+          state = MemoryMarshal.Cast<byte, Half>(outputBoardState.to(ScalarType.Float16).cpu().bytes).ToArray();
           int stateSize = state.Length / numPositions;
           for (int i=0;i<numPositions;i++)
           {

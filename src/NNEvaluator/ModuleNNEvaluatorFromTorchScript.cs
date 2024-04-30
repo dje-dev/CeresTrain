@@ -144,6 +144,8 @@ namespace CeresTrain.NNEvaluators
     }
 
 
+    
+
     /// <summary>
     /// Runs forward pass.
     /// </summary>
@@ -170,20 +172,20 @@ namespace CeresTrain.NNEvaluators
              Tensor actions, Tensor boardState) ret = default;
 
             bool hasAction;
-            bool hasBoardState;
+            bool networkExpectsBoardState = TransformerConfig.PriorStateDim > 0;
             if (module != null)
             {
               Tensor [] rawRet;
               if (hasPriorStateOutput)
               {
-                bool havePriorPassedIn = TransformerConfig.PriorStateDim > 0 && ((object)input.priorState) != null;
                 Tensor priorState;
-                if (havePriorPassedIn)
+                if (input.priorState is not null)
                 {
                   priorState = input.priorState;
                 }
                 else
                 {
+                  // TODO: this allocation on every call is expensive, someday allow passing of None to the neural network instead?
                   int size = TransformerConfig.PriorStateDim == 0 ? 32 : TransformerConfig.PriorStateDim;
                   priorState = torch.zeros([input.squares.shape[0], 64, size], dtype: DataType, device: Device);
                 }
@@ -195,14 +197,12 @@ namespace CeresTrain.NNEvaluators
               {
                 object rawRetObj = module.forward(input.squares);
                 rawRet = (Tensor[])rawRetObj;
-                hasBoardState = false;
               }
 
               ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
                      rawRet.Length > 7 ? rawRet[7] : default,
                      rawRet.Length > 8 ? rawRet[8] : default);
               hasAction = rawRet.Length > 7;
-              hasBoardState = rawRet.Length > 8;
             }
             else
             {
@@ -225,7 +225,7 @@ namespace CeresTrain.NNEvaluators
                     (object)ret.qDeviationLower == null ? null : ret.qDeviationLower.MoveToOuterDisposeScope(),
                     (object)ret.qDeviationUpper == null ? null : ret.qDeviationUpper.MoveToOuterDisposeScope(),
                     hasAction ? ret.actions.MoveToOuterDisposeScope() : null,
-                    hasBoardState ? ret.boardState.MoveToOuterDisposeScope() : null,
+                    networkExpectsBoardState ? ret.boardState.MoveToOuterDisposeScope() : null,
                     extraStats0, null);
           }
         }
