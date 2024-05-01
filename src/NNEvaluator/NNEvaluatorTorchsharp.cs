@@ -88,8 +88,6 @@ namespace CeresTrain.NNEvaluators
 
     bool hasAction => Options.UseAction;
 
-    public static FixedSizeQueue<(ulong hash, string fen, Tensor state, (float,float,float)wdl, float policy)> priorBoardStates;
-
 
     /// <summary
     /// Constructor.
@@ -129,11 +127,6 @@ namespace CeresTrain.NNEvaluators
                                  NNEvaluatorTorchsharpOptions options = default)
     {
       OID = DateTime.Now.Ticks.GetHashCode();
-      if (priorBoardStates == null)
-      {
-        const int MAX_POS = 5000;
-        priorBoardStates = new FixedSizeQueue<(ulong hash, string fen, Tensor state, (float, float, float) wdl, float policy)>(MAX_POS);
-      }
 
       ArgumentNullException.ThrowIfNull(options);
       ArgumentNullException.ThrowIfNull(pytorchForwardEvaluator);
@@ -506,63 +499,6 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    public class FixedSizeQueue<T>
-    {
-      const bool DUMP = false;
-
-      private readonly Queue<T> queue;
-      private readonly int maxSize;
-
-      private readonly object lockObj = new();
-
-      public FixedSizeQueue(int size)
-      {
-        maxSize = size;
-        queue = new Queue<T>(size);
-      }
-
-      public void Enqueue(T item)
-      {
-        lock (lockObj)
-        {
-          if (DUMP) Console.WriteLine("ENQUEUE " + item);
-          if (queue.Count == maxSize)
-          {
-            queue.Dequeue(); // Remove the oldest item if at capacity
-          }
-          queue.Enqueue(item);
-        }
-      }
-
-      public T Dequeue()
-      {
-        lock (lockObj)
-        {
-          return queue.Dequeue();
-        }
-      }
-
-
-      public T ExistingItem(Predicate<T> equalFunc, string itemDesc = null)
-      {
-        lock (lockObj)
-        {
-          if (DUMP) Console.WriteLine("PROBE " + itemDesc);
-          int index = 0;
-          foreach (T item in queue)
-          {
-            if (equalFunc(item))
-            {
-              if (DUMP) Console.WriteLine("FIND " + item);
-              return item;
-            }
-            index++;
-          }
-          return default;
-        }
-      }
-    }
-
       
   public IPositionEvaluationBatch RunEvalAndExtractResultBatch(Func<int, Half[]> getState,
                                                                Func<int, MGMoveList> getMoveListAtIndex,
@@ -637,18 +573,11 @@ namespace CeresTrain.NNEvaluators
       Tensor predictionQDeviationUpper;
 
       Tensor actions;
-      Tensor boardStateInput;
+      Tensor boardStateInput = default;
       Tensor boardStateOutput;
 
       using (no_grad())
       {
-        // Create a Tensor of bytes still on CPU.
-
-        //        long ja = 0;
-        //        for (int i=0;i<1*64* TPGRecord.BYTES_PER_SQUARE_RECORD;i++)
-        //          ja+= (squareBytesAll[i] * i) % 377;
-        //        Console.WriteLine(ja); System.Environment.Exit(3);
-
         // Move Tensor to the desired device and data type.
         Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
         Tensor inputSquares = cpuTensor.to(Device).to(DataType);
@@ -674,25 +603,6 @@ namespace CeresTrain.NNEvaluators
         }
 #endif
 
-        const bool ENABLE_LOCAL_STATE_CACHE = false;
-        if (ENABLE_LOCAL_STATE_CACHE && Options.UsePriorState && thisHash != 0)
-        {
-          // TODO: Fixup to rely upon has. Currently not equal for unknown reasons. **********8
-//          (ulong hash, string, Tensor state) existing = priorBoardStates.ExistingItem(x => x.Item1 == priorHash, priorFEN);
-          (ulong hash, string fen, Tensor state, (float, float, float) wdl, float policy) existing = priorBoardStates.ExistingItem(x => x.Item2.Split(" ")[0] == priorFEN.Split(" ")[0], priorFEN);
-          if (existing.hash != 0)
-          {
-            boardStateInput = existing.state;
-          }
-          else
-          {
-            boardStateInput = null; 
-          }
-        }
-        else
-        {
-          boardStateInput = null;
-        }
 
         if (Options.UsePriorState && getState != null && getState(0) != null)
         {
@@ -717,7 +627,14 @@ namespace CeresTrain.NNEvaluators
           }
 
           // Set boardState to a tensor created from allStates
-          boardStateInput = tensor(allStates, [numPositions, stateLength]).to(Device).to(DataType);
+          boardStateInput = tensor(allStates, [numPositions, stateLength], device: Device, dtype: DataType);
+        }
+        else
+        {
+          if (HasState)
+          { 
+            boardStateInput = torch.zeros([numPositions, 256], device:Device, dtype:DataType); // HARDCODEFIX
+          }
         }
 
         // Evaluate using neural net.
@@ -731,16 +648,6 @@ namespace CeresTrain.NNEvaluators
           boardStateOutput.Dispose();
           boardStateOutput = null;
         } 
-
-        // Save back in queue if we retrieved a prior state.
-        if (ENABLE_LOCAL_STATE_CACHE && Options.UsePriorState && thisFEN != null && numPositions == 1)
-        {
-//          float[] wdlArray = predictionValue.softmax(-1).cpu().cpu().to(ScalarType.Float32).FloatArray();
-          float[] wdlArray = predictionValue.softmax(-1).cpu().to(ScalarType.Float32).FloatArray();
-          (float w, float d, float l) wdl  = (wdlArray[0], wdlArray[1], wdlArray[2]);
-          float policy = float.NaN; // TODO
-          priorBoardStates.Enqueue((thisHash, thisFEN, boardStateOutput.clone().DetachFromDisposeScope(), wdl, policy)); 
-        }
 
         cpuTensor.Dispose();
         inputSquares.Dispose();
@@ -917,7 +824,7 @@ namespace CeresTrain.NNEvaluators
         {
           // Network returned state information, store in the states (for inclusion in batch result).
           states = new Half[numPositions][];
-          var outputBoardState = boardStateOutput.clone().DetachFromDisposeScope();
+          Tensor outputBoardState = boardStateOutput.clone().DetachFromDisposeScope();
           state = MemoryMarshal.Cast<byte, Half>(outputBoardState.to(ScalarType.Float16).cpu().bytes).ToArray();
           int stateSize = state.Length / numPositions;
           for (int i=0;i<numPositions;i++)
