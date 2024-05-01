@@ -643,6 +643,13 @@ namespace CeresTrain.NNEvaluators
         actions, boardStateOutput,
         _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, boardStateInput));
 
+#if NOT
+        if (Options.UsePriorState)
+{
+  var evalNoState = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, torch.zeros([numPositions, 256], device: Device, dtype: DataType)));
+  predictionPolicy = evalNoState.policy;
+}
+#endif
         if (!Options.UsePriorState)
         {
           boardStateOutput.Dispose();

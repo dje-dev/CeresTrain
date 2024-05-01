@@ -39,9 +39,6 @@ namespace CeresTrain.Networks.Transformer
   /// </summary>
   internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>, IModuleReceivesMonitoringStatusInfo
   {
-    public const int PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM = 16;//was 16
-    public const bool ATTENTION_USE_GLOBAL_STREAM = true;
-
     /// <summary>
     /// Epsilon used for normalization. 
     /// </summary>
@@ -61,11 +58,6 @@ namespace CeresTrain.Networks.Transformer
     /// Model embedding dimension.
     /// </summary>
     public readonly int DimModel;
-
-    /// <summary>
-    /// Dimension of the global stream (not per-token) if any (else 0).
-    /// </summary>
-    public readonly int DimGlobalStream;
 
     /// <summary>
     /// Number of attention heads.
@@ -202,7 +194,6 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="layerNum"></param>
     /// <param name="dim"></param>
     /// <param name="numHeads"></param>
-    /// <param name="dimGlobalStream"></param>
     /// <param name="preNorm"></param>
     /// <param name="attentionMultiplier"></param>
     /// <param name="ffnMult"></param>
@@ -217,7 +208,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="monitorMoEActivationStats"></param>
     /// <param name="smLinearShared"></param>
     /// <exception cref="ArgumentException"></exception>
-    public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, int dimGlobalStream, bool preNorm,
+    public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, bool preNorm,
                                       NetTransformerDef.NormalizationType normType,
                                       int attentionMultiplier, NetTransformerDef.DualAttentionModeType dualAttentionMode,
                                       int ffnMult, NetTransformerDef.ActivationType ffnActivation,
@@ -237,7 +228,7 @@ namespace CeresTrain.Networks.Transformer
       LayerNum = layerNum;
       DimModel = dim;
       NumHeads = numHeads;
-      DimGlobalStream = dimGlobalStream;
+
       Alpha = alpha;
       FFNMult = ffnMult;
       NormType = normType;
@@ -256,7 +247,7 @@ namespace CeresTrain.Networks.Transformer
       SmolgenActivation = smolgenActivation;
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
-      attentionQKV = Linear(dim + (ATTENTION_USE_GLOBAL_STREAM ? DimGlobalStream : 0), dim * attentionMultiplier * 3, hasBias: false);
+      attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: false);
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
 
       if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
@@ -297,11 +288,6 @@ namespace CeresTrain.Networks.Transformer
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
       {
         mlpLinear3 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
-      }
-
-      if (DimGlobalStream > 0)
-      {
-        toGlobalV = Linear(dim * ffnMult, PER_SQUARE_REDUCED_DIM_TO_GLOBAL_STREAM, hasBias: false);
       }
 
       norm1 = MakeNormalizationLayer(DimModel);
@@ -484,15 +470,7 @@ namespace CeresTrain.Networks.Transformer
       {
         int batch_size = (int)x.size(0);
 
-
-        // Repeat state 64 times
-        if (DimGlobalStream > 0 && ATTENTION_USE_GLOBAL_STREAM)
-        {
-          // Concatenate x and state
-          state = state.repeat(1, 64).reshape([-1, 64, DimGlobalStream]);
-        }
-
-        Tensor qkv_x = (DimGlobalStream == 0 || !ATTENTION_USE_GLOBAL_STREAM) ? x : torch.cat([x, state], 2);
+        Tensor qkv_x = x; // torch.cat([x, state], 2);
 
         Tensor attentionInput = PreNorm ? norm1.call(qkv_x) : qkv_x;
         Tensor attn_output = Attention(x, isEval, batch_size, attentionInput, AttentionMultiplier,
@@ -509,7 +487,6 @@ namespace CeresTrain.Networks.Transformer
         // MLP
         Tensor mlpOutput;
         Tensor mlpInput = PreNorm ? norm2.call(out1) : out1;
-        Tensor toGlobal = null;
 
         if (moe == null || SoftMoEParams.NumExperts == 0)
         {
@@ -520,10 +497,6 @@ namespace CeresTrain.Networks.Transformer
             beforeLinear2 *= mlpLinear3.call(afterLinear1);
           }
           mlpOutput = mlpLinear2.call(beforeLinear2);
-          if (DimGlobalStream > 0)
-          {
-            toGlobal = toGlobalV.call(beforeLinear2);
-          }
         }
         else
         {
@@ -598,7 +571,7 @@ namespace CeresTrain.Networks.Transformer
           out2 = out3;
         }
 
-        return (out2.MoveToOuterDisposeScope(), DimGlobalStream > 0 ? toGlobal.MoveToOuterDisposeScope() : null);
+        return (out2.MoveToOuterDisposeScope(), null);
       }
     }
 
@@ -775,11 +748,6 @@ namespace CeresTrain.Networks.Transformer
       if (moe != null)
       {
         moe.LoadWeights(weightsSource, weightsLoaded, LayerNum);
-      }
-
-      if (DimGlobalStream > 0)
-      {
-        LinearLoad(weightsSource, weightsLoaded, toGlobalV, $"transformer_layer.{LayerNum}.to_global_v.weight", null);
       }
 
       if (SmolgenPerSquareDim > 0)

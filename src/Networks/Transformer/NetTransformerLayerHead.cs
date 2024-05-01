@@ -42,11 +42,6 @@ namespace CeresTrain.Networks.Transformer
     public readonly int ModelDim;
 
     /// <summary>
-    /// Width of global stream (if any).
-    /// </summary>
-    public readonly int GlobalStreamDim;
-
-    /// <summary>
     /// Number of input square (sequence length).
     /// </summary>
     public readonly int NumSquares;
@@ -121,8 +116,6 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="name"></param>
     /// <param name="numSquares"></param>
     /// <param name="modelDim"></param>
-    /// <param name="dimGlobalStream"></param>
-    /// <param name="premapDimDivisor"></param>
     /// <param name="dim1"></param>
     /// <param name="dim2"></param>
     /// <param name="dim3"></param>
@@ -133,8 +126,6 @@ namespace CeresTrain.Networks.Transformer
     /// <exception cref="NotImplementedException"></exception>
     public NetTransformerLayerHead(string name, int numSquares,
                                    int modelDim,
-                                   int dimGlobalStream,
-                                   bool useGlobalStreamOnly,
                                    int premapDimDivisor,
                                    int dim1, int dim2, int dim3,
                                    NetTransformerDef.ActivationType activation,
@@ -145,15 +136,13 @@ namespace CeresTrain.Networks.Transformer
       NumSquares = numSquares;
       Activation = activation;
       FinalActivation = finalActivation;
-      ModelDim = modelDim;
-      GlobalStreamDim = dimGlobalStream;
+      ModelDim = modelDim;     
       PremapDimDivisor = premapDimDivisor;
       Dim1 = dim1;
       Dim2 = dim2;
       Dim3 = dim3;
       SaveIntermediateActivations = saveIntermediateActivations;
       PremapAlreadyApplied = reduceSquaresAlreadyApplied;
-      UseGlobalStreamOnly = useGlobalStreamOnly;
 
       if (saveIntermediateActivations)
       {
@@ -167,13 +156,13 @@ namespace CeresTrain.Networks.Transformer
 
       if (!reduceSquaresAlreadyApplied)
       {
-        if (premapDimDivisor > 1 && !useGlobalStreamOnly)
+        if (premapDimDivisor > 1)
         {
           LinearPremap = Linear(modelDim, modelDim / premapDimDivisor, hasBias: true);
         }
       }
 
-      int inputWidth = GlobalStreamDim + (useGlobalStreamOnly ? 0 : NumSquares * modelDim / premapDimDivisor);
+      int inputWidth = NumSquares * modelDim / premapDimDivisor;
       Linear1 = Linear(inputWidth, dim1, hasBias: true);     
       Linear2 = Linear(dim1, dim2, hasBias: true);
       Linear3 = Linear(dim2, dim3, hasBias: true);
@@ -216,11 +205,6 @@ namespace CeresTrain.Networks.Transformer
 
             x = x.reshape(-1, NumSquares * (ModelDim / PremapDimDivisor));
           }
-        }
-
-        if (GlobalStreamDim > 0)
-        {
-          x = UseGlobalStreamOnly ? state : torch.cat([x, state], 1);  
         }
 
         Tensor x1 = Linear1.call(x);

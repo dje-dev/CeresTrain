@@ -134,16 +134,13 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="ffnMultiplier"></param>
     /// <param name="extraFeatures"></param>
     /// <param name="globalStreamDim"></param>
-    public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures, 
-                             int globalStreamDim = 0, int globalStreamMultiplierFFN = 2)
+    public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures)
     {
       ModelDim = modelDim;
       NumLayers = numLayers;
       NumHeads = numHeads;
       FFNMultiplier = ffnMultiplier;
       NormType = NormalizationType.RMSNorm;
-      GlobalStreamDim = globalStreamDim;
-      GlobalStreamFFNMultiplier = globalStreamMultiplierFFN;
 
       if (extraFeatures.HasFlag(TransformerFeatures.Attention2x))
       {
@@ -187,21 +184,6 @@ namespace CeresTrain.Networks.Transformer
     /// Number of hidden dimensions in the model.
     /// </summary>
     public readonly int ModelDim { get; init; } = 256;
-
-    /// <summary>
-    /// Dimension of the global stream (not per-token) if any (else 0).
-    /// </summary>
-    public readonly int GlobalStreamDim { get; init; } = 0;
-
-    /// <summary>
-    /// Expansion factor for the inner layer of the global stream (if any).
-    /// </summary>
-    public readonly int GlobalStreamFFNMultiplier { get; init; } = 2;
-
-    /// <summary>
-    /// If nonzero, the feed into attention is specialized for each square (plus a shared global component).
-    /// </summary>
-    public readonly int GlobalStreamAttentionPerSquare { get; init; } = 0;
 
     /// <summary>
     /// Number of layers in the model.
