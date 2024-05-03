@@ -265,32 +265,6 @@ namespace CeresTrain.NNEvaluators
 
     public override IPositionEvaluationBatch DoEvaluateIntoBuffers(IEncodedPositionBatchFlat positions, bool retrieveSupplementalResults = false)
     {
-      // Get the hash of the current position.
-      ulong thisHash = EncodedBoardZobrist.ZobristHash(in positions.PositionsBuffer.Span[0].BoardsHistory.History_0);
-      // .CalcZobristHash(PositionMiscInfo.HashMove50Mode.Ignore);
-      ulong priorHash = EncodedBoardZobrist.ZobristHash(in positions.PositionsBuffer.Span[0].BoardsHistory.History_1);
-
-
-      string thisFEN = positions.PositionsBuffer.Span[0].HistoryPosition(0).FEN;
-      string priorFEN = positions.PositionsBuffer.Span[0].HistoryPosition(1).FEN;
-
-      //      ulong priorHash = firstTime || lastPosition.BoardsHistory.BoardAtIndex(0).IsEmpty
-      //        ? (ulong)0
-      //        : EncodedBoardZobrist.ZobristHash(in lastPosition.BoardsHistory.History_0);
-
-      if (thisHash != 0 && priorHash != 0)
-      {
-//        Console.WriteLine();
-//        Console.WriteLine(OID + " " + thisHash + " " + positions.PositionsBuffer.Span[0].HistoryPosition(0).FEN);
-//        Console.WriteLine(OID + " " + priorHash + " " + lastPosition.HistoryPosition(0).FEN);
-      }
-
-      lastPosition = lastPositionStatic = positions.PositionsBuffer.Span[0];
-
-      if (positions.NumPos > 1)
-      {
-        thisHash = priorHash = 0;
-      }
       firstTime = false;
 //      bool equal = !lastPosition.BoardsHistory.BoardAtIndex(0).IsEmpty &&
 //        positions.PositionsBuffer.Span[0].HistoryPosition(1).PiecesEqual(lastPosition.HistoryPosition(0));
@@ -348,9 +322,7 @@ namespace CeresTrain.NNEvaluators
       IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.States.Length == 0 ? default : positions.States.Span[i], 
                                                                     i => positions.Moves.Span[i], 
                                                                     positions.NumPos,
-                                                                    i => mgPos[i], squareBytesAll, legalMoveIndices,
-                                                                    priorHash, thisHash,
-                                                                    priorFEN, thisFEN);
+                                                                    i => mgPos[i], squareBytesAll, legalMoveIndices);
       if (false) // debug code, test against tablebase if accurate
       {
         if (tbEvaluator == null)
@@ -505,9 +477,7 @@ namespace CeresTrain.NNEvaluators
                                                                int numPositions,
                                                                Func<int, MGPosition> getMGPosAtIndex,
                                                                byte[] squareBytesAll,
-                                                               short[] legalMovesIndices = null,
-                                                               ulong priorHash = 0, ulong thisHash = 0,
-                                                               string priorFEN = null, string thisFEN = null)
+                                                               short[] legalMovesIndices = null)
     {
       if (w == null)
       {
