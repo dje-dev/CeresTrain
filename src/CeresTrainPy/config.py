@@ -100,10 +100,6 @@ class Configuration:
 
     # Initialize class members from config_net_def
     self.NetDef_ModelDim = config_net_def.get('ModelDim', 256)
-    self.NetDef_GlobalStreamDim = config_net_def.get('GlobalStreamDim', 0)
-    self.NetDef_GlobalStreamFFNMultiplier = config_net_def.get('GlobalStreamFFNMultiplier', 2)    
-    self.NetDef_GlobalStreamAttentionPerSquare = config_net_def.get('GlobalStreamAttentionPerSquare', False) 
-    self.NetDef_HeadsNonPolicyGlobalStreamOnly = config_net_def.get('HeadsNonPolicyGlobalStreamOnly', False)
     self.NetDef_NumLayers = config_net_def.get('NumLayers', 8)
     self.NetDef_NumHeads = config_net_def.get('NumHeads', 8)
     self.NetDef_DualAttentionMode = config_net_def.get('DualAttentionMode', 'None')

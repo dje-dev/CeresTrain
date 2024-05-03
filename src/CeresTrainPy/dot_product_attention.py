@@ -47,9 +47,8 @@ class DotProductAttention(torch.nn.Module):
       smolgenPrepLayer: Optional layer for preprocessing in the Smolgen context.
   """
   def __init__(self, num_tokens_q : int, num_tokens_kv : int,
-               global_stream_dim : int, num_attention_heads: int, kv_channels: int, norm_type : str, 
+               num_attention_heads: int, kv_channels: int, norm_type : str, 
                layernorm_eps : float, attention_multiplier : int = 1,
-               global_stream_attention_per_square : int = 0,
                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
@@ -59,7 +58,6 @@ class DotProductAttention(torch.nn.Module):
 
     self.num_tokens_q = num_tokens_q
     self.num_tokens_kv = num_tokens_kv
-    self.global_stream_dim = global_stream_dim
     self.num_heads = num_attention_heads
     self.attention_multiplier = attention_multiplier
     self.d_model = num_attention_heads * kv_channels
@@ -67,7 +65,6 @@ class DotProductAttention(torch.nn.Module):
     self.d_k = kv_channels
     self.softmax = torch.nn.Softmax(-1)
     self.smolgen_head_divisor = smolgen_head_divisor
-    self.global_stream_attention_per_square = global_stream_attention_per_square
     self.test = test    
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
@@ -90,15 +87,8 @@ class DotProductAttention(torch.nn.Module):
     # Implementations often but not always use no bias
     USE_BIAS = False
 
-    # If per-square attention is used, each square receives some per-square info from global stream and some shared from global stream
-    # Othewise, a fully copy of the global stream is used for each square
-    if self.global_stream_dim > 0:
-      dim_global_info = self.global_stream_attention_per_square * 2 if global_stream_attention_per_square > 0 else self.global_stream_dim
-    else:
-      dim_global_info = 0  
-      
     # Fused Q, K, and V linear projection for improved efficiency.
-    self.qkv = torch.nn.Linear(self.d_model + dim_global_info, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
+    self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
     if self.use_rpe:
@@ -121,11 +111,6 @@ class DotProductAttention(torch.nn.Module):
       self.ln1 = torch.nn.LayerNorm(smolgen_intermediate_dim) if norm_type == 'LayerNorm' else RMSNorm(smolgen_intermediate_dim, eps=layernorm_eps)
       self.sm3 = torch.nn.Linear(smolgen_intermediate_dim, num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor)
       self.ln2 = torch.nn.LayerNorm(num_attention_heads * smolgen_intermediate_dim // smolgen_head_divisor) if norm_type == 'LayerNorm' else RMSNorm(num_attention_heads * smolgen_intermediate_dim// smolgen_head_divisor, eps=layernorm_eps)
-      
-    if global_stream_dim > 0 and self.global_stream_attention_per_square > 0:
-      assert num_tokens_q == num_tokens_kv, "global_stream_attention_per_square requires equal number of tokens for Q and K"
-      self.global_prep_attn_per_square = torch.nn.Linear(global_stream_dim, 64 * self.global_stream_attention_per_square, bias = False); 
-      self.global_prep_attn            = torch.nn.Linear(global_stream_dim, self.global_stream_attention_per_square, bias = False); 
       
 
   @property
@@ -177,24 +162,7 @@ class DotProductAttention(torch.nn.Module):
   def forward(self, x:torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
     batch_size = query.size(0)
 
-    if self.global_stream_dim > 0:
-      if self.global_stream_attention_per_square > 0:
-        # Compute and concatenate the per-square component
-        global_state_for_attn_per_square = self.global_prep_attn_per_square(global_state)
-        global_state_for_attn_per_square = global_state_for_attn_per_square.reshape([-1, 64, self.global_stream_attention_per_square])      
-        qkv_x = torch.cat([query, global_state_for_attn_per_square], 2)
-      
-        # Compute and append the shared component
-        global_state_for_attn = self.global_prep_attn(global_state)
-        global_state_for_attn = global_state_for_attn.repeat(1,64).reshape([-1, 64, self.global_stream_attention_per_square])
-        qkv_x = torch.concatenate([qkv_x, global_state_for_attn], 2)
-      else:
-        # append the full global state to the query (every square)
-        global_state = global_state.repeat(1,self.num_tokens_q).reshape([-1, self.num_tokens_q, self.global_stream_dim])
-        qkv_x = torch.cat([query, global_state], 2)
-        
-    else:
-      qkv_x = query    
+    qkv_x = query    
 
     # Linear projections (Q, K, V jointly).
     qkv = self.qkv(qkv_x)

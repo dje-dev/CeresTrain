@@ -144,9 +144,6 @@ class CeresNet(pl.LightningModule):
 
     self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
     self.embedding_layer2  = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
-    self.global_dim = config.NetDef_GlobalStreamDim
-    self.heads_pure_global = config.NetDef_GlobalStreamDim > 0 and config.NetDef_HeadsNonPolicyGlobalStreamOnly
-    self.embedding_layer_global = None if config.NetDef_GlobalStreamDim == 0 else nn.Linear(self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE, config.NetDef_GlobalStreamDim) 
     
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
@@ -204,13 +201,12 @@ class CeresNet(pl.LightningModule):
     num_tokens_kv = self.NUM_TOKENS_NET
     self.transformer_layer = torch.nn.Sequential(
        *[EncoderLayer('T', num_tokens_q, num_tokens_kv,
-                      self.NUM_LAYERS, self.EMBEDDING_DIM, config.NetDef_GlobalStreamDim,
+                      self.NUM_LAYERS, self.EMBEDDING_DIM,
                       self.FFN_MULT*self.EMBEDDING_DIM, 
                       self.NUM_HEADS,
                       ffn_activation_type = config.NetDef_FFNActivationType, 
                       norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
                       attention_multiplier = ATTENTION_MULTIPLIER,
-                      global_stream_attention_per_square = config.NetDef_GlobalStreamAttentionPerSquare,
                       smoe_mode = config.NetDef_SoftMoE_MoEMode,
                       smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
                       smolgen_per_square_dim = SMOLGEN_PER_SQUARE_DIM, 
@@ -223,13 +219,6 @@ class CeresNet(pl.LightningModule):
                       dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
-
-    if config.NetDef_GlobalStreamDim > 0:
-      PER_SQUARE_DIM = 16
-      NUM_GLOBAL_INNER = config.NetDef_GlobalStreamFFNMultiplier * config.NetDef_GlobalStreamDim
-      GLOBAL_FFN_ACTIVATION_TYPE = 'ReLU' # Note that squared RelU may cause training instabilities (?)
-      self.mlp_global = torch.nn.Sequential(*[MLP2Layer(model_dim=config.NetDef_GlobalStreamDim + self.NUM_TOKENS_NET * PER_SQUARE_DIM, ffn_inner_dim=NUM_GLOBAL_INNER, out_dim = config.NetDef_GlobalStreamDim, activation_type=GLOBAL_FFN_ACTIVATION_TYPE) for i in range(self.NUM_LAYERS)])
-      self.ln_global = torch.nn.LayerNorm(model_dim=config.NetDef_GlobalStreamDim, eps=1e-5) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(config.NetDef_GlobalStreamDim, eps=1e-5)
 
     self.policy_loss_weight = policy_loss_weight
     self.value_loss_weight = value_loss_weight
@@ -288,19 +277,13 @@ class CeresNet(pl.LightningModule):
 #      flow_position = flow_squares[:, :, -16:]
 #      flow = flow + self.pos_encoding(flow_position)
 
-    if self.global_dim > 0:
-      flow_global = squares.reshape(-1, self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE)
-      flow_global = self.embedding_layer_global(flow_global)
-    else:
-      flow_global = None  
-
     if self.denseformer:
       all_previous_x = [flow]
       
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
-      # Main policy encoder block, also receive back an update to be applied to the global stream
-      flow, global_update = self.transformer_layer[i](flow, flow_global)#.detach())
+      # Main policy encoder block
+      flow, _ = self.transformer_layer[i](flow, None)
 
       if self.denseformer:
         all_previous_x.append(flow)
