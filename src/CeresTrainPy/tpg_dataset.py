@@ -125,12 +125,12 @@ class TPGDataset(Dataset):
 
               # Read sequence of fields (see TPGRecord.cs)
 
-              wdl2_result = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
+              wdl_nondeblundered = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
 
-              wdl_result = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
+              wdl_deblundered = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               if (self.wdl_smoothing > 0):
-                wdl_result = np.matmul(wdl_result, wdl_smoothing_transform)
+                wdl_deblundered = np.matmul(wdl_deblundered, wdl_smoothing_transform)
 
               if (self.wdl_smoothing == 0.5):
                 assert 1==2, "wdl_smoothing == 0.5 not supported"
@@ -179,19 +179,19 @@ class TPGDataset(Dataset):
 
               assert(offset == BYTES_PER_POS)
 
-              yield  ((policies_indices, policies_values, wdl_result, wdl_q, mlh, uncertainty, 
-                       wdl2_result, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent, played_q_suboptimality))
+              yield  ((policies_indices, policies_values, wdl_deblundered, wdl_q, mlh, uncertainty, 
+                       wdl_nondeblundered, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent, played_q_suboptimality))
 
 
   def __getitem__(self, idx):
     batch = next(self.generator)
     policies_indices = batch[0]
     policies_values = batch[1]
-    wdl_result = batch[2]
+    wdl_deblundered = batch[2]
     wdl_q = batch[3]
     mlh = batch[4]
     uncertainty = batch[5]
-    wdl2_result = batch[6]
+    wdl_nondeblundered = batch[6]
     q_deviation_lower = batch[7]
     q_deviation_upper = batch[8]
     squares = batch[9]
@@ -216,11 +216,11 @@ class TPGDataset(Dataset):
       # Creating the new dictionary with filtered tensors
       filtered_dict = {
           'policies': filter_tensor(policies, mod_value),
-          'wdl_result': filter_tensor(torch.tensor(wdl_result), mod_value),
+          'wdl_deblundered': filter_tensor(torch.tensor(wdl_deblundered), mod_value),
           'wdl_q': filter_tensor(torch.tensor(wdl_q), mod_value),
           'mlh': filter_tensor(torch.tensor(mlh), mod_value),
           'unc': filter_tensor(torch.tensor(uncertainty), mod_value),
-          'wdl2_result': filter_tensor(torch.tensor(wdl2_result), mod_value),
+          'wdl_nondeblundered': filter_tensor(torch.tensor(wdl_nondeblundered), mod_value),
           'q_deviation_lower': filter_tensor(torch.tensor(q_deviation_lower), mod_value).to(torch.float32),
           'q_deviation_upper': filter_tensor(torch.tensor(q_deviation_upper), mod_value).to(torch.float32),
           'squares': filter_tensor(torch.tensor(squares), mod_value),
