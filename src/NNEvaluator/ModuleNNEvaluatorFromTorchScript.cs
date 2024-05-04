@@ -175,7 +175,7 @@ namespace CeresTrain.NNEvaluators
             bool networkExpectsBoardState = TransformerConfig.PriorStateDim > 0;
             if (module != null)
             {
-              Tensor [] rawRet;
+              Tensor[] rawRet = default;
               if (hasPriorStateOutput)
               {
                 Tensor priorState;
@@ -186,7 +186,7 @@ namespace CeresTrain.NNEvaluators
                 else
                 {
                   // TODO: this allocation on every call is expensive, someday allow passing of None to the neural network instead?
-                  int size = TransformerConfig.PriorStateDim == 0 ? 32 : TransformerConfig.PriorStateDim;
+                  int size = TransformerConfig.PriorStateDim == 0 ? 4 : TransformerConfig.PriorStateDim;
                   priorState = torch.zeros([input.squares.shape[0], 64, size], dtype: DataType, device: Device);
                 }
 

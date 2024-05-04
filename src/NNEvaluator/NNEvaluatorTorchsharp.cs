@@ -622,7 +622,7 @@ namespace CeresTrain.NNEvaluators
 #endif
         if (!Options.UsePriorState)
         {
-          boardStateOutput.Dispose();
+          boardStateOutput?.Dispose();
           boardStateOutput = null;
         } 
 
@@ -660,6 +660,15 @@ namespace CeresTrain.NNEvaluators
 
         float fraction1 = 1.0f - Options.FractionValueHead2;
         float fractionNonDeblundered = Options.FractionValueHead2;
+
+
+        for (int i = 0; i < wdl2ProbabilitiesCPU.Length / 3; i++)
+        {
+          // ****** TEMPORARY ******
+          // Stash value2 raw (before modified below) into MLH temporarily since MLH rarely used and we need to preserve MLH.
+          m[i] = (FP16)((float)wdl2ProbabilitiesCPU[i * 3] - (float)wdl2ProbabilitiesCPU[i * 3 + 2]);
+          // ***********************
+        }
 
         if (Options.ValueHeadAveragePowerMeanOrder == 1)
         {
@@ -791,8 +800,9 @@ namespace CeresTrain.NNEvaluators
             extraStats1[i] = (FP16)(float)predictionQDeviationUpperCPU[i];
           }
 
-          float rawM = (float)predictionsMLH[i] * NetTransformer.MLH_DIVISOR;
-          m[i] = (FP16)Math.Max(rawM, 0);
+// *** MLH DISABLED ***
+//          float rawM = (float)predictionsMLH[i] * NetTransformer.MLH_DIVISOR;
+//          m[i] = (FP16)Math.Max(rawM, 0);
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
         }
 
