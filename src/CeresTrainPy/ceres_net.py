@@ -328,6 +328,10 @@ class CeresNet(pl.LightningModule):
     q_deviation_lower_target = batch['q_deviation_lower']
     q_deviation_upper_target = batch['q_deviation_upper']
 
+    # Create a blended value target for Value2
+    # The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
+    wdl_blend = (wdl_nondeblundered * 0.60 + wdl_deblundered * 0.25 + wdl_q * 0.15)
+
     #	Subtract entropy from cross entropy to insulate loss magnitude 
     #	from distributional shift and make the loss more interpretable 
     #	because it takes out the portion that is irreducible.
@@ -336,7 +340,7 @@ class CeresNet(pl.LightningModule):
     value_target = wdl_q * self.q_ratio + wdl_deblundered * (1 - self.q_ratio)
     p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY)
     v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out, SUBTRACT_ENTROPY)
-    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_nondeblundered, value2_out, SUBTRACT_ENTROPY)
+    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_blend, value2_out, SUBTRACT_ENTROPY)
     ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out)
     u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out)
     q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
