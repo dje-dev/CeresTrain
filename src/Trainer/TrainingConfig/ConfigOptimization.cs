@@ -105,7 +105,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Weight decay coefficient for the optimizer.
     /// </summary>
-    public readonly float WeightDecay { get; init; } = 0.02f;
+    public readonly float WeightDecay { get; init; } = 0.01f;
 
     /// <summary>
     /// Maximum learning rate to be used with the optimizer.
@@ -117,7 +117,7 @@ namespace CeresTrain.Trainer
     /// scaling down of the LearningRateBase begins 
     /// (linearly from LearningRateBase to a fixed minimum value of 0.10).
     /// </summary>
-    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.4f;
+    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.5f;
 
     /// <summary>
     /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or Nadam.
