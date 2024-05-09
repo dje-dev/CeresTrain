@@ -190,8 +190,10 @@ namespace CeresTrain.NNEvaluators
           && IncludeHistory == evalTS.IncludeHistory
           && LastMovePliesEnabled == evalTS.LastMovePliesEnabled
           && HasAction == evalTS.HasAction
-          && evalTSModule.TorchscriptFileName1  == evalTSModuleOther.TorchscriptFileName1
-          && evalTSModule.TorchscriptFileName2 == evalTSModuleOther.TorchscriptFileName2);
+          && evalTSModule.TorchscriptFileName1 == evalTSModuleOther.TorchscriptFileName1
+          && evalTSModule.TorchscriptFileName2 == evalTSModuleOther.TorchscriptFileName2
+          && Options == evalTS.Options
+          );
     }
 
 
