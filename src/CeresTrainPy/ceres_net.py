@@ -141,10 +141,12 @@ class CeresNet(pl.LightningModule):
       self.Activation = Swish()
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
+    self.test = config.Exec_TestFlag
 
     self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
-    self.embedding_layer2  = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
-    
+    self.embedding_layer2 = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
+    self.embedding_norm = None if not self.test else (torch.nn.LayerNorm(self.EMBEDDING_DIM, eps=1E-6) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(self.EMBEDDING_DIM, eps=1E-6))
+
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
     HEAD_PREMAP_DIVISOR = 64
@@ -233,7 +235,6 @@ class CeresNet(pl.LightningModule):
     self.q_ratio = q_ratio
     self.optimizer = optimizer
     self.learning_rate = learning_rate
-    self.test = config.Exec_TestFlag
 
     if (self.denseformer):
       self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
@@ -272,6 +273,9 @@ class CeresNet(pl.LightningModule):
     if self.NUM_TOKENS_NET > self.NUM_TOKENS_INPUT:
       flow2 = self.embedding_layer2(flow_squares)
       flow = torch.cat([flow, flow2], 1)
+      
+    if self.test:
+      flow = self.embedding_norm(flow)
       
 #    if (self.test):
 #      flow_position = flow_squares[:, :, -16:]
@@ -328,9 +332,9 @@ class CeresNet(pl.LightningModule):
     q_deviation_lower_target = batch['q_deviation_lower']
     q_deviation_upper_target = batch['q_deviation_upper']
 
-    # Create a blended value target for Value2
+    # Create a blended value target for Value2.
     # The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
-    wdl_blend = (wdl_nondeblundered * 0.60 + wdl_deblundered * 0.25 + wdl_q * 0.15)
+    wdl_blend = (wdl_nondeblundered * 0.70 + wdl_deblundered * 0.15 + wdl_q * 0.15)
 
     #	Subtract entropy from cross entropy to insulate loss magnitude 
     #	from distributional shift and make the loss more interpretable 

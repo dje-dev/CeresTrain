@@ -364,7 +364,7 @@ def Train():
 
   # Sample code to load from a saved TorchScript model (and possibly save back)
   if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_10_64_2_400mm_smol_att2x_DT_LR20min_v1x4_final.ts')
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_768_15_48_3_32bn_rpeQK_DT_4k_LR3_S4_Ap3_c_1682290688_jit.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
           pytorch_param.data.copy_(torchscript_param.data)
