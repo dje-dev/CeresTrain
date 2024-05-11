@@ -364,13 +364,13 @@ def Train():
 
   # Sample code to load from a saved TorchScript model (and possibly save back)
   if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_768_15_48_3_32bn_rpeQK_DT_4k_LR3_S4_Ap3_c_1682290688_jit.ts')
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_491896832_jit.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
           pytorch_param.data.copy_(torchscript_param.data)
     del torchscript_model
 #    save_to_torchscript(fabric, model, state, "fix", True)
-    exit(3)  
+#    exit(3)  
     
  
   fabric.launch()
@@ -487,7 +487,7 @@ def Train():
                                    value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
-                                   value_out2, extracted_action1_out,  # action target/output from previous board
+                                   value2_out2.detach(), extracted_action1_out,  # action target/output from previous board
                                    
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
         
@@ -506,7 +506,7 @@ def Train():
                                    value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
 
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
-                                   value_out3, extracted_action2_out, # action target/output from previous board
+                                   value2_out3.detach(), extracted_action2_out, # action target/output from previous board
 
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
 
@@ -524,7 +524,7 @@ def Train():
                                      None, None, None, 
 
                                      None, None,
-                                     value_out4, extracted_action1_other_out, # action target/output from previous board
+                                     value2_out4.detach(), extracted_action1_other_out, # action target/output from previous board
                                      
                                      LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION, num_pos, this_lr, show_losses)
 

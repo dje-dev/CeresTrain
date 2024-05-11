@@ -145,7 +145,7 @@ class CeresNet(pl.LightningModule):
 
     self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
     self.embedding_layer2 = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
-    self.embedding_norm = None if not self.test else (torch.nn.LayerNorm(self.EMBEDDING_DIM, eps=1E-6) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(self.EMBEDDING_DIM, eps=1E-6))
+    self.embedding_norm = torch.nn.LayerNorm(self.EMBEDDING_DIM, eps=1E-6) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(self.EMBEDDING_DIM, eps=1E-6)
 
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
 
@@ -274,8 +274,7 @@ class CeresNet(pl.LightningModule):
       flow2 = self.embedding_layer2(flow_squares)
       flow = torch.cat([flow, flow2], 1)
       
-    if self.test:
-      flow = self.embedding_norm(flow)
+    flow = self.embedding_norm(flow)
       
 #    if (self.test):
 #      flow_position = flow_squares[:, :, -16:]
