@@ -93,7 +93,6 @@ devices = config.Exec_DeviceIDs
 
 BATCH_SIZE = config.Opt_BatchSizeBackwardPass
 
-assert config.Opt_Optimizer == 'AdamW', 'only AdamW supported currently'
 assert config.NetDef_PreNorm == False, 'PreNorm not supported'
 assert config.Exec_DataType == 'BFloat16', 'Only BFloat16 training supported'
 
@@ -277,7 +276,7 @@ def Train():
                    value_diff_loss_weight = config.Opt_LossValueDMultiplier,
                    value2_diff_loss_weight = config.Opt_LossValue2DMultiplier,
                    action_loss_weight = config.Opt_LossActionMultiplier,
-                   q_ratio=config.Data_FractionQ, optimizer='adamw', learning_rate=LR)
+                   q_ratio=config.Data_FractionQ)
 
    
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
@@ -335,7 +334,12 @@ def Train():
   ]
 
   # Loss and optimizer
-  optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2))
+  if config.Opt_Optimizer == 'NAdamW':
+    optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
+  elif config.Opt_Optimizer == 'AdamW':
+    optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=True)
+  else:
+    raise ValueError("Unsupported optimizer: " + config.Opt_Optimizer)
 
   fraction_complete = 0
 
@@ -364,7 +368,7 @@ def Train():
 
   # Sample code to load from a saved TorchScript model (and possibly save back)
   if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_491896832_jit.ts')
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_572002304_jit.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
           pytorch_param.data.copy_(torchscript_param.data)

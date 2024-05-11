@@ -202,11 +202,14 @@ namespace CeresTrain.Networks.Transformer
 
     /// <summary>
     /// If transformer encoded block should be pre-normalized (as opposed to post-normalized).
+    /// Contrary to modern practice with language models, PostNorm is found to have significantly lower loss.
+    /// (perhaps because the model is not as deep as in language models and convergence problems do not arise).
     /// </summary>
     public readonly bool PreNorm { get; init; } = false;
 
     /// <summary>
     /// Type of normalization to be applied within Encoder blocks.
+    /// RMSNorm is found slightly faster but same accuracy as LayerNorm.
     /// </summary>
     public readonly NormalizationType NormType { get; init; } = NormalizationType.RMSNorm;
 
@@ -218,7 +221,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Factor by which the FFN inner hidden layer is larger than the model dimension.
     /// </summary>
-    public readonly int FFNMultiplier { get; init; } = 1;
+    public readonly int FFNMultiplier { get; init; } = 2;
 
     /// <summary>
     /// Type of activation function used between layers of the FFN.
@@ -228,7 +231,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Activation function to use in network heads.
     /// </summary>
-    public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.ReLU;
+    public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.Swish;
 
     /// <summary>
     /// Dimension of the vector (per square) passed between consecutive positions.
@@ -245,7 +248,7 @@ namespace CeresTrain.Networks.Transformer
     /// If true, the DenseFormer architecture is used. See:
     ///   "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
     /// </summary>
-    public readonly bool DenseFormer { get; init; } = false;
+    public readonly bool DenseFormer { get; init; } = true;
 
     /// <summary>
     /// Number of per square dimensions used for Smolgen (or 0 if Smolgen not used).
@@ -269,16 +272,10 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly ActivationType SmolgenActivationType { get; init; } = ActivationType.None;
 
-
     /// <summary>
-    /// If network heads (except policy) should receive inputs exclusively from global stream.
+    /// If relative positional encoding should be used (for Q and K but not V).
     /// </summary>
-    public readonly bool HeadsNonPolicyGlobalStreamOnly { get; init; } = false;
-
-    /// <summary>
-    /// If relative positional encoding should be used.
-    /// </summary>
-    public readonly bool UseRPE { get; init; } = false;
+    public readonly bool UseRPE { get; init; } = true;
 
     /// <summary>
     /// Multiplier applied to the width of the default size of each layers in the output heads.

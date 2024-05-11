@@ -86,9 +86,7 @@ class CeresNet(pl.LightningModule):
     value_diff_loss_weight,
     value2_diff_loss_weight,
     action_loss_weight,
-    q_ratio,
-    optimizer,
-    learning_rate
+    q_ratio
 ):
     """
     CeresNet is a transformer architecture network module for chess built with PyTorch Lightning. 
@@ -103,8 +101,6 @@ class CeresNet(pl.LightningModule):
         value2_loss_weight: Weight for the secondary value loss component.
         q_deviation_loss_weight: Weight for the Q deviation (lower and upper) loss components.
         q_ratio: Fraction of weight to be put on Q (search value results) versus game WDL result.
-        optimizer: Optimizer to be used for training.
-        learning_rate: Learning rate for the optimizer.
     """
     super().__init__()
 
@@ -158,7 +154,9 @@ class CeresNet(pl.LightningModule):
     self.headSharedLinear = nn.Linear(64 * self.HEAD_PREMAP_PER_SQUARE, self.HEAD_IN_SIZE)
 
     self.policy_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858)
-    self.state_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 64*self.prior_state_dim)
+    
+    if self.prior_state_dim > 0:
+      self.state_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 64*self.prior_state_dim)
 
     if action_loss_weight > 0:
       self.action_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858 * 3)
@@ -231,10 +229,7 @@ class CeresNet(pl.LightningModule):
     self.value_diff_loss_weight = value_diff_loss_weight
     self.value2_diff_loss_weight = value2_diff_loss_weight
     self.action_loss_weight = action_loss_weight
-
     self.q_ratio = q_ratio
-    self.optimizer = optimizer
-    self.learning_rate = learning_rate
 
     if (self.denseformer):
       self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
@@ -253,6 +248,9 @@ class CeresNet(pl.LightningModule):
 #      flow[:, :, 109] = 0
 #      flow[:, :, 110] = 0
 #      flow[:, :, 111] = 0
+
+#    flow[:, :, 119] = 0 # QNegativeBlunders
+#    flow[:, :, 120] = 0 # QPositiveBlunders
 
 #      condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
 #      flow[:, :, 107] = condition.bfloat16()
@@ -300,13 +298,13 @@ class CeresNet(pl.LightningModule):
     
     policy_out = self.policy_head(flattenedSquares)
     action_out = self.action_head(flattenedSquares).reshape(-1, 1858, 3)
-    state_out = self.state_head(flattenedSquares)
     value_out = self.value_head(flattenedSquares)
     value2_out = self.value2_head(flattenedSquares)
     unc_out = self.unc_head(flattenedSquares)
 
     # Note that if these heads are not used we use a fill-in tensor (borrowed from unc) 
     # to avoid None values that might be problematic in export (especially ONNX)
+    state_out             = self.state_head(flattenedSquares) if self.prior_state_dim > 0 else unc_out
     moves_left_out        = self.mlh_head(flattenedSquares) if self.moves_left_loss_weight > 0 else unc_out
     q_deviation_lower_out = self.qdev_lower(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out
     q_deviation_upper_out = self.qdev_upper(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out   

@@ -750,8 +750,11 @@ namespace CeresTrain.NNEvaluators
         Half[] actionsSpan = null;
         if (Options.UseAction &&  (object)actions != null)
         {
-          const float TEMPERATURE = 1;// 0.8f;
-          actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
+          const float TEMPERATURE = 1.0f;
+          if (TEMPERATURE != 1)
+          {
+            actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
+          }
           actionsSpan = MemoryMarshal.Cast<byte, Half>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
         }
 

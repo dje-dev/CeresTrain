@@ -32,9 +32,13 @@ namespace CeresTrain.Trainer
     AdamW,
 
     /// <summary>
-    /// Nadam optimizer.
+    /// Nadam optimizer (with decoupled weight decay).
+    /// 
+    /// The paper "Benchmarking Neural Network Training Algorithms" Dahl et al. 2023
+    /// notes that NAdam matches our outperforms all other tested optimizers in all configurations
+    /// (for transformer network).
     /// </summary>
-    NadamW,
+    NAdamW,
 
     /// <summary>
     /// Lion optimizer.
@@ -83,7 +87,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Type of optimizer.
     /// </summary>
-    public readonly OptimizerType Optimizer { get; init; } = OptimizerType.AdamW;
+    public readonly OptimizerType Optimizer { get; init; } = OptimizerType.NAdamW;
 
     /// <summary>
     /// Optional name of file containing the starting checkpoint from which training will be resumed.
@@ -100,7 +104,7 @@ namespace CeresTrain.Trainer
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).
     /// Valid values: "none", "max-autotune", "reduce-overhead", "default".
     /// </summary>
-    public readonly string PyTorchCompileMode { get; init; } = "reduce-overhead";
+    public readonly string PyTorchCompileMode { get; init; } = "max-autotune";
 
     /// <summary>
     /// Weight decay coefficient for the optimizer.
@@ -120,12 +124,12 @@ namespace CeresTrain.Trainer
     public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.5f;
 
     /// <summary>
-    /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or Nadam.
+    /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
     /// </summary>
     public readonly float Beta1 { get; init; } = 0.90f;
 
     /// <summary>
-    /// Beta 2 coefficient used with optimizers such as Adam, AdamW, or Nadam.
+    /// Beta 2 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
     /// </summary>
     public readonly float Beta2 { get; init; } = 0.98f;
 
@@ -139,12 +143,13 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Scaling multiplier to be applied to primary value loss term.
     /// </summary>
-    public readonly float LossValueMultiplier { get; init; } = 0.5f;
+    public readonly float LossValueMultiplier { get; init; } = 1.0f;
 
     /// <summary>
     /// Scaling multiplier to be applied to secondary value loss term.
+    /// Typically a lower coefficient is used here because it is very noisy.
     /// </summary>
-    public readonly float LossValue2Multiplier { get; init; } = 0.0f;
+    public readonly float LossValue2Multiplier { get; init; } = 0.3f;
 
     /// <summary>
     /// Scaling multiplier to be applied to policy loss term.
@@ -158,28 +163,34 @@ namespace CeresTrain.Trainer
 
     /// <summary>
     /// Scaling multiplier to be applied to UNC loss term.
+    /// Coefficient typically small due to low importance in gameplay and relatively high noise.
     /// </summary>
-    public readonly float LossUNCMultiplier { get; init; } = 0.0f;
+    public readonly float LossUNCMultiplier { get; init; } = 0.01f;
 
     /// <summary>
     /// Scaling multiplier to be applied to estimates of lower and upper deviation bounds of forward Q.
+    /// Coefficient typically small due to low importance in gameplay and relatively high noise.
     /// </summary>
-    public readonly float LossQDeviationMultiplier { get; init; } = 0.0f;
+    public readonly float LossQDeviationMultiplier { get; init; } = 0.01f;
 
     /// <summary>
     /// Scaling multiplier to be applied to difference in value scores between consecutive positions.
+    /// This acts as consistency regularizer.
+    /// Seems to have small positlve benefit, especially for action head accuracy.
     /// </summary>
-    public readonly float LossValueDMultiplier { get; init; } = 0.0f;
+    public readonly float LossValueDMultiplier { get; init; } = 0.1f;
 
     /// <summary>
     /// Scaling multiplier to be applied to difference in value2 scores between consecutive positions.
+    /// This acts as consistency regularizer.
+    /// Benefit is unclear for Value2 because this training targtet is so noisy.
     /// </summary>
     public readonly float LossValue2DMultiplier { get; init; } = 0.0f;
 
     /// <summary>
     /// Loss weight applied to error in action prediction (relative to actual value2 from position).
     /// </summary>
-    public readonly float LossActionMultiplier { get; init; } = 0.0f;
+    public readonly float LossActionMultiplier { get; init; } = 0.3f;
 
     #endregion
 

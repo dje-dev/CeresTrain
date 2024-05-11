@@ -526,7 +526,7 @@ namespace CeresTrain.Trainer
                                       beta2: TrainingConfig.OptConfig.Beta2,
                                       weight_decay: TrainingConfig.OptConfig.WeightDecay);
       }
-      else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.NadamW)
+      else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.NAdamW)
       {
         // TODO: Retrun NAdam after TorchSharp bug noted here is fixed: https://github.com/dotnet/TorchSharp/pull/1155
         // This looked very promising. But doesn't seem work with weight decay, need "NadamW" ?
