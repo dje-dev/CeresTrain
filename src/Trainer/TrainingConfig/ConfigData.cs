@@ -67,7 +67,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Type of source data used for training data.
     /// </summary>
-    public readonly DataSourceType SourceType { get; init; } = DataSourceType.PreprocessedFromTAR;
+    public readonly DataSourceType SourceType { get; init; } = DataSourceType.DirectFromPositionGenerator;
 
     /// <summary>
     /// The generator function used when SourceType == DirectFromPositionGenerator.
