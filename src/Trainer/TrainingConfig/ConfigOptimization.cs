@@ -87,7 +87,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Type of optimizer.
     /// </summary>
-    public readonly OptimizerType Optimizer { get; init; } = OptimizerType.NAdamW;
+    public readonly OptimizerType Optimizer { get; init; } = OptimizerType.AdamW;
 
     /// <summary>
     /// Optional name of file containing the starting checkpoint from which training will be resumed.
