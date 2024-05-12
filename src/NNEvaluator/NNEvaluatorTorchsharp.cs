@@ -753,8 +753,10 @@ namespace CeresTrain.NNEvaluators
           const float TEMPERATURE = 1.0f;
           if (TEMPERATURE != 1)
           {
-            actions = torch.nn.functional.softmax(actions / TEMPERATURE, -1);
+            actions /= TEMPERATURE;
           }
+
+          actions = torch.nn.functional.softmax(actions, -1);
           actionsSpan = MemoryMarshal.Cast<byte, Half>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
         }
 
