@@ -14,9 +14,12 @@
 #region Using directives
 
 using System;
+using System.Diagnostics;
+
 using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators.LC0DLL;
+
 using CeresTrain.TrainingDataGenerator;
 
 #endregion
@@ -40,6 +43,17 @@ namespace CeresTrain.TPG.TPGGenerator
     // dramatically after making the move.
     public readonly float SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD = 0.15f;
 
+    // TODO: Make these options passed in by the caller 
+
+    // Two coefficients relating to rejecting excessively noisy training data points.
+    const float THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE = 0.30f; // Reject position if any single forward blunder exceeds this value
+    const float THERSHOLD_REJECT_BLUNDER_IMBALANCE = 0.60f; // Reject position if forward blunder imbalance exceeds this value
+
+    // Two coefficients relating to favoring positions based on value difference.
+    const float VALUE_DIFF_BASE = 0.20f; // starting minimum proability of accepting any position
+    const float VALUE_DIFF_SLOPE = 3.0f; // slope of probability of accepting position based on value difference
+                                         // (e.g. 0.2 head vs. search difference -> 0.6 extra probability likelyhood)
+
     const int MAX_PLY = 512;
 
     EncodedTrainingPositionGame thisGame;
@@ -49,7 +63,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     public (float w, float d, float l)[] newResultWDL = new (float, float, float)[MAX_PLY];
     public TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo[] targetSourceInfo = new TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo[MAX_PLY];
-    public bool[] SHOULD_REJECT_POSITION = new bool[MAX_PLY];
+    public bool[] REJECT_POSITION_DUE_TO_POSITION_FOCUS = new bool[MAX_PLY];
     public float[] suboptimalityNoiseBlunder = new float[MAX_PLY];
     public float[] suboptimalityUnintended = new float[MAX_PLY];
     public float?[] tablebaseWL = new float?[MAX_PLY];
@@ -57,12 +71,14 @@ namespace CeresTrain.TPG.TPGGenerator
     public float[] forwardSumPositiveBlunders = new float[MAX_PLY];
     public float[] forwardSumNegativeBlunders = new float[MAX_PLY];
 
+    public float[] forwardMaxSinglePositiveBlunder = new float[MAX_PLY];
+    public float[] forwardMaxSingleNegativeBlunder = new float[MAX_PLY];
+
     public float[] forwardMinQDeviation = new float[MAX_PLY];
     public float[] forwardMaxQDeviation = new float[MAX_PLY];
 
     public (float w, float d, float l)[] intermediateBestWDL = new (float w, float d, float l)[MAX_PLY];
     public float[] deltaQIntermediateBestWDL = new float[MAX_PLY];
-
 
     static (float w, float d, float l) Reverse((float w, float d, float l) v) => (v.l, v.d, v.w);
 
@@ -116,14 +132,17 @@ namespace CeresTrain.TPG.TPGGenerator
         float baselineQ = thisTrainingPos.MiscInfo.InfoTraining.BestQ;
         float minQDeviation = 0;
         float maxQDeviation = 0;
+        float maxPositiveBlunder = 0;
+        float maxNegativeBlunder = 0;
+
         for (int fwdMoveIndex = moveIndexInGame; fwdMoveIndex < numPosThisGame; fwdMoveIndex++)
         {
           bool ourSide = fwdMoveIndex % 2 == moveIndexInGame % 2;
-          float qOurPerspective = ourSide ? gamePositions[fwdMoveIndex].MiscInfo.InfoTraining.BestQ 
+          float qOurPerspective = ourSide ? gamePositions[fwdMoveIndex].MiscInfo.InfoTraining.BestQ
                                           : -gamePositions[fwdMoveIndex].MiscInfo.InfoTraining.BestQ;
 
           // Possibly update min/max Q deviation. 
-          float qDeviation = qOurPerspective - baselineQ; 
+          float qDeviation = qOurPerspective - baselineQ;
           float qDeviationAbs = Math.Abs(qDeviation);
           if (qDeviation < 0 && qDeviationAbs > minQDeviation)
           {
@@ -132,27 +151,39 @@ namespace CeresTrain.TPG.TPGGenerator
           else if (qDeviation > 0 && qDeviationAbs > maxQDeviation)
           {
             maxQDeviation = qDeviationAbs;
-          } 
-         
+          }
 
-          if (ourSide && suboptimalityNoiseBlunder[fwdMoveIndex] > 0)
+          // Possibly update max blunders seen (positive and negative)
+          float thisBlunder = suboptimalityNoiseBlunder[fwdMoveIndex];
+          if (ourSide && thisBlunder > 0)
           {
             // Our side played a blunder.
             forwardSumNegativeBlunders[moveIndexInGame] += suboptimalityNoiseBlunder[fwdMoveIndex];
+            if (thisBlunder > maxNegativeBlunder)
+            {
+              maxNegativeBlunder = thisBlunder;
+            }
           }
-          else if (!ourSide && suboptimalityNoiseBlunder[fwdMoveIndex] > 0)
+          else if (!ourSide && thisBlunder > 0)
           {
-            forwardSumPositiveBlunders[moveIndexInGame] += suboptimalityNoiseBlunder[fwdMoveIndex];
+            forwardSumPositiveBlunders[moveIndexInGame] += thisBlunder;
+            if (thisBlunder > maxPositiveBlunder)
+            {
+              maxPositiveBlunder = thisBlunder;
+            }
           }
         }
 
         forwardMinQDeviation[moveIndexInGame] = minQDeviation;
         forwardMaxQDeviation[moveIndexInGame] = maxQDeviation;
+
+        forwardMaxSinglePositiveBlunder[moveIndexInGame] = maxPositiveBlunder;
+        forwardMaxSingleNegativeBlunder[moveIndexInGame] = maxNegativeBlunder;
       }
     }
 
 
-    public void CalcTrainWDL(TPGGeneratorOptions.DeblunderType deblunderType, bool doTBRescore)
+    public void CalcTrainWDL(TPGGeneratorOptions.DeblunderType deblunderType, bool doTBRescore, bool positionFocusEnabled)
     {
       CalcForwardBlunders();
 
@@ -163,11 +194,18 @@ namespace CeresTrain.TPG.TPGGenerator
       int i = numPosThisGame - 1;
       do
       {
-        SHOULD_REJECT_POSITION[i] = false;
         targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
 
         ref readonly EncodedPositionWithHistory thisTrainingPos = ref positionsSpan[i];
         EncodedPositionEvalMiscInfoV6 thisInfoTraining = thisGame.PositionTrainingInfoAtIndex(i);
+
+        // Check for value differential focus choosing to reject this position.
+        REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = false;
+        if (positionFocusEnabled && 
+           !PositionFocusAcceptsPosition(i, in thisInfoTraining, out _, out _, out _))
+        { 
+          REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = true;
+        }
 
         if (i == numPosThisGame - 1)
         {
@@ -228,13 +266,16 @@ namespace CeresTrain.TPG.TPGGenerator
         newResultWDL[i] = currentTrainWDL;
 
         // Try to move forward some number of plys to see an intermediate forward position.
-        const int NUM_PLY_LOOKFORWARD = 10;
+        const int NUM_MOVES_FORWARD = 5;
+        const int NUM_PLY_LOOKFORWARD = NUM_MOVES_FORWARD * 2; // must remain same side to play
+        Debug.Assert(NUM_PLY_LOOKFORWARD % 2 == 0); // must remain same side to play
+
         int numForward = 0;
         while (numForward < NUM_PLY_LOOKFORWARD
            && i + numForward < numPosThisGame - 1
            // stop searching if saw blunder
            && targetSourceInfo[i + numForward] != TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.UnintendedDeblunder
-           && targetSourceInfo[i + numForward] == TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.NoiseDeblunder)
+           && targetSourceInfo[i + numForward] != TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.NoiseDeblunder)
         {
           numForward++;
         }
@@ -426,28 +467,31 @@ namespace CeresTrain.TPG.TPGGenerator
     /// </summary>
     public void Dump((float v1, float v2)[] extraValues = null)
     {
+      const string HEADER = "      Blun+ Blun-    QDev- QDev+   Max-  Max+  Move     Source        OrgZ      NewZ  TrainQ                               W    D    L                         W    D    L";
+      Console.WriteLine(HEADER);
+
       numGamesProcessed++;
-      for (int i = 0; i < numPosThisGame; i++)
+      for (int indexPlyThisGame = 0; indexPlyThisGame < numPosThisGame; indexPlyThisGame++)
       {
         numPositionsProcessed++;
 
-        if (i == 0)
+        if (indexPlyThisGame == 0)
         {
           Console.WriteLine();
         }
 
         // Get position information handy.
-        EncodedPositionWithHistory thisPos = thisGame.PositionAtIndex(i);
-        EncodedPositionEvalMiscInfoV6 thisInfoTraining = thisGame.PositionTrainingInfoAtIndex(i);
+        EncodedPositionWithHistory thisPos = thisGame.PositionAtIndex(indexPlyThisGame);
+        EncodedPositionEvalMiscInfoV6 thisInfoTraining = thisGame.PositionTrainingInfoAtIndex(indexPlyThisGame);
 
         // Set noise suboptimality.
         float suboptimalityNoise = thisInfoTraining.BestQ - thisInfoTraining.PlayedQ;
-        suboptimalityNoiseBlunder[i] = suboptimalityNoise;
+        suboptimalityNoiseBlunder[indexPlyThisGame] = suboptimalityNoise;
 
-        string noiseBlunderStr = suboptimalityNoiseBlunder[i] > 0.01 ? $"{suboptimalityNoiseBlunder[i],5:F2}" : "     ";
+        string noiseBlunderStr = suboptimalityNoiseBlunder[indexPlyThisGame] > 0.01 ? $"{suboptimalityNoiseBlunder[indexPlyThisGame],5:F2}" : "     ";
 
         string selfBlunderStr = "        ";
-        selfBlunderStr = suboptimalityUnintended[i] > SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD ? $"{suboptimalityUnintended[i],5:F2}" : "     ";
+        selfBlunderStr = suboptimalityUnintended[indexPlyThisGame] > SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD ? $"{suboptimalityUnintended[indexPlyThisGame],5:F2}" : "     ";
         //Console.WriteLine((float)numSelfBlunders / numGamesProcessed);
 
 
@@ -465,7 +509,7 @@ namespace CeresTrain.TPG.TPGGenerator
         //string TB_FLAT = tablebaseWL[i].HasValue ? $"{(int)tablebaseWL[i].Value,2:N}" : "  ";
 
         float trainingQ = thisInfoTraining.BestWDL.w - thisInfoTraining.BestWDL.l;
-        float newResultWL = newResultWDL[i].w - newResultWDL[i].l;
+        float newResultWL = newResultWDL[indexPlyThisGame].w - newResultWDL[indexPlyThisGame].l;
         float origResultWL = thisInfoTraining.ResultQ;
         float deltaEval = newResultWL - trainingQ;
 
@@ -473,30 +517,71 @@ namespace CeresTrain.TPG.TPGGenerator
         Square toSquare = !thisPosition.IsWhite ? lastMoveInfo.toSquare.Mirrored.Reversed : lastMoveInfo.toSquare.Mirrored;
 
         string nonBestMoveChar = thisInfoTraining.NotBestMove ? "x" : " ";
-        bool isLastPosition = i == numPosThisGame - 1;
+        bool isLastPosition = indexPlyThisGame == numPosThisGame - 1;
         bool terminalBlunder = isLastPosition && LC0TrainingPosGeneratorFromSingleNNEval.TrainingPosWasForcedMovePossiblySeriousBlunder(in thisPos);
         string terminalBlunderChar = terminalBlunder ? "B" : " ";
-        string targetSourceStr = targetSourceInfo[i].ToString();
+        string targetSourceStr = targetSourceInfo[indexPlyThisGame].ToString();
         targetSourceStr = $"{(targetSourceStr.Length > 9 ? targetSourceStr.Substring(0, 9) : targetSourceStr.PadRight(9, ' '))}";
 
         string prefix = "";
         if (extraValues != null)
         {
-          prefix += $"  {extraValues[i].v1,5:F2} {extraValues[i].v2,5:F2}  ";
+          prefix += $"  {extraValues[indexPlyThisGame].v1,5:F2} {extraValues[indexPlyThisGame].v2,5:F2}  ";
         }
 
-        prefix += $"  {forwardSumPositiveBlunders[i], 5:F2} {forwardSumNegativeBlunders[i],5:F2}  ";
-        prefix += $"  {forwardMinQDeviation[i],5:F2} {forwardMaxQDeviation[i],5:F2}  ";
+        PositionFocusAcceptsPosition(indexPlyThisGame, in thisInfoTraining, out bool shouldRejectImbalance, out bool shouldRejectSingleBlunder, out string prefixFocusDescription);
 
-        Console.WriteLine($"{prefix} {i,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
-                        + $"  WL {origResultWL,5:F2} --> {newResultWL,5:F2}  (bestQ= {trainingQ,5:F2} delta= {deltaEval,5:F2})"
-                        + $"  TGT --> {newResultWDL[i].w,4:F2} {newResultWDL[i].d,4:F2} {newResultWDL[i].l,4:F2}"
+        prefix += shouldRejectImbalance ? " I" : (shouldRejectSingleBlunder ? " B" : "  ");
+        prefix += prefixFocusDescription;
+
+        prefix += $"  {forwardSumPositiveBlunders[indexPlyThisGame],5:F2} {forwardSumNegativeBlunders[indexPlyThisGame],5:F2}  ";
+        prefix += $"  {forwardMinQDeviation[indexPlyThisGame],5:F2} {forwardMaxQDeviation[indexPlyThisGame],5:F2}  ";
+        prefix += $"  {forwardMaxSingleNegativeBlunder[indexPlyThisGame],5:F2} {forwardMaxSinglePositiveBlunder[indexPlyThisGame],5:F2}  ";
+
+
+        Console.WriteLine($"{prefix} {indexPlyThisGame,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
+                        + $"  WL {origResultWL,5:F2} --> {newResultWL,5:F2}  (bestQ= {trainingQ,5:F2} ` {deltaEval,5:F2})"
+                        + $"  TGT --> {newResultWDL[indexPlyThisGame].w,4:F2} {newResultWDL[indexPlyThisGame].d,4:F2} {newResultWDL[indexPlyThisGame].l,4:F2}"
                         + $" mlh={thisInfoTraining.PliesLeft,4:N0}/{thisInfoTraining.BestM,4:N0}  "
-                        + $" [fwd={intermediateBestWDL[i].w,4:F2} {intermediateBestWDL[i].d,4:F2} {intermediateBestWDL[i].l,4:F2}  delta={deltaQIntermediateBestWDL[i],5:F2}]  "
+                        + $" [fwd={intermediateBestWDL[indexPlyThisGame].w,4:F2} {intermediateBestWDL[indexPlyThisGame].d,4:F2} {intermediateBestWDL[indexPlyThisGame].l,4:F2}  delta={deltaQIntermediateBestWDL[indexPlyThisGame],5:F2}]  "
                         + $" [ns_bl={noiseBlunderStr}  slf_bl{selfBlunderStr}]  "
                         + $" {fen}  play: {thisInfoTraining.PlayedIndex}  ast: {lastMoveInfo.pieceType} {fromSquare} {toSquare} {lastMoveInfo.wasCastle}");
 
       }
+    }
+
+    private bool PositionFocusAcceptsPosition(int indexPlyThisGame, in EncodedPositionEvalMiscInfoV6 thisInfoTraining, 
+                                              out bool shouldRejectImbalance, out bool shouldRejectSingleBlunder, out string prefixFocusDescription)
+    {
+      // The rejected positions due to forward blunder magnitude or imbalance
+      // will be much more common early in the game.
+      // Make early positions more likely to be selected to compensate and avoid imbalance in training data.
+      const int MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS = 30;
+      const float EARLY_GAME_SELECTION_BOUNS_PER_PLY = 0.01f;
+
+      shouldRejectImbalance = (MathF.Abs(forwardSumPositiveBlunders[indexPlyThisGame] - forwardSumNegativeBlunders[indexPlyThisGame]) > THERSHOLD_REJECT_BLUNDER_IMBALANCE);
+      shouldRejectSingleBlunder = forwardMaxSingleNegativeBlunder[indexPlyThisGame] > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE
+                               || forwardMaxSinglePositiveBlunder[indexPlyThisGame] > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE;
+      bool acceptProbabalistically = true;
+      prefixFocusDescription = "  ";
+      if (!float.IsNaN(thisInfoTraining.OriginalQ))
+      {
+        float plyBeforeMiddlegame = indexPlyThisGame > MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS
+                                      ? 0
+                                      : (MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS - indexPlyThisGame);
+        float bonusEarlyGame = plyBeforeMiddlegame * EARLY_GAME_SELECTION_BOUNS_PER_PLY;
+
+        float qDiff = Math.Abs(thisInfoTraining.OriginalQ - thisInfoTraining.BestQ);
+        float probScoreSlopeContrib = VALUE_DIFF_SLOPE * qDiff;
+        float probScore = VALUE_DIFF_BASE + bonusEarlyGame + probScoreSlopeContrib;
+        float randomThreshold = (float)Random.Shared.NextDouble();
+        acceptProbabalistically = probScore > randomThreshold;
+        if (acceptProbabalistically)
+        {
+          prefixFocusDescription = probScoreSlopeContrib > randomThreshold ? " +" : " r";
+        }
+      }
+      return acceptProbabalistically;
     }
   }
 

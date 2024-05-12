@@ -166,6 +166,15 @@ namespace CeresTrain.TPG.TPGGenerator
     /// </summary>
     public DeblunderType Deblunder { init; get; } = DeblunderType.None;
 
+
+    /// <summary>
+    /// If position focus should be enabled, which alters distribution of selected positions:
+    ///   - rejects if the blunder magnitude or imbaalance between sides is extremely large (target too noisy)
+    ///   - upsamples the "harder" positions, i.e. those where value head and search results were different
+    /// </summary>
+    public bool EnablePositionFocus { init; get; } = true;
+
+
     // Minimum probability for a legal move.
     // N.B. Make sure all legal moves have some nonzero probability, for two reasons:
     //        - this allows us to do legal move masking later because any legal move will be >0, and

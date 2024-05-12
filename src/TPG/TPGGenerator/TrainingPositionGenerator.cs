@@ -283,12 +283,13 @@ namespace CeresTrain.TPG.TPGGenerator
 
     bool PositionAtIndexShouldBeProcessed(int i, EncodedTrainingPositionGame game, 
                                           bool includeCheckForPositionMaxFraction,
+                                          bool includeGameAnalyzerCheck,
                                           Dictionary<ulong, int> positionUsedCountsByHash, 
                                           int numWrittenThisFile)
     {
-      if (gameAnalyzer != null)
+      if (gameAnalyzer != null && includeGameAnalyzerCheck)
       {
-        if (gameAnalyzer.SHOULD_REJECT_POSITION[i])
+        if (gameAnalyzer.REJECT_POSITION_DUE_TO_POSITION_FOCUS[i])
         {
           return false;
         }
@@ -391,7 +392,7 @@ namespace CeresTrain.TPG.TPGGenerator
           // every position in the game will be annotated.
           gameAnalyzer.SetGame(game);
           gameAnalyzer.CalcBlundersAndTablebaseLookups(eval);
-          gameAnalyzer.CalcTrainWDL(Options.Deblunder, Options.RescoreWithTablebase);
+          gameAnalyzer.CalcTrainWDL(Options.Deblunder, Options.RescoreWithTablebase, Options.EnablePositionFocus);
 
           // Update statistics.
           Interlocked.Add(ref numTBLookup, gameAnalyzer.numTBLookup);
@@ -405,6 +406,7 @@ namespace CeresTrain.TPG.TPGGenerator
             gameAnalyzer.Dump();
           }
 
+          bool nextPositionExemptFromModulusCheck = false;
 
           for (int i = 0; i < game.NumPositions; i++)
           {
@@ -421,17 +423,25 @@ namespace CeresTrain.TPG.TPGGenerator
             // filtered out then keep sequentially looking for next non-filtered position.
             bool isModulusMatch = numPosScannedThisFile % Options.PositionSkipCount == thisSkipModulus;
 
-            if (!isModulusMatch)
+            if (!isModulusMatch && 
+                !nextPositionExemptFromModulusCheck)
             {
               Interlocked.Increment(ref NumSkippedDueToModulus);
               continue;
             }
 
             // Verify this position acceptable to process.
-            bool okToProcess = PositionAtIndexShouldBeProcessed(i, game, true, positionUsedCountsByHash, numWrittenThisFile);
+            bool okToProcess = PositionAtIndexShouldBeProcessed(i, game, true, true, positionUsedCountsByHash, numWrittenThisFile);
             if (!okToProcess)
             {
+              // We know we've already skipped ahead far enough to ensure position diversity.
+              // Therefore (to enhance efficiency) we allow the next chosen position be exempt from further skip requirements.
+              nextPositionExemptFromModulusCheck = true;
               continue;
+            }
+            else
+            {
+              nextPositionExemptFromModulusCheck = false;
             }
 
             // If we are emitting mutiple boards as a block,
@@ -461,14 +471,14 @@ namespace CeresTrain.TPG.TPGGenerator
               const bool FILTER_OUT_SUBOPTIMAL_MOVES = true;
               const float MOVE_SUBOPTIMALITY_THRESHOLD = FILTER_OUT_SUBOPTIMAL_MOVES ? 0.02f : 999;
 
-              if (!PositionAtIndexShouldBeProcessed(i + 1, game, false, positionUsedCountsByHash, numWrittenThisFile)
-                && PlayedMoveSuboptimalityAtIndex(i) < MOVE_SUBOPTIMALITY_THRESHOLD)
+              if (!PositionAtIndexShouldBeProcessed(i + 1, game, false, false, positionUsedCountsByHash, numWrittenThisFile)
+                || PlayedMoveSuboptimalityAtIndex(i) > MOVE_SUBOPTIMALITY_THRESHOLD)
               {
                 // Continue since we want to also use the single-next position but it is not acceptable.
                 continue;
               }
-              if (!PositionAtIndexShouldBeProcessed(i + 2, game, false, positionUsedCountsByHash, numWrittenThisFile)
-                && PlayedMoveSuboptimalityAtIndex(i + 1) < MOVE_SUBOPTIMALITY_THRESHOLD)
+              if (!PositionAtIndexShouldBeProcessed(i + 2, game, false, false, positionUsedCountsByHash, numWrittenThisFile)
+                || PlayedMoveSuboptimalityAtIndex(i + 1) > MOVE_SUBOPTIMALITY_THRESHOLD)
 
               {
                 // Continue since we want to also use the double-next position
