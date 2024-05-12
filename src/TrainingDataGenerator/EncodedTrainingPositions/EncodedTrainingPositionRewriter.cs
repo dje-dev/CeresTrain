@@ -28,6 +28,7 @@ using System.IO.Compression;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Base.Benchmarking;
 using Ceres.Base.DataType;
+using Ceres.Base.Misc;
 
 
 #endregion
@@ -76,6 +77,8 @@ namespace CeresTrain.TrainingDataGenerator
     {
       DateTime startTime = DateTime.Now;
 
+      Console.WriteLine();
+      ConsoleUtils.WriteLineColored(ConsoleColor.Yellow, "EncodedTrainingPositionRewriter.ConvertTARDir");  
       Console.WriteLine("Converting training positions from LC0 format to Ceres format.");
       Console.WriteLine("  Source dir: " + sourceDir);
       Console.WriteLine("  Target dir: " + targetDir);
@@ -96,6 +99,9 @@ namespace CeresTrain.TrainingDataGenerator
       long numPosWrittenTotal = 0;
       long numGamesSkippedTotal = 0;
       long numSupplementalPosTotal = 0;
+      long bytesReadTotal = 0;
+      long bytesWrittenTotal = 0; 
+
       Parallel.ForEach(files, new ParallelOptions() { MaxDegreeOfParallelism = maxParallel },
         file =>
         {
@@ -109,7 +115,8 @@ namespace CeresTrain.TrainingDataGenerator
 
           using (new TimingBlock(file))
           {
-            (long numGames, long numGamesSkipped, long numPosWritten, long numSupplementalPos) stats = default;
+            (long numGames, long numGamesSkipped, long numPosWritten, long numSupplementalPos,
+            long numBytesRead, long numBytesWritten) stats = default;
 
             try
             {
@@ -118,6 +125,8 @@ namespace CeresTrain.TrainingDataGenerator
               Interlocked.Add(ref numGamesSkippedTotal, stats.numGamesSkipped);
               Interlocked.Add(ref numPosWrittenTotal, stats.numPosWritten);
               Interlocked.Add(ref numSupplementalPosTotal, stats.numSupplementalPos);
+              Interlocked.Add(ref bytesReadTotal, stats.numBytesRead);
+              Interlocked.Add(ref bytesWrittenTotal, stats.numBytesWritten);
             }
             catch (Exception e)
             {
@@ -127,12 +136,20 @@ namespace CeresTrain.TrainingDataGenerator
           }
         });
 
+      var elapsedTime = DateTime.Now - startTime;
+
+      Console.WriteLine();
+      Console.WriteLine("Number bytes read total                  : " + bytesReadTotal.ToString("N0"));
+      Console.WriteLine("Number bytes written total               : " + bytesWrittenTotal.ToString("N0"));
+      Console.WriteLine("Compression ratio                        : " + ((double)bytesWrittenTotal/ bytesReadTotal).ToString("F3"));  
+      Console.WriteLine("Elapsed seconds                          : " + elapsedTime.TotalSeconds.ToString("N2"));
+      Console.WriteLine("TAR processing rate                      : " + (bytesReadTotal / elapsedTime.TotalSeconds / 1e6).ToString("N0") + " MB/s");
       Console.WriteLine();
       Console.WriteLine("Number games processed total             : " + numGamesTotal.ToString("N0"));
       Console.WriteLine("Number games skipped due to Predicate    : " + numGamesSkippedTotal.ToString("N0"));
       Console.WriteLine("Number positions written total           : " + numPosWrittenTotal.ToString("N0"));
+
       Console.WriteLine("Number supplemental positions generated  : " + numSupplementalPosTotal.ToString("N0"));
-      Console.WriteLine("Elapsed seconds                          : " + (DateTime.Now - startTime).TotalSeconds.ToString("N2"));
     }
 
 
@@ -149,20 +166,22 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="compressionLevel"></param>
     /// <param name="maxGames"></param>
     /// <returns></returns>
-    public static (long numGames, long numGamesSkipped, long numPosWritten, long numSupplementalPos) ConvertTAR(string sourceTARName,
-                                                          Predicate<Memory<EncodedTrainingPosition>> acceptGamePredicate,
-                                                          string targetZSTName,
-                                                          bool writeBlocked,
-                                                          LC0TrainingPosGeneratorFromSingleNNEval extraTrainingPositionGenerator,
-                                                          int compressionLevel = DEFAULT_COMPRESSION_LEVEL,
-                                                          int maxGames = int.MaxValue)
+    public static (long numGames, long numGamesSkipped, long numPosWritten, long numSupplementalPos,
+                   long bytesRead, long bytesWritten) 
+      ConvertTAR(string sourceTARName,
+                 Predicate<Memory<EncodedTrainingPosition>> acceptGamePredicate,
+                 string targetZSTName,
+                 bool writeBlocked,
+                 LC0TrainingPosGeneratorFromSingleNNEval extraTrainingPositionGenerator,
+                 int compressionLevel = DEFAULT_COMPRESSION_LEVEL,
+                 int maxGames = int.MaxValue)
     {
       EncodedTrainingPosition[] encodedTrainingPositions = new EncodedTrainingPosition[MAX_GAMES_PER_BLOCK];
 
       PositionsMultipleGamesWriter writer = writeBlocked ? new(MAX_GAMES_PER_BLOCK, compressionLevel) : null;
 
       long posBytesWritten = 0;
-
+      long posBytesRead = new FileInfo(sourceTARName).Length;
       long numGamesWritten = 0;
       long numGamesSkippedDueToAcceptPredicate = 0;
 
@@ -289,9 +308,12 @@ namespace CeresTrain.TrainingDataGenerator
         writer.WriteBlock(tarWriter);
       }
 
+      posBytesWritten = new FileInfo(targetZSTName).Length;
       tarWriter.Dispose();
 
-      return (numGamesWritten, numGamesSkippedDueToAcceptPredicate, numPosWritten, numSupplementalTrainingPositionsGenerated);
+      return (numGamesWritten, numGamesSkippedDueToAcceptPredicate, numPosWritten, 
+              numSupplementalTrainingPositionsGenerated,
+              posBytesRead, posBytesWritten);
     }
 
     [ThreadStatic]
