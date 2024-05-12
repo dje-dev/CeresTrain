@@ -337,7 +337,7 @@ def Train():
   if config.Opt_Optimizer == 'NAdamW':
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
-    optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=True)
+    optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
   else:
     raise ValueError("Unsupported optimizer: " + config.Opt_Optimizer)
 
