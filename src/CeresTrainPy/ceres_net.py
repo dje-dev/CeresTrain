@@ -297,13 +297,13 @@ class CeresNet(pl.LightningModule):
     flattenedSquares = self.headSharedLinear(flattenedSquares)
     
     policy_out = self.policy_head(flattenedSquares)
-    action_out = self.action_head(flattenedSquares).reshape(-1, 1858, 3)
     value_out = self.value_head(flattenedSquares)
     value2_out = self.value2_head(flattenedSquares)
     unc_out = self.unc_head(flattenedSquares)
 
     # Note that if these heads are not used we use a fill-in tensor (borrowed from unc) 
     # to avoid None values that might be problematic in export (especially ONNX)
+    action_out            = self.action_head(flattenedSquares).reshape(-1, 1858, 3) if self.action_loss_weight > 0 else unc_out
     state_out             = self.state_head(flattenedSquares) if self.prior_state_dim > 0 else unc_out
     moves_left_out        = self.mlh_head(flattenedSquares) if self.moves_left_loss_weight > 0 else unc_out
     q_deviation_lower_out = self.qdev_lower(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out
