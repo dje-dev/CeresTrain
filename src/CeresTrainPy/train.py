@@ -190,13 +190,17 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
         # AOT export. Works (generates .so file)
         if False:
           try:
+            aot_output_dir = "./" +TRAINING_ID           
+            aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + ".so")
+            if not os.path.exists(aot_output_dir):
+              os.mkdir(aot_output_dir)
             batch_dim = torch.export.Dim("batch", min=1, max=1024)
             so_path = torch._export.aot_compile(model,
                                                 (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
-                                                 torch.rand(256, 64, 32).to(convert_type).to(m.device)),
+                                                 torch.rand(256, 64, 4).to(convert_type).to(m.device)),
                                                 #dynamic_shapes={"flow": {0: batch_dim}}, 
 #                                                dynamic_shapes=[{"flow": {0: batch_dim}}, {"appended_inputs": {0: batch_dim}}], 
-                                                options={"aot_inductor.output_path": os.path.join(os.getcwd(), "model.so")})    
+                                                options={"aot_inductor.output_path": aot_output_path})
             print('INFO: AOT_BINARY', 'model.so')
           except Exception as e:
             print(f"Warning: torch._export.aot_compile save failed, skipping. Exception details: {e}")
