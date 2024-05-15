@@ -47,9 +47,11 @@ torch.backends.cuda.enable_flash_sdp(False)
 torch.backends.cuda.enable_mem_efficient_sdp(True) # efficient seems faster than flash for short sequences
 
 # Settings to facilitate interactive debugging:
-# NOTE: need to also disable compile 
+# N.B. probably need to also:
+#  - set TPG_TRAIN_DIR to dummy value (possibly)
+#  - disable torch.compile
 #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
-#sys.argv = ['train.py', '/mnt/deve/cout/configs/ENT_256_10_16_FFN2_500mm_smol_moe_dualboth', '/mnt/deve/cout']
+#sys.argv = ['train.py', '/mnt/deve/cout/configs/C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3', '/mnt/deve/cout']
 
 
 if len(sys.argv) < 3:
@@ -115,7 +117,7 @@ time_last_save_permanent = datetime.datetime.now()
 time_last_save_transient = datetime.datetime.now()
 
 
-def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any], net_step : str, save_onnx : str):
+def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any], net_step : str, save_all_formats : str):
   CKPT_NAME = "ckpt_" + NAME + "_" + net_step
 
   with torch.no_grad():
@@ -125,6 +127,26 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
     sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
                      torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
+
+    # AOT export. Works (generates .so file)
+    if False and save_all_formats:
+      try:
+        aot_output_dir = "./" +TRAINING_ID           
+        aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + ".so")
+        if not os.path.exists(aot_output_dir):
+          os.mkdir(aot_output_dir)
+        batch_dim = torch.export.Dim("batch", min=1, max=1024)
+        aot_example_inputs = (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
+                              torch.rand(256, 64, 4).to(convert_type).to(m.device))
+        so_path = torch._export.aot_compile(model,
+                                            aot_example_inputs,
+                                            dynamic_shapes={"squares": {0: batch_dim}, "prior_state": {0: batch_dim}},
+                                            options={"aot_inductor.output_path": aot_output_path})
+        print('INFO: AOT_BINARY', so_path)
+        exit(3)
+      except Exception as e:
+        print(f"Warning: torch._export.aot_compile save failed, skipping. Exception details: {e}")
+  
 
 
     # below simpler method fails, probably due to use of .compile
@@ -153,9 +175,9 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     try:
       ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
       ONNX16_SAVE_PATH = SAVE_TS_PATH + "_16.onnx"
-      
+    
       # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
-      if save_onnx: # possibly hangs or crashes, possibly on in certain compiled modes
+      if save_all_formats: # possibly hangs or crashes, possibly on in certain compiled modes
         head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action', 'prior_state']
         output_axes = {'squares' : {0 : 'batch_size'},    
                        'policy' : {0 : 'batch_size'},
@@ -187,24 +209,6 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
           except Exception as e:
             print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
-        # AOT export. Works (generates .so file)
-        if False:
-          try:
-            aot_output_dir = "./" +TRAINING_ID           
-            aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + ".so")
-            if not os.path.exists(aot_output_dir):
-              os.mkdir(aot_output_dir)
-            batch_dim = torch.export.Dim("batch", min=1, max=1024)
-            so_path = torch._export.aot_compile(model,
-                                                (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
-                                                 torch.rand(256, 64, 4).to(convert_type).to(m.device)),
-                                                #dynamic_shapes={"flow": {0: batch_dim}}, 
-#                                                dynamic_shapes=[{"flow": {0: batch_dim}}, {"appended_inputs": {0: batch_dim}}], 
-                                                options={"aot_inductor.output_path": aot_output_path})
-            print('INFO: AOT_BINARY', 'model.so')
-          except Exception as e:
-            print(f"Warning: torch._export.aot_compile save failed, skipping. Exception details: {e}")
-  
         # Legacy ONNX export. Fails:
         #   ONNX save failed, skipping. Exception details: CeresNet.forward() missing 1 required positional argument: 'prior_state'  
         if False:
@@ -372,13 +376,13 @@ def Train():
 
   # Sample code to load from a saved TorchScript model (and possibly save back)
   if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_572002304_jit.ts')
+    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_final.ts')
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
           pytorch_param.data.copy_(torchscript_param.data)
     del torchscript_model
-#    save_to_torchscript(fabric, model, state, "fix", True)
-#    exit(3)  
+    save_to_torchscript(fabric, model, state, "fix", True)
+    exit(3)  
     
  
   fabric.launch()
