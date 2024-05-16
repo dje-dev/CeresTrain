@@ -46,23 +46,39 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.enable_flash_sdp(False)
 torch.backends.cuda.enable_mem_efficient_sdp(True) # efficient seems faster than flash for short sequences
 
-# Settings to facilitate interactive debugging:
-# N.B. probably need to also:
-#  - set TPG_TRAIN_DIR to dummy value (possibly)
-#  - disable torch.compile
-#os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
-#sys.argv = ['train.py', '/mnt/deve/cout/configs/C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3', '/mnt/deve/cout']
-
 
 if len(sys.argv) < 3:
-  raise ValueError("train.py expected <config_path> <outputs_directory>")
+  raise ValueError("expected: train.py <config_name> <outputs_directory>")
 
 TRAINING_ID = sys.argv[1]
 OUTPUTS_DIR = sys.argv[2]
-CONVERT_ONLY = len(sys.argv) >= 4 and sys.argv[3].upper() == 'CONVERT'
 
-config = Configuration('.', TRAINING_ID)
+config = Configuration('.', os.path.join(OUTPUTS_DIR, "configs", TRAINING_ID))
 TPG_TRAIN_DIR = config.Data_TrainingFilesDirectory 
+
+if len(sys.argv) > 3 and sys.argv[3].upper() == 'CONVERT':
+  #  "expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
+  # Settings to facilitate interactive debugging:
+  # N.B. probably need to also:
+  #  - set TPG_TRAIN_DIR to dummy value (possibly)
+  #  - disable torch.compile
+  #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
+  #sys.argv = ['train.py', '/mnt/deve/cout/configs/C5_B1_512_15_16_4_32bn_2024', '/mnt/deve/cout']
+  CONVERT_ONLY = True
+  config.Opt_PyTorchCompileMode = None
+  #devices=[0]
+  TPG_TRAIN_DIR = "."
+  # N.B. *** TEMP HARDCODED PATH HERE ****
+  config.Opt_StartingCheckpointFN = os.path.join(OUTPUTS_DIR, 'nets', 'ckpt_DGX_C5_B1_512_15_16_4_32bn_2024_618479616_jit.ts')
+else:
+  CONVERT_ONLY = False
+
+#  if CONVERT_ONLY:
+#    if len(sys.argv) < 5:
+#      raise("Missing required argument indicating step count of checkpoint file. Arguments expected: <config_id> <out_path> CONVERT <step>")
+#    net_step = sys.argv[4]
+#    save_to_torchscript(fabric, model, state, net_step, True)
+#    exit(0)
 
 #TODO: would be better to use asserts but they are not captured by the remote process executor
 if TPG_TRAIN_DIR is None:
@@ -88,7 +104,7 @@ def print_model_trainable_details(model):
   print()
   print("INFO: NUM_PARAMETERS", str(num_params))
 
-NAME = socket.gethostname() + "_" + os.path.basename(TRAINING_ID)
+NAME = socket.gethostname() + "_" + TRAINING_ID
 
 accelerator = config.Exec_DeviceType.lower()
 devices = config.Exec_DeviceIDs
@@ -121,27 +137,33 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
   CKPT_NAME = "ckpt_" + NAME + "_" + net_step
 
   with torch.no_grad():
+    convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
+
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
+    m = m.cuda().to(convert_type)
     m.eval()
 
-    convert_type = torch.bfloat16 if config.Exec_UseFP8 else torch.float32 # this is necessary, for unknown reasons
-    sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
-                     torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
-
     # AOT export. Works (generates .so file)
-    if False and save_all_formats:
+    if CONVERT_ONLY:
       try:
-        aot_output_dir = "./" +TRAINING_ID           
+        aot_output_dir = "./" + TRAINING_ID
         aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + ".so")
         if not os.path.exists(aot_output_dir):
           os.mkdir(aot_output_dir)
         batch_dim = torch.export.Dim("batch", min=1, max=1024)
         aot_example_inputs = (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
                               torch.rand(256, 64, 4).to(convert_type).to(m.device))
-        so_path = torch._export.aot_compile(model,
+        with torch.no_grad():
+          so_path = torch._export.aot_compile(model,
                                             aot_example_inputs,
                                             dynamic_shapes={"squares": {0: batch_dim}, "prior_state": {0: batch_dim}},
-                                            options={"aot_inductor.output_path": aot_output_path})
+                                            options={"aot_inductor.output_path": aot_output_path,
+                                                    "max_autotune" : True,
+                                                    "max_autotune_gemm" : True,
+                                                    "max_autotune_pointwise" : True,
+                                                    "shape_padding" : True,
+                                                    "permute_fusion":True
+                                                    })
         print('INFO: AOT_BINARY', so_path)
         exit(3)
       except Exception as e:
@@ -151,6 +173,9 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
 
     # below simpler method fails, probably due to use of .compile
     if True:
+      sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
+                       torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
+
       try:
         SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
         m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
@@ -189,15 +214,6 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                        'q_deviation_upper': {0 : 'batch_size'},
                        'action': {0 : 'batch_size'},
                        'prior_state': {0 : 'batch_size'}}
-
-#        if config.Opt_LossActionMultiplier > 0:
-#          head_output_names.append('action')
-#          output_axes['action'] = {0: 'batch_size'}
-
-#        if config.NetDef_PriorStateDim > 0:
-#          head_output_names.append('prior_state')
-#          output_axes['prior_state'] = {0: 'batch_size'}
-#          , output_names=head_output_names)        
 
         # TorchDynamo based export. Works, but when try to do inference from C# it fails on second call (reshape)
         if False:
@@ -292,13 +308,6 @@ def Train():
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
 
   
-#  if CONVERT_ONLY:
-#    if len(sys.argv) < 5:
-#      raise("Missing required argument indicating step count of checkpoint file. Arguments expected: <config_id> <out_path> CONVERT <step>")
-#    net_step = sys.argv[4]
-#    save_to_torchscript(fabric, model, state, net_step, True)
-#    exit(0)
-
 
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
@@ -375,15 +384,20 @@ def Train():
   state = {"model": model, "optimizer": optimizer, "num_pos" : num_pos}
 
   # Sample code to load from a saved TorchScript model (and possibly save back)
-  if False:
-    torchscript_model = torch.jit.load('/mnt/deve/cout/nets/ckpt_DGX_C5_512_12_16_6_48bn_rpeQK_DT_4k_LR3_S4_VDp1_Ap3_final.ts')
-    with torch.no_grad():
-      for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
-          pytorch_param.data.copy_(torchscript_param.data)
-    del torchscript_model
-    save_to_torchscript(fabric, model, state, "fix", True)
-    exit(3)  
+  if CONVERT_ONLY:
+    if config.Opt_StartingCheckpointFN is None:   
+      raise ValueError("No starting checkpoint specified for conversion")
+    else:
+      print("loading ", config.Opt_StartingCheckpointFN)
+      torchscript_model = torch.jit.load(config.Opt_StartingCheckpointFN)
+      with torch.no_grad():
+        for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
+            pytorch_param.data.copy_(torchscript_param.data)
+      del torchscript_model
     
+      print("converting....")
+      save_to_torchscript(fabric, model, state, "fix", True)
+      exit(3)      
  
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)

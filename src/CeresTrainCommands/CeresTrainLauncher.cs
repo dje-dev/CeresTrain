@@ -143,17 +143,17 @@ namespace CeresTrain.TrainCommands
     /// <param name="hostName"></param>
     /// <param name="userName"></param>
     /// <param name="hostWorkingDir"></param>
-    /// <param name="configBasePath"></param>
+    /// <param name="configID"></param>
     /// <param name="configPath"></param>
     /// <param name="config"></param>
     /// <param name="saveNetDirectory"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configBasePath,
+    public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configID,
                                                      string configPath, in ConfigTraining config, string outputsDirectory,
                                                      string dockerLaunchCommand,
                                                      TrainingStatusTable trainingStatusTable)
     {
-      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, hostWorkingDir, configBasePath, in config, configPath, trainingStatusTable);
+      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, hostWorkingDir, configID, in config, configPath, trainingStatusTable);
 
       DateTime startTime = DateTime.Now;
 
@@ -171,10 +171,10 @@ namespace CeresTrain.TrainCommands
 
       consoleStatusTable.RunTraining(() =>
       {
-        DoGoRemote(consoleStatusTable, logger, hostName, userName, dockerLaunchCommand, hostWorkingDir, configPath, outputsDirectory);
+        DoGoRemote(consoleStatusTable, logger, hostName, userName, dockerLaunchCommand, configID, hostWorkingDir, configPath, outputsDirectory);
       });
 
-      return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configBasePath, startTime, logger, consoleStatusTable);
+      return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configID, startTime, logger, consoleStatusTable);
     }
 
 
@@ -185,7 +185,8 @@ namespace CeresTrain.TrainCommands
 
     static void DoGoRemote(TrainingStatusTable table, FileLogger logger,
                            string hostName, string userName, 
-                           string dockerLaunchCommand, string baseDir,
+                           string dockerLaunchCommand,
+                           string configID, string baseDir,
                            string configBasePath, string outputsDirectory)
     {
       using SSHClient sshClientx = new SSHClient(hostName, userName);
@@ -202,8 +203,8 @@ namespace CeresTrain.TrainCommands
 
       int numTrainLinesSeen = 0;
       DateTime startTime = default;
-
-      string command = $"cd {baseDir} && python3 train.py {configBasePath} {outputsDirectory}";
+      //python3 train.py /mnt/deve/cout/configs/C5_B1_512_15_16_4_32bn_2024 /mnt/deve/cout
+      string command = $"cd {baseDir} && python3 train.py {configID} {outputsDirectory}";
 
       if (dockerLaunchCommand != null)
       {
@@ -264,7 +265,6 @@ namespace CeresTrain.TrainCommands
           else
           {
             logger.AddLine(line);
-            string configID = new FileInfo(configBasePath).Name;
             CeresTrainCommandUtils.UpdateTableWithLine(table, configID, hostName, ref startTime, ref numTrainLinesSeen, line);
 
             if (line.StartsWith(END_TRAINING_PHRASE))
