@@ -66,10 +66,12 @@ if len(sys.argv) > 3 and sys.argv[3].upper() == 'CONVERT':
   #sys.argv = ['train.py', '/mnt/deve/cout/configs/C5_B1_512_15_16_4_32bn_2024', '/mnt/deve/cout']
   CONVERT_ONLY = True
   config.Opt_PyTorchCompileMode = None
-  #devices=[0]
-  TPG_TRAIN_DIR = "."
-  # N.B. *** TEMP HARDCODED PATH HERE ****
-  config.Opt_StartingCheckpointFN = os.path.join(OUTPUTS_DIR, 'nets', 'ckpt_DGX_C5_B1_512_15_16_4_32bn_2024_618479616_jit.ts')
+  config.Exec_DeviceIDs = [0] # always build based on GPU at index 0
+  TPG_TRAIN_DIR = "." # path not actually used/needed
+  if len(sys.argv) < 5:
+    raise ValueError("expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
+  checkpoint_path_to_load = sys.argv[4]
+  config.Opt_StartingCheckpointFN = os.path.join(OUTPUTS_DIR, 'nets', checkpoint_path_to_load)
 else:
   CONVERT_ONLY = False
 
@@ -146,10 +148,20 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # AOT export. Works (generates .so file)
     if CONVERT_ONLY:
       try:
+        # get a device capabilities string (such as cuda_sm90)
+        if torch.cuda.is_available():
+          device = torch.cuda.get_device_properties(0)
+          compute_capability = device.major, device.minor
+          hardware_postfix = f"_cuda_sm{compute_capability[0]}{compute_capability[1]}" 
+        else:
+          hardware_postfix = "_cpu"
+
+        #prepare output file name and directory
         aot_output_dir = "./" + TRAINING_ID
-        aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + ".so")
+        aot_output_path = os.path.join(aot_output_dir, TRAINING_ID + hardware_postfix + ".so")
         if not os.path.exists(aot_output_dir):
           os.mkdir(aot_output_dir)
+          
         batch_dim = torch.export.Dim("batch", min=1, max=1024)
         aot_example_inputs = (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
                               torch.rand(256, 64, 4).to(convert_type).to(m.device))
@@ -327,6 +339,8 @@ def Train():
           elif "rpe_factor" in fpn:
               pass
           elif "alphas" in fpn: # for Denseformer
+              decay.add(fpn)
+          elif ".mem_" in fpn:
               decay.add(fpn)
           elif "qkv" in fpn:
               decay.add(fpn)
