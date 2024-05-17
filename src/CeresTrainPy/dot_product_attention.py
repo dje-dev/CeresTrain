@@ -91,12 +91,6 @@ class DotProductAttention(torch.nn.Module):
     self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
-#    if num_mem_kv > 0:
-    if self.test:
-      self.num_mem_kv = 192 #768 * 1 - 64
-      self.mem_k = torch.nn.Parameter(torch.randn(self.num_heads, self.num_mem_kv, self.d_k))
-      self.mem_v = torch.nn.Parameter(torch.randn(self.num_heads, self.num_mem_kv, self.d_k))
-
     if self.use_rpe:
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
@@ -177,15 +171,7 @@ class DotProductAttention(torch.nn.Module):
     qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
     qkv = qkv.permute(0, 2, 1, 3)
     Q, K, V = qkv.chunk(3, dim=-1)
-
-    if self.test:
-      # See "Augmenting Self-attention with Persistent Memory" by Sukhbaatar et. al. 2019
-      # Code fragment below borrowed from x-transformers library (https://github.com/lucidrains/x-transformers/tree/main)
-      assert not (self.use_smolgen or self.use_rpe), "Persistent memory mode does not support smolgen or RPE"
-      mem_k, mem_v = map(lambda t: repeat(t, 'h n d -> b h n d', b = x.shape[0]), (self.mem_k, self.mem_v))
-      K = torch.cat((mem_k, K), dim = -2)
-      V = torch.cat((mem_v, V), dim = -2)
-     
+    
     if self.use_smolgen:
       smolgen = self.sm1(x)
       smolgen = smolgen.reshape(- 1, self.num_tokens_q * self.smolgen_per_square_dim)
