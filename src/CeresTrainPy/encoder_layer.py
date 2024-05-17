@@ -92,7 +92,7 @@ class EncoderLayer(torch.nn.Module):
 
 
   def forward(self, x: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
-    attn_output = self.attention.forward(x, x, x, x, global_state)    
+    attn_output = self.attention(x, x, x, x, global_state)    
     
     if (self.dropout_rate > 0):
       attn_output = self.dropout_attn(attn_output)
