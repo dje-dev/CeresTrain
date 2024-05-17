@@ -314,9 +314,9 @@ namespace CeresTrain.Networks.Transformer
         throw new Exception($"ModelDim ({ModelDim}) must be divisible by NumHeads ({NumHeads})");
       }
 
-      if (NumLayers < 1 || ModelDim < 1 || FFNMultiplier < 1 || AttentionMultiplier < 1 || HeadWidthMultiplier < 1)
+      if (NumLayers < 1 || ModelDim < 1 || AttentionMultiplier < 1 || HeadWidthMultiplier < 1)
       {
-        throw new Exception($"One of NumLayers/ModelDim/FFNMultiplier/AttentionMultiplier/HeadWidthMultiplier is too small (less than 1).");
+        throw new Exception($"One of NumLayers/ModelDim/AttentionMultiplier/HeadWidthMultiplier is too small (less than 1).");
       }
     }
 
