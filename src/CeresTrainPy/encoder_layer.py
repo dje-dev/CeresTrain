@@ -50,7 +50,8 @@ class EncoderLayer(torch.nn.Module):
     self.attention_multiplier = attention_multiplier
     self.dropout_rate = dropout_rate
     self.dual_attention_mode = dual_attention_mode
-
+    self.ffn_hidden_size = ffn_hidden_size
+    
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv,  num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, 
@@ -86,7 +87,8 @@ class EncoderLayer(torch.nn.Module):
     else:
       self.moe = None
 
-    self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
+    if ffn_hidden_size > 0:
+      self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
 
 
   def forward(self, x: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
@@ -96,24 +98,28 @@ class EncoderLayer(torch.nn.Module):
       attn_output = self.dropout_attn(attn_output)
       
     out1 = self.ln1(x * self.alpha + attn_output)
-    if self.moe and self.smoe_mode == 'ReplaceLinear':
-      assert self.ffn_activation_type in ('ReLUSquared') # SoftMoEBatchedDual currently only supports ReLUSquared
-      mlp_output = self.moe(out1)
-    else:
-      (mlp_before_linear2, mlp_output) = self.mlp(out1) 
-      if self.moe:
-        if self.smoe_mode == 'AddLinearSecondLayer':
-          mlp_output += self.moe(mlp_before_linear2)
-        elif self.smoe_mode == 'ReplaceLinearSecondLayer':
-          mlp_output = self.moe(mlp_before_linear2)
-        else:
-          assert False, f"Invalid smoe_mode {self.smoe_mode}"
 
-    if self.dropout_rate > 0:
-      mlp_output = self.dropout_mlp(mlp_output)
+    if self.ffn_hidden_size > 0:
+      if self.moe and self.smoe_mode == 'ReplaceLinear':
+        assert self.ffn_activation_type in ('ReLUSquared') # SoftMoEBatchedDual currently only supports ReLUSquared
+        mlp_output = self.moe(out1)
+      else:
+        (mlp_before_linear2, mlp_output) = self.mlp(out1) 
+        if self.moe:
+          if self.smoe_mode == 'AddLinearSecondLayer':
+            mlp_output += self.moe(mlp_before_linear2)
+          elif self.smoe_mode == 'ReplaceLinearSecondLayer':
+            mlp_output = self.moe(mlp_before_linear2)
+          else:
+            assert False, f"Invalid smoe_mode {self.smoe_mode}"
+
+        if self.dropout_rate > 0:
+          mlp_output = self.dropout_mlp(mlp_output)
       
-    out2 = self.ln2(out1 * self.alpha + mlp_output)
-    
+        out2 = self.ln2(out1 * self.alpha + mlp_output)
+    else:
+      out2 = out1
+      
     if self.dual_attention_mode != 'None':
       out3_tr = out2.permute(0, 2, 1)
       attn_output3 = self.attention2(out3_tr, out3_tr, out3_tr, out3_tr, None)
