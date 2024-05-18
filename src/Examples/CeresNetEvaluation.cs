@@ -712,7 +712,7 @@ namespace CeresTrain.Examples
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
         const bool HAS_UNCERTAINTY = false; // someday conditionally enable this
         const bool ENABLE_PROFILING = false;
-        const bool HAS_ACTION = true;
+        bool HAS_ACTION = evaluatorOptions.UseAction;
 
         string onnxFN = netFN + ".onnx"; 
         if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
