@@ -37,8 +37,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="numPositions"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] TestBatchParallel(string piecesString, long? numPositions,
-                                                            params TrainingSessionSpecification[] variants)
+    public static TrainingResultSummary[] TestBatchParallel(string piecesString, params TrainingSessionSpecification[] variants)
     {
       // Throw exception if any of the variants have the same ID
       string[] variantsArray = variants.Select(v => v.variantID).ToArray();
@@ -47,14 +46,11 @@ namespace CeresTrain.TrainCommands
         throw new Exception("Duplicate variant IDs in variants array");
       }
 
-      if (numPositions is null)
-      {
-        numPositions = variants.Max(v => v.baseConfig.OptConfig.NumTrainingPositions);
-      }
-
+      long maxNumPositions = variants.Max(v => v.baseConfig.OptConfig.NumTrainingPositions);
+      
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
-      TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", numPositions.Value, true);
+      TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", maxNumPositions, true);
 
       List<TrainingResultSummary> results = new();
 
@@ -78,7 +74,7 @@ namespace CeresTrain.TrainCommands
         // Random sleep to avoid overloading the server.
         System.Threading.Thread.Sleep((int)(2000f * Random.Shared.NextSingle()));
 
-        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions.Value, variant.hostConfig.HostName, variant.tpgDir, variant.deviceIDs, sharedStatusTable);
+        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, null, variant.hostConfig.HostName, null, variant.deviceIDs, sharedStatusTable);
 
         lock (lockObj)
         {
@@ -156,16 +152,16 @@ namespace CeresTrain.TrainCommands
 
   }
 
-  public record struct TrainingSessionSpecification(string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig)
+  public record struct TrainingSessionSpecification(string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, ConfigTraining baseConfig)
   {
-    public static implicit operator (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig)(TrainingSessionSpecification value)
+    public static implicit operator (string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, ConfigTraining baseConfig)(TrainingSessionSpecification value)
     {
-      return (value.variantID, value.hostConfig, value.deviceIDs, value.tpgDir, value.baseConfig);
+      return (value.variantID, value.hostConfig, value.deviceIDs, value.baseConfig);
     }
 
-    public static implicit operator TrainingSessionSpecification((string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, string tpgDir, ConfigTraining baseConfig) value)
+    public static implicit operator TrainingSessionSpecification((string variantID, CeresTrainHostConfig hostConfig, int[] deviceIDs, ConfigTraining baseConfig) value)
     {
-      return new TrainingSessionSpecification(value.variantID, value.hostConfig, value.deviceIDs, value.tpgDir, value.baseConfig);
+      return new TrainingSessionSpecification(value.variantID, value.hostConfig, value.deviceIDs, value.baseConfig);
     }
   }
 }

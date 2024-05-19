@@ -84,32 +84,28 @@ namespace CeresTrain.TrainCommands
     /// <param name="devices"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr, long numPos,
-                                                           string hostName, string tpgDir, int[] devices,
-                                                           TrainingStatusTable trainingStatusTable)
+    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr,
+                                                            long? numPos,
+                                                            string hostName, string? tpgDir, int[] devices,
+                                                            TrainingStatusTable trainingStatusTable)
     {
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
       CeresTrainHostConfig hostConfig = default;
       if (hostName != null)
       {
-        if (tpgDir == null)
-        {
-          throw new Exception("Must specify tpg-dir argument if using a remote host (directory referenced from host).");
-        }
-
         if (!CeresTrainHostConfig.RegisteredConfigs.TryGetValue(hostName, out hostConfig))
         {
           throw new Exception($"Host {hostName} not known (case sensitive), register in TrainingHostConfig.RegisteredConfigs");
         };
       }
 
-      return ProcessTrainCommand(configID, piecesStr, numPos, hostConfig, tpgDir, devices, trainingStatusTable);
+      return ProcessTrainCommand(configID, piecesStr, numPos, tpgDir, hostConfig, devices, trainingStatusTable);
     }
 
 
-    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr, long? numPos,
-                                                            CeresTrainHostConfig hostConfig, string tpgDir, int[] devices,
+    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr, long? numPos, string? tpgDir,
+                                                            CeresTrainHostConfig hostConfig, int[] devices,
                                                             TrainingStatusTable trainingStatusTable)
     {
       string configsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs");
@@ -118,13 +114,14 @@ namespace CeresTrain.TrainCommands
       {
 
         string configBaseName = Path.Combine(configsDir, configID);
-        int? overrideForwardBatchSize = null;// 1024;// null;// 2048;
 
         if (hostConfig.HostName == null) // local
         {
           // Run locally.
-          ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, tpgDir, numPos,
-                                                                              devices, overrideForwardBatchSize);
+          ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, devices);
+           
+          adjustedConfig = adjustedConfig with { OptConfig  = adjustedConfig.OptConfig with { NumTrainingPositions = numPos ?? adjustedConfig.OptConfig.NumTrainingPositions }, 
+                                                 DataConfig = adjustedConfig.DataConfig with { TrainingFilesDirectory = tpgDir ?? adjustedConfig.DataConfig.TrainingFilesDirectory} };
           result = CeresTrainLauncher.RunLocalCSharp(configID, piecesStr, in adjustedConfig, trainingStatusTable);
         }
         else if (hostConfig.HostName.ToUpper() == "WSL")
@@ -136,14 +133,14 @@ namespace CeresTrain.TrainCommands
           }
 
           int[] overrideDevice = [0];
-          ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, tpgDir, numPos,
-                                                                              devices, overrideForwardBatchSize, hostConfig.OverridePyTorchCompileMode);
+          ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
+                                                                              devices, hostConfig.OverridePyTorchCompileMode);
           result = CeresTrainLauncher.RunRemoteWSL(hostConfig.CeresTrainPyDir, configID, hostConfig.PathToOutputFromHost, in adjustedConfig, trainingStatusTable);
         }
         else
         {
-          ConfigTraining configRemote = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, tpgDir, numPos,
-                                                                            devices, overrideForwardBatchSize, hostConfig.OverridePyTorchCompileMode);
+          ConfigTraining configRemote = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
+                                                                            devices, hostConfig.OverridePyTorchCompileMode);
 
           string pathToConfigFromHost = hostConfig.PathToOutputFromHost + "/configs/" + configID;
 
@@ -182,7 +179,7 @@ namespace CeresTrain.TrainCommands
         }
 
         string fullConfigPath = Path.Combine(configsDir, configID);
-        ConfigTraining config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, configID, piecesStr);
+        ConfigTraining config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, piecesStr);
         CeresNetEvaluation.RunUCILoop(config.NetDefConfig, config.ExecConfig, resultsFile.Value.NetFileName, netSpecForUncoveredPositions, "GPU:0", null);
       }
     }

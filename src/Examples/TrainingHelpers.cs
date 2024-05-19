@@ -44,32 +44,34 @@ namespace CeresTrain.Examples
     /// <param name="id"></param>
     /// <param name="deviceIDs"></param>
     public static ConfigTraining AdjustAndLoadConfig(string id, string piecesStr,
-                                                     string dataFilesDir = null, long? numPos = 0, int[] deviceIDs = null,
-                                                     int? batchSizeForwardPassOverride = null, string pyTorchCompileMode = null)
+                                                     int[] deviceIDs = null, string pyTorchCompileMode = null)
     {
-      if (piecesStr == null && dataFilesDir == null)
-      {
-        throw new ArgumentException("Must specify either piecesStr or dataFilesDir");
-      }
-
-      if (piecesStr != null && dataFilesDir != null)
-      {
-        throw new ArgumentException("Implementation limitation: pieces filter not currently supported when reading from training data files");
-      }
-
       if (deviceIDs == null || deviceIDs.Length == 0)
       {
         deviceIDs = [0];
       }
 
-      bool useTPGFiles = dataFilesDir != null;
-      ConfigSerializationJSON.ReadConfigJSON(id, out ConfigData configData, out ConfigNetExecution configExec,
-                                              out NetTransformerDef configTransformerDef, out ConfigOptimization configOptimization, out ConfigMonitoring configMonitoring);
+      ConfigSerializationJSON.ReadConfigJSON(id,
+                                             out ConfigData configData, 
+                                             out ConfigNetExecution configExec,
+                                             out NetTransformerDef configTransformerDef, 
+                                             out ConfigOptimization configOptimization, 
+                                             out ConfigMonitoring configMonitoring);
+
+      if (piecesStr == null && configData.TrainingFilesDirectory == null)
+      {
+        throw new ArgumentException("Must specify either piecesStr or dataFilesDir");
+      }
+
+      if (piecesStr != null && configData.TrainingFilesDirectory != null)
+      {
+        throw new ArgumentException("Implementation limitation: pieces filter not currently supported when reading from training data files");
+      }
+
       configData = configData with
       {
         SourceType = configData.SourceType,
-        PositionGenerator = useTPGFiles ? null : new PositionGeneratorRandomFromPieces(piecesStr),
-        TrainingFilesDirectory = dataFilesDir
+        PositionGenerator = piecesStr != null ? new PositionGeneratorRandomFromPieces(piecesStr) : null,
       };
 
       if (deviceIDs != null)
@@ -78,9 +80,7 @@ namespace CeresTrain.Examples
       }
       configOptimization = configOptimization with
       {
-        NumTrainingPositions = numPos is null ? configOptimization.NumTrainingPositions : numPos.Value,
         PyTorchCompileMode = pyTorchCompileMode ?? configOptimization.PyTorchCompileMode,
-        BatchSizeBackwardPass = batchSizeForwardPassOverride ?? configOptimization.BatchSizeBackwardPass
       };
       ConfigSerializationJSON.WriteConfigJSON(id, configData, configExec, configTransformerDef, configOptimization, configMonitoring);
       return new ConfigTraining(configExec, configTransformerDef, configData, configOptimization, configMonitoring);
