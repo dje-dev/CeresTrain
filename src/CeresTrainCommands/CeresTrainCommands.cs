@@ -108,7 +108,7 @@ namespace CeresTrain.TrainCommands
     }
 
 
-    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr, long numPos,
+    public static TrainingResultSummary ProcessTrainCommand(string configID, string piecesStr, long? numPos,
                                                             CeresTrainHostConfig hostConfig, string tpgDir, int[] devices,
                                                             TrainingStatusTable trainingStatusTable)
     {

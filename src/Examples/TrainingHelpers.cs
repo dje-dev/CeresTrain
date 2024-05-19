@@ -44,7 +44,7 @@ namespace CeresTrain.Examples
     /// <param name="id"></param>
     /// <param name="deviceIDs"></param>
     public static ConfigTraining AdjustAndLoadConfig(string id, string piecesStr,
-                                                     string dataFilesDir = null, long numPos = 0, int[] deviceIDs = null,
+                                                     string dataFilesDir = null, long? numPos = 0, int[] deviceIDs = null,
                                                      int? batchSizeForwardPassOverride = null, string pyTorchCompileMode = null)
     {
       if (piecesStr == null && dataFilesDir == null)
@@ -78,7 +78,7 @@ namespace CeresTrain.Examples
       }
       configOptimization = configOptimization with
       {
-        NumTrainingPositions = numPos,
+        NumTrainingPositions = numPos is null ? configOptimization.NumTrainingPositions : numPos.Value,
         PyTorchCompileMode = pyTorchCompileMode ?? configOptimization.PyTorchCompileMode,
         BatchSizeBackwardPass = batchSizeForwardPassOverride ?? configOptimization.BatchSizeBackwardPass
       };

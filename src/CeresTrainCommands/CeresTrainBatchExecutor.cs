@@ -37,7 +37,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="numPositions"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] TestBatchParallel(string piecesString, long numPositions,
+    public static TrainingResultSummary[] TestBatchParallel(string piecesString, long? numPositions,
                                                             params TrainingSessionSpecification[] variants)
     {
       // Throw exception if any of the variants have the same ID
@@ -47,9 +47,14 @@ namespace CeresTrain.TrainCommands
         throw new Exception("Duplicate variant IDs in variants array");
       }
 
+      if (numPositions is null)
+      {
+        numPositions = variants.Max(v => v.baseConfig.OptConfig.NumTrainingPositions);
+      }
+
       CeresTrainInitialization.InitializeCeresTrainEnvironment();
 
-      TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", numPositions, true);
+      TrainingStatusTable sharedStatusTable = new TrainingStatusTable("SHARED TRAIN", "SHARED TRAIN", numPositions.Value, true);
 
       List<TrainingResultSummary> results = new();
 
@@ -73,7 +78,7 @@ namespace CeresTrain.TrainCommands
         // Random sleep to avoid overloading the server.
         System.Threading.Thread.Sleep((int)(2000f * Random.Shared.NextSingle()));
 
-        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions, variant.hostConfig.HostName, variant.tpgDir, variant.deviceIDs, sharedStatusTable);
+        TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, numPositions.Value, variant.hostConfig.HostName, variant.tpgDir, variant.deviceIDs, sharedStatusTable);
 
         lock (lockObj)
         {
