@@ -140,15 +140,16 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
   #fabric.barrier() # try to prevent problems with hanging
 
   with torch.no_grad():
-    convert_type = torch.float16
+    convert_type = model.dtype  #torch.float16
 
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
-    m = m.cuda().to(convert_type)
     m.eval()
 
     # AOT export. Works (generates .so file)
     if False and CONVERT_ONLY:
       try:
+        #m = m.cuda().to(convert_type) # this might be necessary for AOT convert, but may cause subsequent failures if running net
+
         # get a device capabilities string (such as cuda_sm90)
         if torch.cuda.is_available():
           device = torch.cuda.get_device_properties(0)
@@ -187,7 +188,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # below simpler method fails, probably due to use of .compile
     sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
                      torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
-    if False:
+    if True:
       try:
         SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
         m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
@@ -196,7 +197,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
       except Exception as e:
         print(f"Warning: to_torchscript save failed, skipping. Exception details: {e}")
 
-    if True: # equivalent to above (this is just the raw PyTorch way rather than Lightning way above)
+    if False: # equivalent to above (this is just the raw PyTorch way rather than Lightning way above)
       try:
         SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + "_jit.ts")
         m_save = torch.jit.trace(m, sample_inputs)        
@@ -209,7 +210,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     
     if save_all_formats:
       ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
-      ONNX16_SAVE_PATH = SAVE_TS_PATH + "_onnx.fp16.onnx"
+      ONNX16_SAVE_PATH = SAVE_TS_PATH + ".fp16.onnx"
 
       # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
       # TorchDynamo based export. Works, but when try to do inference from C# it fails on second call (reshape)
@@ -223,7 +224,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
           print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
       # Legacy ONNX export.
-      if False:
+      if True:
         try:
           head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action', 'prior_state']
           output_axes = {'squares' : {0 : 'batch_size'},    
