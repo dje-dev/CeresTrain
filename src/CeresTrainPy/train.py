@@ -137,6 +137,7 @@ time_last_save_transient = datetime.datetime.now()
 
 def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any], net_step : str, save_all_formats : str):
   CKPT_NAME = "ckpt_" + NAME + "_" + net_step
+  #fabric.barrier() # try to prevent problems with hanging
 
   with torch.no_grad():
     convert_type = torch.float16
@@ -222,7 +223,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
           print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
       # Legacy ONNX export.
-      if True:
+      if False:
         try:
           head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action', 'prior_state']
           output_axes = {'squares' : {0 : 'batch_size'},    
