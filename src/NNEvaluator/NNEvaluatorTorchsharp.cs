@@ -265,7 +265,7 @@ namespace CeresTrain.NNEvaluators
 
     //    Dictionary<string, float[]> cachedPriorHistory = new Dictionary<string, float[]>();
 
-    public override IPositionEvaluationBatch DoEvaluateIntoBuffers(IEncodedPositionBatchFlat positions, bool retrieveSupplementalResults = false)
+    protected override IPositionEvaluationBatch DoEvaluateIntoBuffers(IEncodedPositionBatchFlat positions, bool retrieveSupplementalResults = false)
     {
       firstTime = false;
 //      bool equal = !lastPosition.BoardsHistory.BoardAtIndex(0).IsEmpty &&
