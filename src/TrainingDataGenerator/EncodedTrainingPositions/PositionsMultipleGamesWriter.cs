@@ -83,7 +83,7 @@ namespace CeresTrain.TrainingDataGenerator
         while (i < numPosInBuffer)
         {
           int j = i + 1;
-          while (j < numPosInBuffer && positions[j].PositionWithBoards.MiscInfo.InfoTraining.Unused1 != EncodedTrainingPositionCompressedConverter.SENTINEL_MARK_FIRST_MOVE_IN_GAME_IN_UNUSED1)
+          while (j < numPosInBuffer && positions[j].PositionWithBoards.MiscInfo.InfoTraining.Unused2 != EncodedTrainingPositionCompressedConverter.SENTINEL_MARK_FIRST_MOVE_IN_GAME_IN_UNUSED1)
           {
             string fen1 = positions[j].PositionWithBoards.FinalPosition.FEN;
             string fen2 = positions[j].PositionWithBoards.FinalPosition.FEN;

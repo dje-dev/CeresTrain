@@ -421,7 +421,7 @@ namespace CeresTrain.TrainingDataGenerator
       if (numPositions > 0 && writeSentinelAtFirstMoveOfGames)
       {
         // Mark the first position as the beginning of a game.
-        targetPositions.Span[0].PositionWithBoards.MiscInfo.InfoTraining.SetUnused1(EncodedTrainingPositionCompressedConverter.SENTINEL_MARK_FIRST_MOVE_IN_GAME_IN_UNUSED1);
+        targetPositions.Span[0].PositionWithBoards.MiscInfo.InfoTraining.SetUnused2(EncodedTrainingPositionCompressedConverter.SENTINEL_MARK_FIRST_MOVE_IN_GAME_IN_UNUSED1);
       }
       return numPositions;
     }
