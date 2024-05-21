@@ -50,6 +50,7 @@ using System.Runtime.InteropServices;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.TrainCommands;
 using CeresTrain.UserSettings;
+using Ceres.Chess.UserSettings;
 
 #endregion 
 
@@ -224,10 +225,21 @@ namespace CeresTrain.Examples
     /// <param name="useBestValueRepetitionHeuristic"></param>
     /// <returns></returns>
     public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
-                                             ICeresNeuralNetDef netDef, int deviceID, in ConfigNetExecution execConfig,
+                                             ICeresNeuralNetDef netDef, 
+                                             int deviceID, in ConfigNetExecution execConfig,
                                              string netFN, bool useBestValueRepetitionHeuristic,
                                              object options)
     {
+      // If present, fixup the net filename to include the path to Ceres nets.
+      if (netFN != null && !File.Exists(netFN))
+      {
+        string orgNetFN = netFN;
+        netFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);  
+        if (!File.Exists(netFN))
+        {
+          throw new Exception($"Ceres net file {orgNetFN} not found in DirCeresNetworks {CeresUserSettingsManager.Settings.DirCeresNetworks}");
+        }
+      }
 
       NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], SaveNetwork1FileName = netFN }, options:(NNEvaluatorTorchsharpOptions) options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
@@ -690,7 +702,7 @@ namespace CeresTrain.Examples
 
       NNEvaluator evaluatorCeres;
 
-      Func<int, object, NNEvaluator> getEvaluatorFunc = null;
+      Func<string, int, object, NNEvaluator> getEvaluatorFunc = null;
 
 
       if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
@@ -725,7 +737,7 @@ namespace CeresTrain.Examples
         }
         //CeresTrainingRunAnalyzer.DumpAndBenchmarkONNXNetInfo(onnxFN);
 
-        getEvaluatorFunc = (int gpuID, object options) =>
+        getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
           return new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
@@ -737,9 +749,10 @@ namespace CeresTrain.Examples
       }
       else
       {
-        getEvaluatorFunc = (int gpuID, object options) =>
+        getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
-          return GetNNEvaluator(engineType, netDef, gpuID, execConfig with { UseHistory = useHistory }, netFN, useBestValueRepetitionHeuristic, evaluatorOptions);
+          string netFNToUse = netID == null ? netFN : netID;
+          return GetNNEvaluator(engineType, netDef, gpuID, execConfig with { UseHistory = useHistory }, netFNToUse, useBestValueRepetitionHeuristic, evaluatorOptions);
         };
       }
 
@@ -764,12 +777,12 @@ namespace CeresTrain.Examples
       if (customEvaluatorIndex == 1)
       {
         NNEvaluatorFactory.Custom1Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options) 
-          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID, options), gpuID);
+          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(netID, gpuID, options), gpuID);
       }
       else if (customEvaluatorIndex == 2)
       {
         NNEvaluatorFactory.Custom2Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options)
-          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(gpuID, options), gpuID);
+          => possiblyWrapEvaluatorFunc(getEvaluatorFunc(netID, gpuID, options), gpuID);
       }
       else
       {
