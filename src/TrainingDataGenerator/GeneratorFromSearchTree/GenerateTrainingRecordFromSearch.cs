@@ -91,7 +91,7 @@ namespace CeresTrain.TrainingDataGenerator
           target.IntermediateWDL = default;
           target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);
 
-          throw new Exception("Possibly need to remediate and set the ForwardMinQDeviation properly just below.");
+          throw new Exception("Possibly need to remediate and set the KLDPolicy and ForwardMinQDeviation properly just below.");
           target.ForwardMinQDeviation = 0;
 
           target.DeltaQVersusV = infoTraining.Uncertainty;

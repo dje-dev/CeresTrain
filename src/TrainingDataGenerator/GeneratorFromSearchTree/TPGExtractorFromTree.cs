@@ -59,7 +59,7 @@ namespace CeresTrain.TrainingDataGenerator
       targetInfo.IntermediateWDL = default;// gameAnalyzer.intermediateBestWDL[i];
       targetInfo.MLH = TPGRecordEncoding.MLHEncoded(targets.m);
       targetInfo.DeltaQVersusV = targets.unc;
-
+      throw new Exception("not yet implememented here: KLDPolicy");
       throw new Exception("Possibly need to remediate and set the ForwardMinQDeviation properly just below.");
       targetInfo.ForwardMinQDeviation = 0;
 

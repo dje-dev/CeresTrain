@@ -648,6 +648,7 @@ namespace CeresTrain.TPG.TPGGenerator
       target.IntermediateWDL = gameAnalyzer.intermediateBestWDL[i];
       target.MLH = TPGRecordEncoding.MLHEncoded(infoTraining.PliesLeft);
       target.DeltaQVersusV = infoTraining.Uncertainty;
+      target.KLDPolicy = infoTraining.KLDPolicy;
       target.PlayedMoveQSuboptimality = i == 0 ? 0 : gameAnalyzer.PositionRef(i - 1).MiscInfo.InfoTraining.QSuboptimality;
 
       // Emit prior position Win/Loss if requested in options

@@ -548,6 +548,7 @@ namespace CeresTrain.TPG
         if (IsInvalid(targetInfo.BestWDL)) throw new Exception("Bad BestWDL " + targetInfo.BestWDL);
         if (IsInvalid(targetInfo.MLH)) throw new Exception("Bad MLH " + targetInfo.MLH);
         if (IsInvalid(targetInfo.DeltaQVersusV)) throw new Exception("Bad UNC " + targetInfo.DeltaQVersusV);
+        if (IsInvalid(targetInfo.KLDPolicy)) throw new Exception("Bad KLDPolicy " + targetInfo.KLDPolicy); 
       }
 
       tpgRecord.WDLResultNonDeblundered[0] = targetInfo.ResultNonDeblunderedWDL.w;
@@ -568,6 +569,8 @@ namespace CeresTrain.TPG
       // Note that suboptimality will almost always be positive, but take absolute value to be sure.
       // (to compensate for numerical rounding or the chosen best N move not being quite best Q).
       tpgRecord.PlayedMoveQSuboptimality = MathF.Abs(MathF.Round(targetInfo.PlayedMoveQSuboptimality, 3));
+
+      tpgRecord.KLDPolicy = targetInfo.KLDPolicy;
 
       tpgRecord.QDeviationLower = (Half)targetInfo.ForwardMinQDeviation;
       tpgRecord.QDeviationUpper = (Half)targetInfo.ForwardMaxQDeviation;

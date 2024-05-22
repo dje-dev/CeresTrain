@@ -138,7 +138,12 @@ namespace CeresTrain.TPG
     public byte Unused1;
     public byte Unused2;
     public byte Unused3;
-    public fixed byte UnusedArray[56];
+    public fixed byte UnusedArray[52];
+
+    /// <summary>
+    /// Kullback-Leibler divergence between policy head and search visits in nats.
+    /// </summary>
+    public float KLDPolicy;
 
     /// <summary>
     /// Moves (actually half-moves) left until game end training target.

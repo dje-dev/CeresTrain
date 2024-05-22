@@ -53,6 +53,7 @@ namespace CeresTrain.TPG.TPGGenerator
     public (float w, float d, float l) BestWDL;
     public float MLH;
     public float DeltaQVersusV;
+    public float KLDPolicy;
     public float ForwardMinQDeviation;
     public (float, float, float) IntermediateWDL;
     public float DeltaQForwardAbs;
