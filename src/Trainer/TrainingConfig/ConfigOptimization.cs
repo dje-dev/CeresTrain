@@ -162,7 +162,7 @@ namespace CeresTrain.Trainer
     public readonly float LossMLHMultiplier { get; init; } = 0.0f;
 
     /// <summary>
-    /// Scaling multiplier to be applied to UNC loss term.
+    /// Scaling multiplier to be applied to value head uncertainty loss term.
     /// Coefficient typically small due to low importance in gameplay and relatively high noise.
     /// </summary>
     public readonly float LossUNCMultiplier { get; init; } = 0.01f;
@@ -172,6 +172,12 @@ namespace CeresTrain.Trainer
     /// Coefficient typically small due to low importance in gameplay and relatively high noise.
     /// </summary>
     public readonly float LossQDeviationMultiplier { get; init; } = 0.01f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to policy uncertainty term.
+    /// </summary>
+    public readonly float LossUncertaintyPolicyMultiplier { get; init; } = 0.01f;
+
 
     /// <summary>
     /// Scaling multiplier to be applied to difference in value scores between consecutive positions.
@@ -191,6 +197,11 @@ namespace CeresTrain.Trainer
     /// Loss weight applied to error in action prediction (relative to actual value2 from position).
     /// </summary>
     public readonly float LossActionMultiplier { get; init; } = 0.3f;
+
+    /// <summary>
+    /// Scaling multiplier to be applied to action value uncertainty term.
+    /// </summary>
+    public readonly float LossActionUncertaintyMultiplier { get; init; } = 0.01f;
 
     #endregion
 
