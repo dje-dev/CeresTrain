@@ -382,6 +382,7 @@ namespace CeresTrain.TPG.TPGGenerator
       writer.WriteLine($"  Deblunder                     : {Deblunder}");
       writer.WriteLine($"  Deblunder Threshold           : {DeblunderThreshold}");
       writer.WriteLine($"  Deblunder (unint.) Threshold  : {DeblunderUnintnededThreshold}");
+      writer.WriteLine($"  EnablePositionFocus           : {EnablePositionFocus}");
       writer.WriteLine();
       writer.WriteLine($"  OutputFormat                  : {OutputFormat}");
       writer.WriteLine($"  NumThreads                    : {NumThreads}");

@@ -21,6 +21,7 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators.LC0DLL;
 
 using CeresTrain.TrainingDataGenerator;
+using Microsoft.Extensions.Options;
 
 #endregion
 
@@ -195,7 +196,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
         // Check for value differential focus choosing to reject this position.
         REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = false;
-        if (positionFocusEnabled && new TrainingPositionFocusCalculator().CalcAcceptPosition(this, i, thisGame.TrainingPosition(i)))
+        if (positionFocusEnabled && new TrainingPositionFocusCalculator().CalcAcceptPosition(this, i))
         {
           REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = true;
         }
@@ -522,15 +523,14 @@ namespace CeresTrain.TPG.TPGGenerator
           prefix += $"  {extraValues[indexPlyThisGame].v1,5:F2} {extraValues[indexPlyThisGame].v2,5:F2}  ";
         }
 
+        // Add in information relating to position focus
         TrainingPositionFocusCalculator focusCalc = new TrainingPositionFocusCalculator();
-        //        bool focusAccepted = focusCalc.CalcAcceptPosition(this, indexPlyThisGame, PositionRef(indexPlyThisGame));
-
-        prefix += "*** TBD ***";
+        bool focusAccepted = focusCalc.CalcAcceptPosition(this, indexPlyThisGame);
+        prefix += focusCalc.AcceptShortInfoString;       
 
         prefix += $"  {forwardSumPositiveBlunders[indexPlyThisGame],5:F2} {forwardSumNegativeBlunders[indexPlyThisGame],5:F2}  ";
         prefix += $"  {forwardMinQDeviation[indexPlyThisGame],5:F2} {forwardMaxQDeviation[indexPlyThisGame],5:F2}  ";
         prefix += $"  {forwardMaxSingleNegativeBlunder[indexPlyThisGame],5:F2} {forwardMaxSinglePositiveBlunder[indexPlyThisGame],5:F2}  ";
-
 
         Console.WriteLine($"{prefix} {indexPlyThisGame,3:N0} {nonBestMoveChar} {terminalBlunderChar} {targetSourceStr}"
                         + $"  WL {origResultWL,5:F2} --> {newResultWL,5:F2}  (bestQ= {trainingQ,5:F2} ` {deltaEval,5:F2})"

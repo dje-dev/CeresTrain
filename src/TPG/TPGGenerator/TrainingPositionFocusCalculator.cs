@@ -102,10 +102,10 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
-    public bool CalcAcceptPosition(TrainingPositionGeneratorGameRescorer rescorer, int indexPlyThisGame,
-                                   in EncodedTrainingPosition trainingPosition)
+    public bool CalcAcceptPosition(TrainingPositionGeneratorGameRescorer rescorer, int indexPlyThisGame)
     {
-      ref readonly EncodedPositionEvalMiscInfoV6 thisInfoTraining = ref trainingPosition.PositionWithBoards.MiscInfo.InfoTraining;
+      ref readonly EncodedPositionWithHistory trainingPosition = ref rescorer.PositionRef(indexPlyThisGame);
+      ref readonly EncodedPositionEvalMiscInfoV6 thisInfoTraining = ref trainingPosition.MiscInfo.InfoTraining;
 
       float forwardSumPositiveBlunders = rescorer.forwardSumPositiveBlunders[indexPlyThisGame];
       float forwardSumNegativeBlunders = rescorer.forwardSumNegativeBlunders[indexPlyThisGame];
