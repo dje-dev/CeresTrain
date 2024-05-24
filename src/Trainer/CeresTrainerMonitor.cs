@@ -14,8 +14,9 @@
 #region Using directives
 
 using System;
+using System.Collections.Generic;
 using System.IO;
-
+using System.Threading.Tasks;
 using Ceres.Base.Misc;
 using Ceres.Chess;
 using Ceres.Chess.NetEvaluation.Batch;
@@ -77,8 +78,8 @@ namespace CeresTrain.Trainer
 
       NNEvaluatorResult evalResult = tsEval.Evaluate(Position.StartPosition);
       Console.WriteLine("  suite: " + suiteResult.AvgScore1 + " " + " V: " + evalResult.V + " " + evalResult.Policy);
-
     }
+
 
     /// <summary>
     /// Runs tournament using ucrrent evaluator.
