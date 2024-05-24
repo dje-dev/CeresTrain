@@ -45,14 +45,6 @@ namespace CeresTrain.TPG.TPGGenerator
 
     // TODO: Make these options passed in by the caller 
 
-    // Two coefficients relating to rejecting excessively noisy training data points.
-    const float THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE = 0.30f; // Reject position if any single forward blunder exceeds this value
-    const float THERSHOLD_REJECT_BLUNDER_IMBALANCE = 0.60f; // Reject position if forward blunder imbalance exceeds this value
-
-    // Two coefficients relating to favoring positions based on value difference.
-    const float VALUE_DIFF_BASE = 0.20f; // starting minimum proability of accepting any position
-    const float VALUE_DIFF_SLOPE = 3.0f; // slope of probability of accepting position based on value difference
-                                         // (e.g. 0.2 head vs. search difference -> 0.6 extra probability likelyhood)
 
     const int MAX_PLY = 512;
 
@@ -199,11 +191,12 @@ namespace CeresTrain.TPG.TPGGenerator
         ref readonly EncodedPositionWithHistory thisTrainingPos = ref positionsSpan[i];
         EncodedPositionEvalMiscInfoV6 thisInfoTraining = thisGame.PositionTrainingInfoAtIndex(i);
 
+        TrainingPositionFocusCalculator calc = new();
+
         // Check for value differential focus choosing to reject this position.
         REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = false;
-        if (positionFocusEnabled && 
-           !PositionFocusAcceptsPosition(i, in thisInfoTraining, out _, out _, out _))
-        { 
+        if (positionFocusEnabled && new TrainingPositionFocusCalculator().CalcAcceptPosition(this, i, thisGame.TrainingPosition(i)))
+        {
           REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = true;
         }
 
@@ -529,10 +522,10 @@ namespace CeresTrain.TPG.TPGGenerator
           prefix += $"  {extraValues[indexPlyThisGame].v1,5:F2} {extraValues[indexPlyThisGame].v2,5:F2}  ";
         }
 
-        PositionFocusAcceptsPosition(indexPlyThisGame, in thisInfoTraining, out bool shouldRejectImbalance, out bool shouldRejectSingleBlunder, out string prefixFocusDescription);
+        TrainingPositionFocusCalculator focusCalc = new TrainingPositionFocusCalculator();
+        //        bool focusAccepted = focusCalc.CalcAcceptPosition(this, indexPlyThisGame, PositionRef(indexPlyThisGame));
 
-        prefix += shouldRejectImbalance ? " I" : (shouldRejectSingleBlunder ? " B" : "  ");
-        prefix += prefixFocusDescription;
+        prefix += "*** TBD ***";
 
         prefix += $"  {forwardSumPositiveBlunders[indexPlyThisGame],5:F2} {forwardSumNegativeBlunders[indexPlyThisGame],5:F2}  ";
         prefix += $"  {forwardMinQDeviation[indexPlyThisGame],5:F2} {forwardMaxQDeviation[indexPlyThisGame],5:F2}  ";
@@ -550,41 +543,7 @@ namespace CeresTrain.TPG.TPGGenerator
       }
     }
 
-    private bool PositionFocusAcceptsPosition(int indexPlyThisGame, in EncodedPositionEvalMiscInfoV6 thisInfoTraining, 
-                                              out bool shouldRejectImbalance, out bool shouldRejectSingleBlunder, out string prefixFocusDescription)
-    {
-      // The rejected positions due to forward blunder magnitude or imbalance
-      // will be much more common early in the game.
-      // Make early positions more likely to be selected to compensate and avoid imbalance in training data.
-      const int MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS = 30;
-      const float EARLY_GAME_SELECTION_BOUNS_PER_PLY = 0.01f;
-
-      shouldRejectImbalance = (MathF.Abs(forwardSumPositiveBlunders[indexPlyThisGame] - forwardSumNegativeBlunders[indexPlyThisGame]) > THERSHOLD_REJECT_BLUNDER_IMBALANCE);
-      shouldRejectSingleBlunder = forwardMaxSingleNegativeBlunder[indexPlyThisGame] > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE
-                               || forwardMaxSinglePositiveBlunder[indexPlyThisGame] > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE;
-      bool acceptProbabalistically = true;
-      prefixFocusDescription = "  ";
-      if (!float.IsNaN(thisInfoTraining.OriginalQ))
-      {
-        float plyBeforeMiddlegame = indexPlyThisGame > MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS
-                                      ? 0
-                                      : (MAX_PLY_FOR_EARLY_GAME_SELECTION_BONUS - indexPlyThisGame);
-        float bonusEarlyGame = plyBeforeMiddlegame * EARLY_GAME_SELECTION_BOUNS_PER_PLY;
-
-        float qDiff = Math.Abs(thisInfoTraining.OriginalQ - thisInfoTraining.BestQ);
-        float probScoreSlopeContrib = VALUE_DIFF_SLOPE * qDiff;
-        float probScore = VALUE_DIFF_BASE + bonusEarlyGame + probScoreSlopeContrib;
-        float randomThreshold = (float)Random.Shared.NextDouble();
-        acceptProbabalistically = probScore > randomThreshold;
-        if (acceptProbabalistically)
-        {
-          prefixFocusDescription = probScoreSlopeContrib > randomThreshold ? " +" : " r";
-        }
-      }
-      return acceptProbabalistically;
-    }
   }
-
 }
 
 
