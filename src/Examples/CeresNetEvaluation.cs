@@ -583,7 +583,7 @@ namespace CeresTrain.Examples
         || engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
         || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
       {
-        if (netFNOverride.ToLower().EndsWith(".onnx"))
+        if (netFNOverride != null && netFNOverride.ToLower().EndsWith(".onnx"))
         {
           netFNOverride = netFNOverride.Substring(0, netFNOverride.IndexOf(".onnx"));
         }
@@ -724,6 +724,7 @@ namespace CeresTrain.Examples
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
         const bool HAS_UNCERTAINTY = false; // someday conditionally enable this
         const bool ENABLE_PROFILING = false;
+        bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
 
         string onnxFN = netFN + ".onnx"; 
@@ -744,7 +745,8 @@ namespace CeresTrain.Examples
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
-                                           true, evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2);
+                                           true, evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2,
+                                           USE_STATE);
         };
       }
       else
