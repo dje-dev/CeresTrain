@@ -39,12 +39,13 @@ class LossCalculator():
     self.PENDING_MLH_LOSS = 0
     self.PENDING_UNC_LOSS = 0
     self.PENDING_VALUE2_LOSS = 0
-    self.PENDING_Q_DEVIATION_LOWER_LOSS = 0
-    self.PENDING_Q_DEVIATION_UPPER_LOSS = 0
+    self.PENDING_Q_DEVIATION_MAX_LOSS = 0
+    self.PENDING_UNCERTAINTY_POLICY_LOSS = 0
     self.PENDING_VALUE_DIFF_LOSS = 0
     self.PENDING_VALUE2_DIFF_LOSS = 0
     self.PENDING_ACTION_LOSS = 0
-
+    self.PENDING_ACTION_UNCERTAINTY_LOSS = 0
+    
   @property
   def LAST_VALUE_LOSS(self):
     return self.PENDING_VALUE_LOSS / self.PENDING_COUNT
@@ -82,18 +83,22 @@ class LossCalculator():
     return self.PENDING_UNC_LOSS / self.PENDING_COUNT
 
   @property
-  def LAST_Q_DEVIATION_LOWER_LOSS(self):
-    return self.PENDING_Q_DEVIATION_LOWER_LOSS / self.PENDING_COUNT
-
-  @property
-  def LAST_Q_DEVIATION_UPPER_LOSS(self):
-    return self.PENDING_Q_DEVIATION_UPPER_LOSS / self.PENDING_COUNT
+  def LAST_Q_DEVIATION_MAX_LOSS(self):
+    return self.PENDING_Q_DEVIATION_MAX_LOSS / self.PENDING_COUNT
 
   @property
   def LAST_ACTION_LOSS(self):
     return self.PENDING_ACTION_LOSS / self.PENDING_COUNT
   
+  @property
+  def LAST_UNCERTAINTY_POLICY_LOSS(self):
+    return self.PENDING_UNCERTAINTY_POLICY_LOSS / self.PENDING_COUNT
   
+  @property
+  def LAST_ACTION_UNCERTAINTY_LOSS(self):
+    return self.PENDING_ACTION_UNCERTAINTY_LOSS / self.PENDING_COUNT
+  
+
   def calc_accuracy(self, target: torch.Tensor, output: torch.Tensor, apply_masking : bool) -> float:
     if apply_masking:
       legalMoves = target.greater(0)
@@ -185,15 +190,16 @@ class LossCalculator():
     return loss
 
 
-  def q_deviation_lower_loss(self, target: torch.Tensor, output: torch.Tensor):
+  def q_deviation_max_loss(self, target: torch.Tensor, output: torch.Tensor):
     self.POST_SCALE = 10.0
     loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
-    self.PENDING_Q_DEVIATION_LOWER_LOSS += loss.item()
+    self.PENDING_Q_DEVIATION_MAX_LOSS += loss.item()
     return loss
 
 
-  def q_deviation_upper_loss(self, target: torch.Tensor, output: torch.Tensor):
+  def uncertainty_policy_loss(self, target: torch.Tensor, output: torch.Tensor):
     self.POST_SCALE = 10.0
     loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
-    self.PENDING_Q_DEVIATION_UPPER_LOSS += loss.item()
+    self.PENDING_UNCERTAINTY_POLICY_LOSS += loss.item()
     return loss
+    

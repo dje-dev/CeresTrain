@@ -226,15 +226,15 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
       # Legacy ONNX export.
       if True:
         try:
-          head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_lower', 'q_deviation_upper', 'action', 'prior_state']
+          head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_max', 'uncertainty_policy', 'action', 'prior_state']
           output_axes = {'squares' : {0 : 'batch_size'},    
                           'policy' : {0 : 'batch_size'},
                           'value' : {0 : 'batch_size'},
                           'mlh' : {0 : 'batch_size'},
                           'unc' : {0 : 'batch_size'},
                           'value2' : {0 : 'batch_size'},
-                          'q_deviation_lower' : {0 : 'batch_size'},
-                          'q_deviation_upper': {0 : 'batch_size'},
+                          'q_deviation_max' : {0 : 'batch_size'},
+                          'uncertainty_policy': {0 : 'batch_size'},
                           'action': {0 : 'batch_size'},
                           'prior_state': {0 : 'batch_size'}}
           sample_inputs = (torch.rand(256, 64, 137).to(convert_type).to(m.device), 
@@ -310,6 +310,8 @@ def Train():
                    value_diff_loss_weight = config.Opt_LossValueDMultiplier,
                    value2_diff_loss_weight = config.Opt_LossValue2DMultiplier,
                    action_loss_weight = config.Opt_LossActionMultiplier,
+                   uncertainty_policy_weight = config.Opt_LossUncertaintyPolicyMultiplier,
+                   action_uncertainty_weight = config.Opt_LossActionUncertaintyMultiplier,
                    q_ratio=config.Data_FractionQ)
 
    
@@ -318,7 +320,6 @@ def Train():
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
 
   
-
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
   whitelist_weight_modules = (torch.nn.Linear, SoftMoEBatchedDual, MultiExpertLayer)
@@ -485,9 +486,9 @@ def Train():
       if BOARDS_PER_BATCH == 1:
         batch = batch[0]
         num_processing_now = batch['squares'].shape[0]
-        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out, state_out = model(batch['squares'], None)
+        policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_max, uncertainty_policy_out, action_out, state_out = model(batch['squares'], None)
         loss = model.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
-                                  value2_out, q_deviation_lower_out, q_deviation_upper_out, 
+                                  value2_out, q_deviation_max, uncertainty_policy_out, 
                                   None, None, 
                                   None, None,
                                   0, num_pos, this_lr, show_losses)
@@ -510,9 +511,9 @@ def Train():
         
         #Board 1
         sub_batch = batch[0]
-        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, action_out1, state_out1 = model(sub_batch['squares'], None)
+        policy_out1, value_out1, moves_left_out1, unc_out1, value2_out1, q_deviation_max1, uncertainty_policy_out1, action_out1, state_out1 = model(sub_batch['squares'], None)
         loss1 = model.compute_loss(loss_calc, sub_batch, policy_out1, value_out1, moves_left_out1, unc_out1,
-                                   value2_out1, q_deviation_lower_out1, q_deviation_upper_out1, 
+                                   value2_out1, q_deviation_max1, uncertainty_policy_out1, 
 
                                    None, None, 
                                    None, None, 
@@ -521,7 +522,7 @@ def Train():
         
         # Board 2
         sub_batch = batch[1]
-        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, action_out2, state_out2 = model(sub_batch['squares'], state_out1)
+        policy_out2, value_out2, moves_left_out2, unc_out2, value2_out2, q_deviation_max2, uncertainty_policy_out2, action_out2, state_out2 = model(sub_batch['squares'], state_out1)
 
         if config.Opt_LossActionMultiplier > 0:
           action2_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
@@ -531,7 +532,7 @@ def Train():
           extracted_action1_out = None
           
         loss2 = model.compute_loss(loss_calc, sub_batch, policy_out2, value_out2, moves_left_out2, unc_out2,
-                                   value2_out2, q_deviation_lower_out2, q_deviation_upper_out2, 
+                                   value2_out2, q_deviation_max2, uncertainty_policy_out2, 
 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
                                    value2_out2.detach(), extracted_action1_out,  # action target/output from previous board
@@ -540,7 +541,7 @@ def Train():
         
         # Board 3
         sub_batch = batch[2]
-        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_lower_out3, q_deviation_upper_out3, action_out3, _ = model(sub_batch['squares'], state_out2)
+        policy_out3, value_out3, moves_left_out3, unc_out3, value2_out3, q_deviation_max3, uncertainty_policy_out3, action_out3, _ = model(sub_batch['squares'], state_out2)
 
         if config.Opt_LossActionMultiplier > 0:
           action3_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
@@ -550,7 +551,7 @@ def Train():
           extracted_action2_out = None
 
         loss3 = model.compute_loss(loss_calc, sub_batch, policy_out3, value_out3, moves_left_out3, unc_out3,
-                                   value2_out3, q_deviation_lower_out3, q_deviation_upper_out3,
+                                   value2_out3, q_deviation_max3, uncertainty_policy_out3,
 
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
                                    value2_out3.detach(), extracted_action2_out, # action target/output from previous board
@@ -560,7 +561,7 @@ def Train():
         # Board 4 (only used if action loss is enabled)
         if config.Opt_LossActionMultiplier > 0:
           sub_batch = batch[3]
-          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower_out4, q_deviation_upper_out4, action_out4, _ = model(sub_batch['squares'], None)
+          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_max4, uncertainty_policy_out4, action_out4, _ = model(sub_batch['squares'], None)
 
 
           action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
@@ -631,15 +632,18 @@ def Train():
                      + config.Opt_LossValue2Multiplier * loss_calc.LAST_VALUE2_LOSS
                      + config.Opt_LossMLHMultiplier * loss_calc.LAST_MLH_LOSS
                      + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS
-                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_LOWER_LOSS       
-                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS
+                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_MAX_LOSS       
+                     + config.Opt_LossUncertaintyPolicyMultiplier * loss_calc.LAST_UNCERTAINTY_POLICY_LOSS
                      
                      + config.Opt_LossValueDMultiplier * loss_calc.LAST_VALUE_DIFF_LOSS
                      + config.Opt_LossValue2DMultiplier * loss_calc.LAST_VALUE2_DIFF_LOSS
                      
                      + config.Opt_LossActionMultiplier * loss_calc.LAST_ACTION_LOSS)
+
         
-        print("TRAIN:", num_pos, ",", total_loss, ",", 
+        # Note that this output line is parsed by the C# class CeresTrainProgressLoggingLine
+        print("TRAIN:", num_pos, ",", 
+              total_loss, ",", 
               loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
               loss_calc.LAST_POLICY_LOSS if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
               loss_calc.LAST_VALUE_ACC if config.Opt_LossValueMultiplier > 0 else 0, ",", 
@@ -647,13 +651,14 @@ def Train():
               loss_calc.LAST_MLH_LOSS if config.Opt_LossMLHMultiplier > 0 else 0, ",",  
               loss_calc.LAST_UNC_LOSS if config.Opt_LossUNCMultiplier > 0 else 0, ",", 
               loss_calc.LAST_VALUE2_LOSS if config.Opt_LossValue2Multiplier > 0 else 0, ",", 
-              loss_calc.LAST_Q_DEVIATION_LOWER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_Q_DEVIATION_UPPER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_Q_DEVIATION_MAX_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+              loss_calc.LAST_UNCERTAINTY_POLICY_LOSS if config.Opt_LossUncertaintyPolicyMultiplier > 0 else 0, ",", 
 
               loss_calc.LAST_VALUE_DIFF_LOSS if config.Opt_LossValueDMultiplier > 0 else 0, ",", 
               loss_calc.LAST_VALUE2_DIFF_LOSS if config.Opt_LossValue2DMultiplier > 0 else 0, ",", 
 
               loss_calc.LAST_ACTION_LOSS if config.Opt_LossActionMultiplier > 0 else 0, ",",
+              loss_calc.LAST_ACTION_UNCERTAINTY_LOSS if config.Opt_LossActionUncertaintyMultiplier > 0 else 0, ",",
               
               scheduler.get_last_lr()[0], flush=True)
         loss_calc.reset_counters()

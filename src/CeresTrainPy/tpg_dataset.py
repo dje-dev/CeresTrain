@@ -144,7 +144,11 @@ class TPGDataset(Dataset):
               offset+= 1 * 4
            
               #ply_next_square_move = np.ascontiguousarray(this_batch[:, offset : offset + 64 * 1]).view(dtype=np.byte).reshape(-1, 64).astype(DTYPE)
-              offset+= 60
+              offset+= 56
+
+              uncertainty_policy = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
+              uncertainty_policy = np.abs(uncertainty_policy)
+              offset+= 1 * 4
 
               mlh = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               mlh = np.square(mlh / 0.1) # undo preprocessing
@@ -180,7 +184,8 @@ class TPGDataset(Dataset):
               assert(offset == BYTES_PER_POS)
 
               yield  ((policies_indices, policies_values, wdl_deblundered, wdl_q, mlh, uncertainty, 
-                       wdl_nondeblundered, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent, played_q_suboptimality))
+                       wdl_nondeblundered, q_deviation_lower, q_deviation_upper, squares,policy_index_in_parent, played_q_suboptimality,
+                       uncertainty_policy))
 
 
   def __getitem__(self, idx):
@@ -197,6 +202,7 @@ class TPGDataset(Dataset):
     squares = batch[9]
     policy_index_in_parent = batch[10]
     played_q_suboptimality = batch[11]
+    uncertainty_policy = batch[12]
     
     policies_indices = torch.tensor(policies_indices, dtype=torch.int64).reshape(self.batch_size, MAX_MOVES)
     policies_values  = torch.tensor(policies_values, dtype=torch.float16).reshape(self.batch_size, MAX_MOVES)
@@ -221,11 +227,12 @@ class TPGDataset(Dataset):
           'mlh': filter_tensor(torch.tensor(mlh), mod_value),
           'unc': filter_tensor(torch.tensor(uncertainty), mod_value),
           'wdl_nondeblundered': filter_tensor(torch.tensor(wdl_nondeblundered), mod_value),
-          'q_deviation_lower': filter_tensor(torch.tensor(q_deviation_lower), mod_value).to(torch.float32),
-          'q_deviation_upper': filter_tensor(torch.tensor(q_deviation_upper), mod_value).to(torch.float32),
+          'q_deviation_max': torch.max(filter_tensor(torch.tensor(q_deviation_lower), mod_value).to(torch.float32),
+                                       filter_tensor(torch.tensor(q_deviation_upper), mod_value).to(torch.float32)),
           'squares': filter_tensor(torch.tensor(squares), mod_value),
           'policy_index_in_parent': filter_tensor(torch.tensor(policy_index_in_parent), mod_value),
-          'played_q_suboptimality': filter_tensor(torch.tensor(played_q_suboptimality), mod_value)
+          'played_q_suboptimality': filter_tensor(torch.tensor(played_q_suboptimality), mod_value),
+          'uncertainty_policy': filter_tensor(torch.tensor(uncertainty_policy), mod_value)
       }  
       return filtered_dict
     

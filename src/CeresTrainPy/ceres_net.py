@@ -86,21 +86,12 @@ class CeresNet(pl.LightningModule):
     value_diff_loss_weight,
     value2_diff_loss_weight,
     action_loss_weight,
+    uncertainty_policy_weight,
+    action_uncertainty_weight,
     q_ratio
 ):
     """
     CeresNet is a transformer architecture network module for chess built with PyTorch Lightning. 
-
-    Parameters:
-        fabric (Fabric): Underlying lightning fabric instance
-        config (Configuration): Configuration settings for the network (read from JSON)
-        policy_loss_weight: Weight for the policy loss component.
-        value_loss_weight: Weight for the value loss component.
-        moves_left_loss_weight: Weight for the moves left loss component.
-        unc_loss_weight: Weight for the uncertainty loss component.
-        value2_loss_weight: Weight for the secondary value loss component.
-        q_deviation_loss_weight: Weight for the Q deviation (lower and upper) loss components.
-        q_ratio: Fraction of weight to be put on Q (search value results) versus game WDL result.
     """
     super().__init__()
 
@@ -127,6 +118,8 @@ class CeresNet(pl.LightningModule):
     self.prior_state_dim = config.NetDef_PriorStateDim
     self.moves_left_loss_weight = moves_left_loss_weight
     self.q_deviation_loss_weight = q_deviation_loss_weight
+    self.uncertainty_policy_weight = uncertainty_policy_weight
+    self.action_uncertainty_weight = action_uncertainty_weight
 
     
     if (config.NetDef_HeadsActivationType == 'ReLU'):
@@ -164,13 +157,15 @@ class CeresNet(pl.LightningModule):
     self.value_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)
     self.value2_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)     
     self.unc_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+
+    if self.uncertainty_policy_weight > 0:
+      self.unc_policy = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
     
     if moves_left_loss_weight > 0:
       self.mlh_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
 
     if q_deviation_loss_weight > 0:      
-      self.qdev_upper = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
-      self.qdev_lower = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+      self.qdev_max = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
 
 
     if self.DEEPNORM:     
@@ -229,13 +224,15 @@ class CeresNet(pl.LightningModule):
     self.value_diff_loss_weight = value_diff_loss_weight
     self.value2_diff_loss_weight = value2_diff_loss_weight
     self.action_loss_weight = action_loss_weight
+    self.uncertainty_policy_weight = uncertainty_policy_weight
+    self.action_uncertainty_weight = action_uncertainty_weight
     self.q_ratio = q_ratio
 
     if (self.denseformer):
       self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
  
 
-  def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+  def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(squares, list):
       # when saving/restoring from ONNX the input will appear as a list instead of sequence of arguments
 #      squares = squares[0]
@@ -300,22 +297,22 @@ class CeresNet(pl.LightningModule):
     value_out = self.value_head(flattenedSquares)
     value2_out = self.value2_head(flattenedSquares)
     unc_out = self.unc_head(flattenedSquares)
+    unc_policy_out = self.unc_policy(flattenedSquares) if self.uncertainty_policy_weight > 0 else unc_out # unc_out is just a dummy so not None
 
     # Note that if these heads are not used we use a fill-in tensor (borrowed from unc) 
     # to avoid None values that might be problematic in export (especially ONNX)
     action_out            = self.action_head(flattenedSquares).reshape(-1, 1858, 3) if self.action_loss_weight > 0 else unc_out
     state_out             = self.state_head(flattenedSquares) if self.prior_state_dim > 0 else unc_out
     moves_left_out        = self.mlh_head(flattenedSquares) if self.moves_left_loss_weight > 0 else unc_out
-    q_deviation_lower_out = self.qdev_lower(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out
-    q_deviation_upper_out = self.qdev_upper(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out   
+    q_deviation_max       = self.qdev_max(flattenedSquares) if self.q_deviation_loss_weight > 0 else unc_out
 
-    ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower_out, q_deviation_upper_out, action_out, state_out
+    ret = policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_max, unc_policy_out, action_out, state_out
 
     return ret
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
-                   value2_out, q_deviation_lower_out, q_deviation_upper_out, 
+                   value2_out, q_deviation_max_out, uncertainty_policy_out,
                    prior_value_out, prior_value2_out,
                    action_target, action_out,
                    mult_action_loss,
@@ -326,13 +323,9 @@ class CeresNet(pl.LightningModule):
     moves_left_target = batch['mlh']
     unc_target = batch['unc']
     wdl_nondeblundered = batch['wdl_nondeblundered']
-    q_deviation_lower_target = batch['q_deviation_lower']
-    q_deviation_upper_target = batch['q_deviation_upper']
-
-    # Create a blended value target for Value2.
-    # The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
-    wdl_blend = (wdl_nondeblundered * 0.70 + wdl_deblundered * 0.15 + wdl_q * 0.15)
-
+    uncertainty_policy_target = batch['uncertainty_policy']
+    q_deviation_max_target = batch['q_deviation_max']
+    
     #	Subtract entropy from cross entropy to insulate loss magnitude 
     #	from distributional shift and make the loss more interpretable 
     #	because it takes out the portion that is irreducible.
@@ -341,11 +334,10 @@ class CeresNet(pl.LightningModule):
     value_target = wdl_q * self.q_ratio + wdl_deblundered * (1 - self.q_ratio)
     p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY)
     v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out, SUBTRACT_ENTROPY)
-    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_blend, value2_out, SUBTRACT_ENTROPY)
+    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_nondeblundered, value2_out, SUBTRACT_ENTROPY)
     ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out)
     u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out)
-    q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
-    q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
+    q_deviation_max_loss = 0 if q_deviation_max_out is None else loss_calc.q_deviation_max_loss(q_deviation_max_target, q_deviation_max_out)
 
     # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
     # The value of this board is taken to be "more definitive" so it is the target (however this assumes policy was correct....)
@@ -353,17 +345,21 @@ class CeresNet(pl.LightningModule):
     value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY)
 
     action_loss = 0 if self.action_loss_weight == 0 or action_target == None else mult_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY)
+#    action_uncertainty_loss = 0 if self.action_uncertainty_weight == 0 or action_target == None else mult_action_loss * loss_calc.action_uncertainty_loss(action_target, action_out)
       
+    uncertainty_policy_loss = 0 if self.uncertainty_policy_weight == 0 else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out)
+
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
         + self.moves_left_loss_weight * ml_loss
         + self.unc_loss_weight * u_loss
         + self.value2_loss_weight * v2_loss
-        + self.q_deviation_loss_weight * q_deviation_lower_loss
-        + self.q_deviation_loss_weight * q_deviation_upper_loss
+        + self.q_deviation_loss_weight * q_deviation_max_loss
         + self.value_diff_loss_weight * value_diff_loss
         + self.value2_diff_loss_weight * value2_diff_loss
         + self.action_loss_weight * action_loss
+#        + self.action_uncertainty_weight * action_uncertainty_loss
+        + self.uncertainty_policy_weight * uncertainty_policy_loss
         )
         
     if (log_stats):
@@ -379,8 +375,8 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("value2_loss", v2_loss,  step=num_pos)
         self.fabric.log("moves_left_loss", ml_loss, step=num_pos)
         self.fabric.log("unc_loss", u_loss, step=num_pos)
-        self.fabric.log("q_deviation_lower_loss", q_deviation_lower_loss, step=num_pos)
-        self.fabric.log("q_deviation_upper_loss", q_deviation_upper_loss, step=num_pos)
+        self.fabric.log("unc_policy_loss", uncertainty_policy_loss, step=num_pos)
+        self.fabric.log("q_deviation_max_loss", q_deviation_max_loss, step=num_pos)
         self.fabric.log("value_diff_loss", value_diff_loss, step=num_pos)
         self.fabric.log("value2_diff_loss", value2_diff_loss, step=num_pos)
         self.fabric.log("action_loss", action_loss, step=num_pos)
