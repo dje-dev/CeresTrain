@@ -31,19 +31,21 @@ namespace CeresTrain.Trainer
   /// <param name="MLHLoss"></param>
   /// <param name="UNCLoss"></param>
   /// <param name="Value2Loss"></param>
+  /// <param name="QDeviationMaxLoss"></param>
+  /// <param name="PolicyUncertaintyLoss"></param>
   /// <param name="ValueDLoss"></param>
   /// <param name="Value2DLoss"></param>
   /// <param name="ActionLoss"></param>
-
+  /// <param name="ActionUncertaintyLoss"></param>
   [Serializable]
   public readonly record struct TrainingLossSummary(float TotalLoss,
                                                     float ValueLoss, float ValueAccuracy,
                                                     float PolicyLoss, float PolicyAccuracy,
                                                     float MLHLoss, float UNCLoss,
                                                     float Value2Loss,
-                                                    float QDeviationLowerLoss, float QDeviationUpperLoss,
+                                                    float QDeviationMaxLoss, float PolicyUncertaintyLoss,
                                                     float ValueDLoss, float Value2DLoss,
-                                                    float ActionLoss)
+                                                    float ActionLoss, float ActionUncertaintyLoss)
   {
     /// <summary>
     /// Returns a sanitized version of the loss summary where NaN values are replaced with -999
@@ -62,11 +64,12 @@ namespace CeresTrain.Trainer
         MLHLoss = float.IsNaN(MLHLoss) ? -999 : MLHLoss,
         UNCLoss = float.IsNaN(UNCLoss) ? -999 : UNCLoss,
         Value2Loss = float.IsNaN(Value2Loss) ? -999 : Value2Loss,
-        QDeviationLowerLoss = float.IsNaN(QDeviationLowerLoss) ? -999 : QDeviationLowerLoss,
-        QDeviationUpperLoss = float.IsNaN(QDeviationUpperLoss) ? -999 : QDeviationUpperLoss,
+        QDeviationMaxLoss = float.IsNaN(QDeviationMaxLoss) ? -999 : QDeviationMaxLoss,
+        PolicyUncertaintyLoss = float.IsNaN(PolicyUncertaintyLoss) ? -999 : PolicyUncertaintyLoss,
         ValueDLoss = float.IsNaN(ValueDLoss) ? -999 : ValueDLoss,
         Value2DLoss = float.IsNaN(Value2DLoss) ? -999 : Value2DLoss,
         ActionLoss = float.IsNaN(ActionLoss) ? -999 : ActionLoss,
+        ActionUncertaintyLoss = float.IsNaN(ActionUncertaintyLoss) ? -999 : ActionUncertaintyLoss,
       };
     }
 
@@ -87,9 +90,12 @@ namespace CeresTrain.Trainer
                $"MLH:{MLHLoss,7:F3}  " +
                $"UNC:{UNCLoss,7:F3}  " +
                $"V2L:{Value2Loss,7:F3}  " +
+               $"QDEV:{QDeviationMaxLoss,7:F3}  " +
+               $"UNCP:{PolicyUncertaintyLoss,7:F3}  " +
                $"VDL:{ValueDLoss,7:F3}  " +
                $"V2DL:{Value2DLoss,7:F3}" +
-               $"ACT:{ActionLoss,7:F3}";
+               $"ACT:{ActionLoss,7:F3}" +
+               $"ACTU:{ActionUncertaintyLoss,7:F3}";
       }
     }
   }

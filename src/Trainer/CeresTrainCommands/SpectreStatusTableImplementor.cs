@@ -63,9 +63,13 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("ValueAcc").RightAligned());
       table.AddColumn(new TableColumn("MLHLoss").RightAligned());
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
+
+      table.AddColumn(new TableColumn("QDevLoss").RightAligned()); 
+      table.AddColumn(new TableColumn("PolicyUncLoss").RightAligned()); 
       table.AddColumn(new TableColumn("ValueDLoss").RightAligned());
       table.AddColumn(new TableColumn("Value2DLoss").RightAligned());
       table.AddColumn(new TableColumn("ActionLoss").RightAligned());
+      table.AddColumn(new TableColumn("ActionUncLoss").RightAligned()); 
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
@@ -90,16 +94,17 @@ namespace CeresTrain.Trainer
                                    float posPerSecond, DateTime time, float elapsedSecs, long numPositions,
                                    float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
                                    float mlhLoss, float uncLoss,
-                                   float value2Loss, float valueDLoss, float value2DLoss,
-                                   float actionLoss,
+                                   float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss, 
+                                   float valueDLoss, float value2DLoss,                                   
+                                   float actionLoss, float actionUncertaintyLoss,
                                    float curLR)
     {
       currentRecord = new TrainingStatusRecord(configID, time, elapsedSecs, posPerSecond, numPositions,
                                                totalLoss, valueLoss, valueAcc,
                                                policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                               value2Loss, float.NaN, float.NaN,
-                                               valueDLoss, value2DLoss,
-                                               actionLoss,
+                                               value2Loss, qDeviationMaxLoss, policyUncertaintyLoss,
+                                               valueDLoss, value2DLoss,                                               
+                                               actionLoss, actionUncertaintyLoss,
                                                curLR);
 
       int curRowNum = numRowsAdded - 1;
@@ -127,12 +132,16 @@ namespace CeresTrain.Trainer
         table.UpdateCell(curRowNum, 11, $"{mlhLoss:F3}");
         table.UpdateCell(curRowNum, 12, $"{uncLoss:F3}");
 
-        table.UpdateCell(curRowNum, 13, $"{valueDLoss:F3}");
-        table.UpdateCell(curRowNum, 14, $"{value2DLoss:F3}");
+        table.UpdateCell(curRowNum, 13, $"{qDeviationMaxLoss:F3}");
+        table.UpdateCell(curRowNum, 14, $"{policyUncertaintyLoss:F3}");
 
-        table.UpdateCell(curRowNum, 15, $"{actionLoss:F3}");
+        table.UpdateCell(curRowNum, 15, $"{valueDLoss:F3}");
+        table.UpdateCell(curRowNum, 16, $"{value2DLoss:F3}");
 
-        table.UpdateCell(curRowNum, 16, $"{Math.Round(curLR, 6):F6}");
+        table.UpdateCell(curRowNum, 17, $"{actionLoss:F3}");
+        table.UpdateCell(curRowNum, 18, $"{actionUncertaintyLoss:F3}");
+
+        table.UpdateCell(curRowNum, 19, $"{Math.Round(curLR, 6):F6}");
         context.Refresh();
       }
 

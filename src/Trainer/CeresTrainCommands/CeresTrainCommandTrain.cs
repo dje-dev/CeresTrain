@@ -407,7 +407,7 @@ namespace CeresTrain.Trainer
                                             lossValue2AdjRunning,
                                             float.NaN, float.NaN,
                                             valueDLossAdjRunning, value2DLossAdjRunning,
-                                            0  /* TODO: actionLossRunning*/);
+                                            0, 0  /* TODO: actionLossRunning*/);
 
       tpgDataset.Dispose();
       Dispose();

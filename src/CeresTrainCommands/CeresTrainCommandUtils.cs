@@ -160,10 +160,12 @@ namespace CeresTrain.TrainCommands
           Value2Loss = records[^1].Value2Loss,
           MLHLoss = records[^1].MLHLoss,
           UNCLoss = records[^1].UNCLoss,
-          QDeviationLowerLoss = records[^1].QDeviationLowerLoss,
-          QDeviationUpperLoss = records[^1].QDeviationUpperLoss,
+          QDeviationMaxLoss = records[^1].QDeviationMaxLoss,
+          PolicyUncertaintyLoss = records[^1].PolicyUncertaintyLoss,
           ValueDLoss = records[^1].ValueDLoss,
           Value2DLoss = records[^1].Value2DLoss,
+          ActionLoss = records[^1].ActionLoss,
+          ActionUncertaintyLoss = records[^1].ActionUncertaintyLoss
         };
       }
 
@@ -204,9 +206,9 @@ namespace CeresTrain.TrainCommands
                          trainingData.LastValueLoss, 0.01f * trainingData.LastValueAcc,
                          trainingData.LastPolicyLoss, 0.01f * trainingData.LastPolicyAcc,
                          trainingData.LastMLHLoss, trainingData.LastUNCLoss, 
-                         trainingData.LastValue2Loss, 
+                         trainingData.LastValue2Loss, trainingData.LastQDeviationMaxLoss, trainingData.LastPolicyUncertaintyLoss,
                          trainingData.LastValueDLoss, trainingData.LastValue2DLoss,
-                         trainingData.LastActionLoss,
+                         trainingData.LastActionLoss, trainingData.LastActionUncertaintyLoss,
                          trainingData.LastLR);
       }
     }

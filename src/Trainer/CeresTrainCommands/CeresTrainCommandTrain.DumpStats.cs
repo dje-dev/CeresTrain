@@ -28,9 +28,12 @@ namespace CeresTrain.Trainer
     float lossUNCAdjRunning;
 
     float lossValue2AdjRunning;
+    float lossQDeviationAdjRunning; 
+    float lossPolicyUncertaintyAdjRunning;
     float valueDLossAdjRunning;
     float value2DLossAdjRunning;
     float actionLossAdjRunning;
+    float lossActionUncertaintyAdjRunning;
 
     float thisLossAdjRunning;
 
@@ -59,6 +62,7 @@ namespace CeresTrain.Trainer
       float lossQDeviationLowerAdj = TrainingConfig.OptConfig.LossValueDMultiplier == 0 ? 0 : lossValueDBatch.ToSingle();
       float lossQDeviationUpperAdj = TrainingConfig.OptConfig.LossValue2DMultiplier == 0 ? 0 : lossValue2DBatch.ToSingle();
       float lossActionAdj = 0; // TODO: TrainingConfig.OptConfig.LossActionMultiplier == 0 ? 0 : lossActionBatch.ToSingle();
+      float lossUNCPolicyAdjRunning = 0; // TODO
 
       // update exponential averages
       const float WT_CUR = 0.15f; // smoothing to include decayed prior values
@@ -93,9 +97,13 @@ namespace CeresTrain.Trainer
                           + lossMLHAdjRunning * TrainingConfig.OptConfig.LossMLHMultiplier
                           + lossUNCAdjRunning * TrainingConfig.OptConfig.LossUNCMultiplier
                           + lossValue2AdjRunning * TrainingConfig.OptConfig.LossValue2Multiplier
+                          + lossQDeviationAdjRunning * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                          + lossPolicyUncertaintyAdjRunning * TrainingConfig.OptConfig.LossUncertaintyPolicyMultiplier
                           + valueDLossAdjRunning * TrainingConfig.OptConfig.LossValueDMultiplier
                           + value2DLossAdjRunning * TrainingConfig.OptConfig.LossValue2DMultiplier
-                          + actionLossAdjRunning * TrainingConfig.OptConfig.LossActionMultiplier;
+                          + actionLossAdjRunning * TrainingConfig.OptConfig.LossActionMultiplier
+                          + lossActionUncertaintyAdjRunning * TrainingConfig.OptConfig.LossActionUncertaintyMultiplier;
+
 
 
       // Write log statistics.
@@ -107,12 +115,14 @@ namespace CeresTrain.Trainer
                            ("mlh", lossMLHAdjRunning),
                            ("unc", lossUNCAdjRunning),
                            ("val2", lossValue2AdjRunning),
-                           ("qDevL", valueDLossAdjRunning),
-                           ("qDevU", value2DLossAdjRunning),
+                           ("qDev", lossQDeviationAdjRunning),
+                           ("pol_unc", lossUNCPolicyAdjRunning),
                            ("valD", valueDLossAdjRunning),
                            ("val2D", value2DLossAdjRunning),
                            ("action", actionLossAdjRunning),
-                           ("acc", policyAccAdjRunning * 100));
+                           ("acc", policyAccAdjRunning * 100),
+                           ("action_unc", lossActionUncertaintyAdjRunning * 100)
+                           );
 
       long positionsProcessed = batchId * OptimizationBatchSizeForward;
       string positionsAndBatchStr = (OptimizationBatchSizeForward != OptimizationBatchSizeBackward)
@@ -122,8 +132,10 @@ namespace CeresTrain.Trainer
       consoleStatusTable.UpdateInfo(DateTime.Now, configID, "(local)", (float)elapsedSec, numRead, thisLossAdjRunning,
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, 
                                     lossMLHAdjRunning, lossUNCAdjRunning,
-                                    lossValue2AdjRunning, valueDLossAdjRunning, value2DLossAdjRunning,
-                                    0, // TODO: actionLossRunning,
+                                    lossValue2AdjRunning, 
+                                    0, 0, // TODO: complete these
+                                    valueDLossAdjRunning, value2DLossAdjRunning,
+                                    0, 0, // TODO: actionLossRunning,
                                     (float)curLR);
 
       // Save network if best seen so far (on total loss) unless very early in training.

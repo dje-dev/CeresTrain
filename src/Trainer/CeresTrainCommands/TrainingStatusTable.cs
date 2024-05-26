@@ -33,9 +33,9 @@ namespace CeresTrain.Trainer
                                                      float ValueLoss, float ValueAcc,
                                                      float PolicyLoss, float PolicyAcc,
                                                      float MLHLoss, float UNCLoss,
-                                                     float Value2Loss, float QDeviationLowerLoss, float QDeviationUpperLoss, 
+                                                     float Value2Loss, float QDeviationMaxLoss, float PolicyUncertaintyLoss, 
                                                      float ValueDLoss, float Value2DLoss,
-                                                     float ActionLoss,
+                                                     float ActionLoss, float ActionUncertaintyLoss,
                                                      float CurLR);
 
     const float INTERVAL_NEW_ROW_FIRST_HOUR = 60;       // New row very minute for first hour
@@ -102,6 +102,7 @@ namespace CeresTrain.Trainer
     /// </summary>
     /// <param name="time"></param>
     /// <param name="configID"></param>
+    /// <param name="host"></param>
     /// <param name="elapsedSecs"></param>
     /// <param name="numPositions"></param>
     /// <param name="totalLoss"></param>
@@ -112,16 +113,20 @@ namespace CeresTrain.Trainer
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
     /// <param name="value2Loss"></param>
+    /// <param name="qDeviationMaxLoss"></param>
+    /// <param name="policyUncertaintyLoss"></param>
     /// <param name="valueDLoss"></param>
     /// <param name="value2DLoss"></param>
     /// <param name="actionLoss"></param>
+    /// <param name="actionUncertaintyLoss"></param>
     /// <param name="curLR"></param>
     public void UpdateInfo(DateTime time, string configID, string host, float elapsedSecs, long numPositions,
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc,
                            float mlhLoss, float uncLoss,
-                           float value2Loss, float valueDLoss, float value2DLoss,
-                           float actionLoss,
+                           float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                           float valueDLoss, float value2DLoss,
+                           float actionLoss, float actionUncertaintyLoss,
                            float curLR)
     {
       lock (this)
@@ -134,10 +139,10 @@ namespace CeresTrain.Trainer
         currentRecord = new TrainingStatusRecord(configID, time, elapsedSecs, posPerSecond, numPositions,
                                                  totalLoss, valueLoss, valueAcc,
                                                  policyLoss, policyAcc,
-                                                 mlhLoss, uncLoss,
-                                                 float.NaN, float.NaN,
-                                                 value2Loss, valueDLoss, value2DLoss,
-                                                 actionLoss,
+                                                 mlhLoss, uncLoss,                                                 
+                                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss, 
+                                                 valueDLoss, value2DLoss,
+                                                 actionLoss, actionUncertaintyLoss,
                                                  curLR);
 
         int curRowNum = numRowsAdded - 1;
@@ -146,8 +151,9 @@ namespace CeresTrain.Trainer
         {
           implementor.UpdateInfo(configID, host, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, valueDLoss, value2DLoss,
-                                 actionLoss,
+                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss,
+                                 valueDLoss, value2DLoss,
+                                 actionLoss, actionUncertaintyLoss,
                                  curLR);
         }
 
@@ -161,8 +167,9 @@ namespace CeresTrain.Trainer
 
           implementor.UpdateInfo(configID, host, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, valueDLoss, value2DLoss,
-                                 actionLoss,
+                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss, 
+                                 valueDLoss, value2DLoss,                                 
+                                 actionLoss, actionUncertaintyLoss,
                                  curLR);
           TrainingStatusRecords.Add(currentRecord);
 

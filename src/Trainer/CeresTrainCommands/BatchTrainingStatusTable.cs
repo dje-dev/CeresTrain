@@ -51,9 +51,12 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
       table.AddColumn(new TableColumn("PolAcc").RightAligned());
       table.AddColumn(new TableColumn("ValAcc").RightAligned());
+      table.AddColumn(new TableColumn("QDev").RightAligned());
+      table.AddColumn(new TableColumn("PolUnc").RightAligned());
       table.AddColumn(new TableColumn("ValD").RightAligned());
       table.AddColumn(new TableColumn("Val2D").RightAligned());
       table.AddColumn(new TableColumn("ActLoss").RightAligned());
+      table.AddColumn(new TableColumn("ActUncLoss").RightAligned());
       table.AddColumn(new TableColumn("LR").RightAligned());
     }
 
@@ -84,8 +87,9 @@ namespace CeresTrain.Trainer
                                     float totalLoss, float valueLoss, float valueAcc, 
                                     float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float valueDLoss, float value2DLoss,
-                                    float actionLoss,
+                                    float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                                    float valueDLoss, float value2DLoss,
+                                    float actionLoss, float actionUncertaintyLoss,
                                     float curLR)
     {
 
@@ -105,12 +109,15 @@ namespace CeresTrain.Trainer
         Lasts[configID] = [configID, host,
                            numPositions.ToString(),
                            MathF.Round(posPerSecond, 0).ToString(), MathF.Round(totalLoss, 3).ToString(),
+
                            MathF.Round(policyLoss, 3).ToString(), MathF.Round(valueLoss, 3).ToString(),
                            MathF.Round(value2Loss, 3).ToString(),
                            MathF.Round(mlhLoss, 3).ToString(), MathF.Round(uncLoss, 3).ToString(),
                            MathF.Round(100*policyAcc, 2).ToString(), MathF.Round(100*valueAcc, 2).ToString(),
+                           MathF.Round(qDeviationMaxLoss, 3).ToString(), MathF.Round(policyUncertaintyLoss, 3).ToString(),
                            MathF.Round(valueDLoss, 3).ToString(), MathF.Round(value2DLoss, 3).ToString(),
-                           MathF.Round(actionLoss, 3).ToString(),
+                           MathF.Round(actionLoss, 3).ToString(),MathF.Round(actionUncertaintyLoss, 3).ToString(),
+
                            curLR.ToString()];
 
         int UPDATE_INTERVAL_SECS = numPositions > 10_000_000 ? 180 : 30;
@@ -123,10 +130,12 @@ namespace CeresTrain.Trainer
           }
           foreach (KeyValuePair<string, string[]> configs in Lasts)
           {
-            List<string> columns = new();
-            columns.Add(DateTime.Now.ToString("HH\\:mm\\:ss"));          
-            columns.Add(Math.Round(tableElapsedSecs, 0).ToString());
-            columns.AddRange(configs.Value);
+            List<string> columns =
+            [
+              DateTime.Now.ToString("HH\\:mm\\:ss"),
+              Math.Round(tableElapsedSecs, 0).ToString(),
+              .. configs.Value,
+            ];
             table.AddRow(columns.ToArray());
           }
           AnsiConsole.Write(table);
@@ -134,9 +143,6 @@ namespace CeresTrain.Trainer
         }
 
         //this.context.Refresh();
-
-        //        int threadID = System.Threading.Thread.CurrentThread.ManagedThreadId;
-        //        Console.WriteLine($"[{configID}] {numRowsAdded} {endRow} {posPerSecond} {time} {elapsedSecs} {numPositions} {totalLoss} {valueLoss} {valueAcc} {policyLoss} {policyAcc} {curLR}");
       } 
     }
   }

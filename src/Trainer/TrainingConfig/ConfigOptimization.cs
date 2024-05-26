@@ -176,7 +176,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Scaling multiplier to be applied to policy uncertainty term.
     /// </summary>
-    public readonly float LossUncertaintyPolicyMultiplier { get; init; } = 0.01f;
+    public readonly float LossUncertaintyPolicyMultiplier { get; init; } = 0.02f;
 
 
     /// <summary>
