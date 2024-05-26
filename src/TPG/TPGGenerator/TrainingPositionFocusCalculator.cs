@@ -21,22 +21,24 @@ using Ceres.Chess.EncodedPositions;
 namespace CeresTrain.TPG.TPGGenerator
 {
   /// <summary>
-  /// Static struct which encapsulates the logic for determining if a given training position
+  /// Struct which encapsulates the logic for determining if a given training position
   /// will be accepted into a TPG data file, based on various critieria.
-  /// The objectsives include:
+  /// The objectives include:
   ///   - filtering out some of the noisiest positions (where subsequent blunders were extremely large or imbalanced)
   ///   - reducing frequency of positions which are obviously won or drawn in endgame
   ///   - increasing frequency of positions which are "difficult" i.e. value/policy head outputs differed from search results
   ///   
   /// Although shaping the training data distribution as above seems potentially helpful to allow the network to see
   /// more informative positions on average, care is taken to limit the magnitude of the changes.
+  /// 
   /// The concern is that modifying the distribution could induce biases in evaluations, and that some of these
   /// seeingly uninformative positions are actually informative.
+  /// 
   /// For example, some endgames might have been recognized by the value head and policy heads of 
   /// the fully trained large network used to generate the training data, but are not obvious early in training.
   /// 
   /// To mitigate this bias risk the acceptance probability has a lower bound (PROBABILITY_ACCEPT_BASE) to insure that
-  /// some fraction of positions are unconditionally accepted
+  /// some fraction of positions are unconditionally accepted.
   /// </summary>
   public struct TrainingPositionFocusCalculator
   {
@@ -102,6 +104,12 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
+    /// <summary>
+    /// Performs the acceptance calculation for the given position.
+    /// </summary>
+    /// <param name="rescorer"></param>
+    /// <param name="indexPlyThisGame"></param>
+    /// <returns></returns>
     public bool CalcAcceptPosition(TrainingPositionGeneratorGameRescorer rescorer, int indexPlyThisGame)
     {
       ref readonly EncodedPositionWithHistory trainingPosition = ref rescorer.PositionRef(indexPlyThisGame);
@@ -183,50 +191,3 @@ namespace CeresTrain.TPG.TPGGenerator
 
 }
 
-
-#if EXAMPLE
-
-const int NUM_POS_PER_SET = 4096 * 5000;
-
-// Evaluate using an ensemble of two T60 nets (with dual GPUs)
-NNEvaluator nNEvaluator = NNEvaluator.FromSpecification("LC0:j94-100@0.5,69146@0.5", "GPU:0,1");
-
-while (true)
-{
-  TPGOptions options = new TPGOptions()
-  {
-    Description = "Rescored queenless endgames with T60 annotation",
-    SourceDirectory = SoftwareManager.IsLinux ? @"/raid/train/games_tar"
-                                              : @"g:\t60",// @"d:\tars\v6", //@"f:\v6",
-
-    // Use TARs with games from only April 2021
-    FilenameFilter = f => f.Contains("202104"),
-
-    // Endgame filter to only accept positions with at most 10 positions and queenless 
-    AcceptRejectAnnotater = (EncodedTrainingPosition[] gamePositions, int positionIndex, Position position)
-      => position.PieceCountOfType(new Piece(SideType.White, PieceType.Queen)) == 0
-                          && position.PieceCountOfType(new Piece(SideType.Black, PieceType.Queen)) == 0
-                          && position.PieceCount <= 10,
-
-    NumPositionsPerSetToGenerate = NUM_POS_PER_SET,
-    RescoreWithTablebase = true,
-
-    // Write ensembled V to unused field in training data for possible distillation.
-    AnnotationNNEvaluator = nNEvaluator,
-    AnnotationPostprocessor = (Position position, NNEvaluatorResult nnEvalResult, in EncodedTrainingPosition trainingPosition) =>
-    {
-      trainingPosition.Position.MiscInfo.SetUnusedFields(nnEvalResult.V, float.NaN);
-      //Console.WriteLine($"Saw nnV={nnEvalResult.V} fileQ=  {trainingPosition.Position.MiscInfo.InfoTraining.ResultQ} pos: {position.FEN}");
-    },
-
-    //            TargetFileName = @$"d:\train\tpg\pos{DateTime.Now.Ticks % 100000}.gz",
-    TargetFileNameBase = SoftwareManager.IsLinux ? @$"/raid/train/tpg/pos{DateTime.Now.Ticks % 100000}"
-                                             : @$"d:\train\tpg\pos{DateTime.Now.Ticks % 100000}",
-    NumThreads = 24
-  };
-
-  TrainingPositionGenerator tpg = new(options);
-
-  tpg.RunGeneratorLoop();
-
-#endif
