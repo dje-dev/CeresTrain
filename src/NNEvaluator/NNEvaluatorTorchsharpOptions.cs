@@ -68,10 +68,15 @@ namespace CeresTrain.NNEvaluators
     public readonly float ValueHeadAveragePowerMeanOrder { get; init; } = 1;
 
     /// <summary>
-    /// If extreme values (near -1 or 1) 
+    /// Optional scaling factor that determines the amount by which 
+    /// the policy temperature is scaled based on position-specific policy uncertainty.
     /// </summary>
-    public readonly bool ShrinkExtremes { get; init; } = false;
+    public readonly float PolicyTemperatureScalingFactor { get; init; } = 0;
 
+    /// <summary>
+    /// Base policy temperature to apply.
+    /// </summary>
+    public readonly float PolicyTemperatureBase { get; init; } = 1.0f;
 
     private readonly float valueHead2Temperature = 1;
     private readonly float valueHead1Temperature = 1;
@@ -84,9 +89,11 @@ namespace CeresTrain.NNEvaluators
     /// <param name="qPositiveBlunders"></param>
     /// <param name="fractionUndeblunderedValueHead"></param>
     /// <param name="monitorActivations"></param>
-    /// <param name="valueHead2Temperature"></param>
     /// <param name="valueHead1Temperature"></param>
-    /// <param name="shrinkExtremes"></param>
+    /// <param name="valueHead2Temperature"></param>
+    /// <param name="valueHeadAveragePowerMeanOrder"></param>
+    /// <param name="policyTemperatureBase"></param>
+    /// <param name="policyTemperatureScalingFactor"></param>
     /// <param name="useAction"></param>
     /// <param name="usePriorState"></param>
     /// <exception cref="ArgumentException"></exception>
@@ -96,7 +103,8 @@ namespace CeresTrain.NNEvaluators
                                         float valueHead1Temperature = 1,
                                         float valueHead2Temperature = 1,
                                         float valueHeadAveragePowerMeanOrder = 1,
-                                        bool shrinkExtremes = false,
+                                        float policyTemperatureBase = 1,
+                                        float policyTemperatureScalingFactor = 0,
                                         bool useAction = false,
                                         bool usePriorState = false)
     {
@@ -112,7 +120,8 @@ namespace CeresTrain.NNEvaluators
       ValueHead1Temperature = valueHead1Temperature;      
       ValueHead2Temperature = valueHead2Temperature;
       ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
-      ShrinkExtremes = shrinkExtremes;
+      PolicyTemperatureBase = policyTemperatureBase;
+      PolicyTemperatureScalingFactor = policyTemperatureScalingFactor;
       UseAction = useAction;
       UsePriorState = usePriorState;
     }

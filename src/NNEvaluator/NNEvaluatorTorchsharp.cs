@@ -456,13 +456,24 @@ namespace CeresTrain.NNEvaluators
     /// <param name="policies"></param>
     /// <param name="temperature"></param>
     /// <returns></returns>
-    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float? temperature)
+    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float? temperature, 
+                                                                       Tensor policyUncertainties, 
+                                                                       float policyUncertaintyMultiplier = 1)
     {
       // Extract logits and possibly apply temperature if specified.
       Tensor valueFloat = policies.to(ScalarType.Float32);
-      if (temperature.HasValue && temperature != 1)
+      if (policyUncertaintyMultiplier > 0)
       {
-        valueFloat /= temperature;
+        Debug.Assert(temperature is null);
+        const float MAX_POLICY_UNCERAINTY = 0.35f;
+        valueFloat = policies / (1.00 + torch.min(MAX_POLICY_UNCERAINTY, policyUncertainties) * policyUncertaintyMultiplier * 1f);
+      }
+      else
+      {
+        if (temperature.HasValue && temperature != 1)
+        {
+          valueFloat /= temperature;
+        }
       }
 
       // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
@@ -704,14 +715,6 @@ namespace CeresTrain.NNEvaluators
           }
         }
       
-        if (false && Options.ShrinkExtremes)
-        {
-          for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
-          {
-            wdlProbabilitiesCPU[i] = (Half)DoShrinkExtremes((float)wdlProbabilitiesCPU[i], 0.70f, 0.85f);
-          } 
-        }
-
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
         ReadOnlySpan<float> predictionsPolicyMasked = null;
@@ -729,7 +732,8 @@ namespace CeresTrain.NNEvaluators
           
           // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
           float? POLICY_TEMPERATURE = null;
-          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, POLICY_TEMPERATURE);
+          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, POLICY_TEMPERATURE,
+                                                                            predictionQDeviationUpper, Options.PolicyTemperatureScalingFactor);
         }
         else
         {
@@ -769,10 +773,10 @@ namespace CeresTrain.NNEvaluators
             InitPolicyAndActionProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, 
                                              policiesToReturn, actionsSpan, actionsToReturn, hasAction);
 
-            if (hasAction && Options.ShrinkExtremes)
-            { 
-              SmoothActions(ref actionsToReturn[i], in policiesToReturn[i]);
-            }  
+//            if (hasAction && Options.ShrinkExtremes)
+//            { 
+//              SmoothActions(ref actionsToReturn[i], in policiesToReturn[i]);
+//            }  
         }
           else
           {
