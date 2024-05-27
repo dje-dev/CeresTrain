@@ -30,6 +30,7 @@ using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.MoveGen;
 using Ceres.Chess.Positions;
 using Ceres.Features.Visualization.AnalysisGraph;
+using Ceres.Chess.LC0.Boards;
 
 #endregion
 
@@ -240,7 +241,7 @@ namespace CeresTrain.TPG
     /// between PieceTypeHistory0 and the other piece type histories.
     /// </summary>
     /// <returns></returns> 
-    private int[] GetPieceTypeHistoryEqualCounts()
+    private readonly int[] GetPieceTypeHistoryEqualCounts()
     {
       int[] equalHistory = new int[TPGSquareRecord.NUM_HISTORY_POS];
       for (int i = 0; i < NUM_SQUARES; i++)
@@ -261,7 +262,7 @@ namespace CeresTrain.TPG
     /// <summary>
     /// Dumps a string representation of the TPGRecord to the Console.
     /// </summary>
-    public void Dump(bool withHistory = true)
+    public readonly void Dump(bool withHistory = true)
     {
       int[] equalHistoryCounts = GetPieceTypeHistoryEqualCounts();
 
@@ -304,7 +305,7 @@ namespace CeresTrain.TPG
     /// then launches browser with a set of chessboards showing the position and history.
     /// </summary>
     /// <param name="tpgRecord"></param>
-    public void DumpPositionWithHistoryInBrowser()
+    public readonly void DumpPositionWithHistoryInBrowser()
     {
       Dump();
       Console.WriteLine();
@@ -347,7 +348,7 @@ namespace CeresTrain.TPG
     /// </summary>
     /// <param name="maxHistoryPositions"></param>
     /// <returns></returns>
-    public PositionWithHistory ToPositionWithHistory(int maxHistoryPositions)
+    public readonly PositionWithHistory ToPositionWithHistory(int maxHistoryPositions = EncodedPositionBoards.NUM_MOVES_HISTORY)
     {
       List<Position> tpgPositions = new(maxHistoryPositions);
       Position lastPosition = default;
@@ -378,7 +379,7 @@ namespace CeresTrain.TPG
     /// <param name="curIndex"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public MGMove MoveBetweenHistoryPositions(int priorIndex, int curIndex)
+    public readonly MGMove MoveBetweenHistoryPositions(int priorIndex, int curIndex)
     {
       if (priorIndex < curIndex)
       {
@@ -415,7 +416,7 @@ namespace CeresTrain.TPG
     /// <param name="pieceHistoryIndex"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public Position PositionForSquares(ReadOnlySpan<TPGSquareRecord> squares, int pieceHistoryIndex, bool tpgRecordIsWhiteToMove, bool tryComputeEnPassant)
+    public readonly Position PositionForSquares(ReadOnlySpan<TPGSquareRecord> squares, int pieceHistoryIndex, bool tpgRecordIsWhiteToMove, bool tryComputeEnPassant)
     {
       Debug.Assert(squares.Length == NUM_SQUARES);
 
