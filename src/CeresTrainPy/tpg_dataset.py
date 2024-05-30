@@ -99,9 +99,9 @@ class TPGDataset(Dataset):
     self.files = [file for index, file in enumerate(self.files) if index % self.num_workers == self.worker_id]      
 
     wdl_smoothing_transform = np.array([
-        [1-self.wdl_smoothing, self.wdl_smoothing*0.6666, self.wdl_smoothing*0.3333],
+        [1-self.wdl_smoothing, self.wdl_smoothing*0.75, self.wdl_smoothing*0.25],
         [self.wdl_smoothing*0.5, 1-self.wdl_smoothing, self.wdl_smoothing*0.5],
-        [self.wdl_smoothing*0.3333, self.wdl_smoothing*0.6666, 1-self.wdl_smoothing]])
+        [self.wdl_smoothing*0.25, self.wdl_smoothing*0.75, 1-self.wdl_smoothing]])
 
     while True:
       for file_name in self.files:
@@ -123,22 +123,26 @@ class TPGDataset(Dataset):
               
               offset = 0 # running offset of where we are within the record
 
+              if (self.wdl_smoothing == 0.5):
+                assert 1==2, "wdl_smoothing == 0.5 not supported"
+
               # Read sequence of fields (see TPGRecord.cs)
 
               wdl_nondeblundered = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
+              if (self.wdl_smoothing > 0):
+                wdl_nondeblundered = np.matmul(wdl_nondeblundered, wdl_smoothing_transform)
 
               wdl_deblundered = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               if (self.wdl_smoothing > 0):
                 wdl_deblundered = np.matmul(wdl_deblundered, wdl_smoothing_transform)
 
-              if (self.wdl_smoothing == 0.5):
-                assert 1==2, "wdl_smoothing == 0.5 not supported"
-
               offset+= 3 * 4
 
               wdl_q = np.ascontiguousarray(this_batch[:, offset : offset + 3*4]).view(dtype=np.float32).reshape(-1, 3)
               offset+= 3 * 4
+              if (self.wdl_smoothing > 0):
+                wdl_q = np.matmul(wdl_q, wdl_smoothing_transform)
 
               played_q_suboptimality = np.ascontiguousarray(this_batch[:, offset : offset + 1*4]).view(dtype=np.float32).reshape(-1, 1)
               offset+= 1 * 4

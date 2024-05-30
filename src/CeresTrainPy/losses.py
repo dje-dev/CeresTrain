@@ -202,4 +202,12 @@ class LossCalculator():
     loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
     self.PENDING_UNCERTAINTY_POLICY_LOSS += loss.item()
     return loss
+
+
+  def action_unc_loss(self, target: torch.Tensor, output: torch.Tensor):
+    # Scale the loss to similar range as other losses.
+    self.POST_SCALE = 150.0
+    loss = self.POST_SCALE * F.huber_loss(output, target, reduction="mean", delta=0.5)
+    self.PENDING_ACTION_UNCERTAINTY_LOSS += loss.item()
+    return loss
     
