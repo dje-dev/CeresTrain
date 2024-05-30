@@ -241,7 +241,10 @@ namespace CeresTrain.Examples
         }
       }
 
-      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], SaveNetwork1FileName = netFN }, options:(NNEvaluatorTorchsharpOptions) options);
+      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], 
+       
+                                            SaveNetwork1FileName = netFN }, execConfig.Device, execConfig.DataType,
+                                            options:(NNEvaluatorTorchsharpOptions) options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -754,7 +757,10 @@ namespace CeresTrain.Examples
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
           string netFNToUse = netID == null ? netFN : netID;
-          return GetNNEvaluator(engineType, netDef, gpuID, execConfig with { UseHistory = useHistory }, netFNToUse, useBestValueRepetitionHeuristic, evaluatorOptions);
+          ConfigNetExecution execConfigToUse = execConfig with { UseHistory = useHistory };
+          NNEvaluator evaluator = GetNNEvaluator(engineType, netDef, gpuID, execConfig, netFNToUse, useBestValueRepetitionHeuristic, evaluatorOptions);
+          evaluator.Description = "CERES [" + evaluatorOptions.ShortStr + "] " + netFNToUse;
+          return evaluator;
         };
       }
 
