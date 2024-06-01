@@ -339,7 +339,7 @@ class CeresNet(pl.LightningModule):
     # Possibly create a blended value target for Value2.
     # The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
     #wdl_blend = (wdl_nondeblundered * 0.70 + wdl_deblundered * 0.15 + wdl_q * 0.15)
-    wdl_blend = wdl_nondeblundered
+    wdl_blend = wdl_deblundered
     
     value_target = wdl_q * self.q_ratio + wdl_deblundered * (1 - self.q_ratio)
     p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY)
