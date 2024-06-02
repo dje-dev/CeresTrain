@@ -146,7 +146,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m.eval()
 
     # AOT export. Works (generates .so file)
-    if False and CONVERT_ONLY:
+    if CONVERT_ONLY:
       try:
         #m = m.cuda().to(convert_type) # this might be necessary for AOT convert, but may cause subsequent failures if running net
 
@@ -420,7 +420,7 @@ def Train():
       del torchscript_model
     
       print("converting....")
-      save_to_torchscript(fabric, model, state, "fix", True)
+      save_to_torchscript(fabric, model, state, "postconvert", True)
       exit(3)      
  
   fabric.launch()
