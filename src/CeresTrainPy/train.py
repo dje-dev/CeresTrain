@@ -145,8 +145,8 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     m = model._orig_mod if hasattr(model, "_orig_mod") else model
     m.eval()
 
-    # AOT export. Works (generates .so file)
-    if CONVERT_ONLY:
+    # AOT export. Works (generates .so file), but seemingly slower than ONNX export options.
+    if False and CONVERT_ONLY:
       try:
         #m = m.cuda().to(convert_type) # this might be necessary for AOT convert, but may cause subsequent failures if running net
 
@@ -209,22 +209,26 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     
     
     if save_all_formats:
-      ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
-      ONNX16_SAVE_PATH = SAVE_TS_PATH + ".fp16.onnx"
 
-      # still in beta testing as of PyTorch 2.1, not yet functional: torch.onnx.dynamo_export
-      # TorchDynamo based export. Works, but when try to do inference from C# it fails on second call (reshape)
+      # Still in beta testing as of PyTorch 2.3, not yet functional: torch.onnx.dynamo_export
+      # TorchDynamo based export. Encountered warning/error on export.
       if False:
+        ONNX_SAVE_PATH = SAVE_TS_PATH + ".dynamo.onnx"
+        ONNX16_SAVE_PATH = SAVE_TS_PATH + "dynamo.fp16.onnx"
+
         try:
           export_options = torch.onnx.ExportOptions(dynamic_shapes=True)
           onnx_model = torch.onnx.dynamo_export(m, sample_inputs[0], sample_inputs[1], export_options=export_options)
           onnx_model.save(ONNX_SAVE_PATH)
-          print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
+          print('INFO: ONNX_DYNAMO_FILENAME', ONNX_SAVE_PATH)
         except Exception as e:
           print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
       # Legacy ONNX export.
       if True:
+        ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
+        ONNX16_SAVE_PATH = SAVE_TS_PATH + ".fp16.onnx"
+
         try:
           head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 'q_deviation_max', 'uncertainty_policy', 'action', 'prior_state', 'action_uncertainty']
           output_axes = {'squares' : {0 : 'batch_size'},    
@@ -246,7 +250,7 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
                             ONNX_SAVE_PATH,
                             do_constant_folding=True,
                             export_params=True,
-                            opset_version=17,
+                            opset_version=17, # Pytorch 2.3 maximum supported opset version 17
                             input_names = ['squares', 'prior_state'], # if config.NetDef_PriorStateDim > 0 else ['squares'],
                             output_names = head_output_names, 
                             dynamic_axes=output_axes)
@@ -421,7 +425,6 @@ def Train():
     
       print("converting....")
       save_to_torchscript(fabric, model, state, "postconvert", True)
-      exit(3)      
  
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
