@@ -12,7 +12,6 @@ using CeresTrain.Networks;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 
-
 #endregion
 
 namespace CeresTrain.NNEvaluators
@@ -56,6 +55,8 @@ namespace CeresTrain.NNEvaluators
     jit.ScriptModule<Tensor, Tensor, Tensor[]> module;
 
     
+    public readonly bool UseState;
+
     bool hasPriorStateOutput;
 
 
@@ -65,17 +66,22 @@ namespace CeresTrain.NNEvaluators
     /// <param name="executionConfig"></param>
     /// <param name="transformerConfig"></param>
     /// <exception cref="Exception"></exception>
-    public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, in NetTransformerDef transformerConfig)
+    public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, 
+                                            in NetTransformerDef transformerConfig,
+                                            Device device, ScalarType dataType,
+                                            bool useState = true)
     {
       if (executionConfig.TrackFinalLayerIntrinsicDimensionality && executionConfig.EngineType != NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
         throw new Exception("TrackFinalIntrinsicDimensionality only supported for CSharpViaTorchscript");
       }
 
-      Device = executionConfig.Device;
       TorchscriptFileName1 = executionConfig.SaveNetwork1FileName;
       TorchscriptFileName2 = executionConfig.SaveNetwork2FileName;
-      DataType = executionConfig.DataType;
+
+      Device = device;
+      DataType = dataType;  // ScalarType.Float16;
+      UseState = useState;
       TransformerConfig = transformerConfig;
 
       hasPriorStateOutput = transformerConfig.PriorStateDim > 0;
@@ -140,7 +146,7 @@ namespace CeresTrain.NNEvaluators
     /// <returns></returns>
     public override string ToString()
     {
-      return $">ModuleNNEvaluatorFromTorchScript({TorchscriptFileName1}, {TorchscriptFileName2}, {Device}, {DataType})>";
+      return $"<TS({TorchscriptFileName1}, {TorchscriptFileName2}, {Device}, {DataType})>";
     }
 
 
@@ -172,11 +178,11 @@ namespace CeresTrain.NNEvaluators
              Tensor actions, Tensor boardState) ret = default;
 
             bool hasAction;
-            bool networkExpectsBoardState = TransformerConfig.PriorStateDim > 0;
+            bool networkExpectsBoardState = UseState && TransformerConfig.PriorStateDim > 0;
             if (module != null)
             {
               Tensor[] rawRet = default;
-              if (hasPriorStateOutput)
+              if (hasPriorStateOutput && UseState)
               {
                 Tensor priorState;
                 if (input.priorState is not null)

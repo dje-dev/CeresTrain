@@ -99,12 +99,14 @@ namespace CeresTrain.NNEvaluators
     public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
                                  ICeresNeuralNetDef ceresTransformerNetDef,
                                  ConfigNetExecution configNetExec,
+                                 Device device, ScalarType dataType,
                                  bool lastMovePliesEnabled = false,
                                  NNEvaluatorTorchsharpOptions options = default)
       : this(engineType, 
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
-                                                 (NetTransformerDef)ceresTransformerNetDef),
-                                                  configNetExec.Device, configNetExec.DataType, 
+                                                 (NetTransformerDef)ceresTransformerNetDef,
+                                                  device, dataType, options.UsePriorState),
+                                                  device, dataType,
                                                   configNetExec.UseHistory, lastMovePliesEnabled, options)
     {
       getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
@@ -454,25 +456,28 @@ namespace CeresTrain.NNEvaluators
     /// Therefore it is not correct to apply summation here (but max operator is safe).
     /// </summary>
     /// <param name="policies"></param>
-    /// <param name="temperature"></param>
+    /// <param name="temperatureBase"></param>
     /// <returns></returns>
-    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float? temperature, 
+    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float temperatureBase, 
                                                                        Tensor policyUncertainties, 
-                                                                       float policyUncertaintyMultiplier = 1)
+                                                                       float policyUncertaintyMultiplier = 0)
     {
+      Debug.Assert(temperatureBase > 0);
+
       // Extract logits and possibly apply temperature if specified.
       Tensor valueFloat = policies.to(ScalarType.Float32);
       if (policyUncertaintyMultiplier > 0)
       {
-        Debug.Assert(temperature is null);
-        const float MAX_POLICY_UNCERAINTY = 0.35f;
-        valueFloat = policies / (1.00 + torch.min(MAX_POLICY_UNCERAINTY, policyUncertainties) * policyUncertaintyMultiplier * 1f);
+        const float MAX_POLICY_UNCERAINTY = 0.20f;
+        var tensorxx = (temperatureBase + torch.min(MAX_POLICY_UNCERAINTY, policyUncertainties) * policyUncertaintyMultiplier * 1f); ;
+//        Console.WriteLine(tensorxx.shape);
+        valueFloat = valueFloat / (temperatureBase + torch.min(MAX_POLICY_UNCERAINTY, policyUncertainties) * policyUncertaintyMultiplier * 1f);
       }
       else
       {
-        if (temperature.HasValue && temperature != 1)
+        if (temperatureBase != 1)
         {
-          valueFloat /= temperature;
+          valueFloat /= temperatureBase;
         }
       }
 
@@ -656,12 +661,13 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
-        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature); 
-                                                          //Options.ShrinkExtremes ? predictionUNC : default);
-
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
+
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature, 
+                                                          Options.UseValueTemperature ? predictionQDeviationLower : null,
+                                                          Options.UseValueTemperature ? predictionQDeviationUpper : null);
 
         static float WtdPowerMean(float a, float b, float w1, float w2, float p)
         {
@@ -731,8 +737,7 @@ namespace CeresTrain.NNEvaluators
           //predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
           
           // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
-          float? POLICY_TEMPERATURE = null;
-          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, POLICY_TEMPERATURE,
+          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, Options.PolicyTemperatureBase,
                                                                             predictionQDeviationUpper, Options.PolicyTemperatureScalingFactor);
         }
         else
@@ -884,26 +889,27 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    private static Span<Half> ExtractValueWDL(Tensor predictionValue, float? temperature, Tensor uncertaintyAdjustments = null)
+    private static Span<Half> ExtractValueWDL(Tensor predictionValue, float? temperature, 
+                                              Tensor valueTemperatures = null,
+                                              Tensor uncertaintyTemperature = null)
     {
       // Extract logits and possibly apply temperature if specified.
       Tensor valueFloat = predictionValue.to(ScalarType.Float32);
-      if (temperature.HasValue && temperature != 1)
+      if (valueTemperatures is not null)
       {
-        if (uncertaintyAdjustments is not null)
-        {
-          Tensor t = torch.full_like(uncertaintyAdjustments, temperature);
-//          t = torch.where(uncertaintyAdjustments < 0.08, torch.tensor(temperature.Value - 0.4f), t);
-//          t = torch.where(uncertaintyAdjustments > 0.20, torch.tensor(temperature.Value + 0.6f), t);
+        temperature = temperature ?? 1.0f;
 
-          t = t + 4 * (uncertaintyAdjustments - 0.1);
+        Tensor t = temperature + 1.25 * valueTemperatures + 1 * uncertaintyTemperature;// torch.full_like(valueTemperatures, temperature);
+        //          t = torch.where(uncertaintyAdjustments < 0.08, torch.tensor(temperature.Value - 0.4f), t);
+        //          t = torch.where(uncertaintyAdjustments > 0.20, torch.tensor(temperature.Value + 0.6f), t);
 
-          valueFloat /= t;
-        }
-        else
-        {
-          valueFloat /= temperature;
-        } 
+        //t = t + 4 * (uncertaintyAdjustments - 0.1);
+
+        valueFloat /= t;
+      }
+      else if (temperature.HasValue && temperature != 1)
+      {
+        valueFloat /= temperature;
       }
 
       // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
