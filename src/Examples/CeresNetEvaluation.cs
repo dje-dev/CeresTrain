@@ -580,6 +580,7 @@ namespace CeresTrain.Examples
                                                string netFNOverride = null,
                                                string netFNOverride2 = null)
     {
+#if NOT
       // Automatically strip off extension ".onnx" if found since this is appended back on later.
       if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
         || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
@@ -594,9 +595,8 @@ namespace CeresTrain.Examples
         {
           netFNOverride2 = netFNOverride2.Substring(0, netFNOverride2.IndexOf(".onnx"));
         }
-
       }
-
+#endif
       string configsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs");
       string fullConfigPath = Path.Combine(configsDir, configID);
       TrainingResultSummary? resultsFile;
@@ -730,11 +730,21 @@ namespace CeresTrain.Examples
         bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
 
-        string onnxFN = netFN + ".onnx"; 
-        if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
+        string onnxFN;
+        if (netFN.ToUpper().EndsWith(".ONNX"))
         {
-          onnxFN = onnxFN + "_fp16.onnx";
+          // Take filename as is.
+          onnxFN = netFN;
         }
+        else
+        {
+          onnxFN = netFN + ".onnx";
+          if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
+          {
+            onnxFN = onnxFN + "_fp16.onnx";
+          }
+        }
+
         if (!File.Exists(onnxFN))
         {
           Console.WriteLine($"ONNX file not found {onnxFN}");
