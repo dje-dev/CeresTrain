@@ -747,8 +747,17 @@ namespace CeresTrain.Examples
 
         if (!File.Exists(onnxFN))
         {
-          Console.WriteLine($"ONNX file not found {onnxFN}");
+          if (netFN != null && !File.Exists(netFN))
+          {
+            string orgNetFN = onnxFN;
+            onnxFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);
+            if (!File.Exists(onnxFN))
+            {
+              throw new Exception($"Ceres ONNX net file {orgNetFN} not found in DirCeresNetworks {CeresUserSettingsManager.Settings.DirCeresNetworks}");
+            }
+          }
         }
+
         //CeresTrainingRunAnalyzer.DumpAndBenchmarkONNXNetInfo(onnxFN);
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
