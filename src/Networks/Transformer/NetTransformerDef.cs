@@ -133,7 +133,6 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="numHeads"></param>
     /// <param name="ffnMultiplier"></param>
     /// <param name="extraFeatures"></param>
-    /// <param name="globalStreamDim"></param>
     public NetTransformerDef(int modelDim, int numLayers, int numHeads, int ffnMultiplier, TransformerFeatures extraFeatures)
     {
       ModelDim = modelDim;

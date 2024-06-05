@@ -98,11 +98,6 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly Linear Linear3;
 
-    /// <summary>
-    /// If only the global stream should be fed into th head.
-    /// </summary>
-    public bool UseGlobalStreamOnly;
-
     bool SaveIntermediateActivations;
 
     bool PremapAlreadyApplied;
@@ -175,7 +170,7 @@ namespace CeresTrain.Networks.Transformer
                             HashSet<string> weightsLoaded,
                             string premapLayerName, string linearBaseName)
     {
-      if (PremapDimDivisor > 1 && !UseGlobalStreamOnly)
+      if (PremapDimDivisor > 1)
       {
         LinearLoad(weightsSource, weightsLoaded, LinearPremap, premapLayerName + ".weight", premapLayerName + ".bias");
       }
@@ -193,7 +188,7 @@ namespace CeresTrain.Networks.Transformer
       {
         if (!PremapAlreadyApplied)
         {
-          if (PremapDimDivisor > 1 && !UseGlobalStreamOnly)
+          if (PremapDimDivisor > 1)
           {
             x = LinearPremap.call(x);
 
