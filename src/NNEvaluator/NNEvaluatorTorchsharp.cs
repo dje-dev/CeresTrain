@@ -458,7 +458,7 @@ namespace CeresTrain.NNEvaluators
     /// <param name="policies"></param>
     /// <param name="temperatureBase"></param>
     /// <returns></returns>
-    private static Span<float> ExtractExponentiatedPolicyProbabilities(Tensor policies, float temperatureBase, 
+    private static Span<Half> ExtractExponentiatedPolicyProbabilities(Tensor policies, float temperatureBase, 
                                                                        Tensor policyUncertainties, 
                                                                        float policyUncertaintyMultiplier = 0)
     {
@@ -485,7 +485,7 @@ namespace CeresTrain.NNEvaluators
       Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
       Tensor exp_logits = torch.exp(valueFloat - max_logits);
 
-      return MemoryMarshal.Cast<byte, float>(exp_logits.to(ScalarType.Float32).cpu().bytes);
+      return MemoryMarshal.Cast<byte, Half>(exp_logits.to(ScalarType.Float16).cpu().bytes);
     }
 
 
@@ -723,7 +723,7 @@ namespace CeresTrain.NNEvaluators
       
 
         //ReadOnlySpan<Half> predictionsPolicy = null;
-        ReadOnlySpan<float> predictionsPolicyMasked = null;
+        ReadOnlySpan<Half> predictionsPolicyMasked = null;
         Tensor gatheredLegalMoveProbs = default;
 
         if (legalMovesIndices != null)
@@ -1038,13 +1038,13 @@ namespace CeresTrain.NNEvaluators
 
 
     static void InitPolicyAndActionProbabilities(int i,
-                                        Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
-                                        short[] legalMoveIndices,
-                                        ReadOnlySpan<float> spanPoliciesMaskedAndExponentiated,
-                                        CompressedPolicyVector[] policiesToReturn,
-                                        Span<Half> actionValues,
-                                        CompressedActionVector[] actionsToReturn,
-                                        bool hasActions)
+                                                 Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
+                                                 short[] legalMoveIndices,
+                                                 ReadOnlySpan<Half> spanPoliciesMaskedAndExponentiated,
+                                                 CompressedPolicyVector[] policiesToReturn,
+                                                 Span<Half> actionValues,
+                                                 CompressedActionVector[] actionsToReturn,
+                                                 bool hasActions)
     {
       // TODO: Use Span2D from performance tools NuGet package
       int baseIndex = i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST;
@@ -1071,7 +1071,7 @@ namespace CeresTrain.NNEvaluators
         }
 
         //  float probAdjusted = MathF.Exp((float)spanPoliciesMasked[baseIndex + m] - maxProb);
-        float thisProb = spanPoliciesMaskedAndExponentiated[baseIndex + m];  
+        float thisProb = (float)spanPoliciesMaskedAndExponentiated[baseIndex + m];  
         probs[m] = new PolicyVectorCompressedInitializerFromProbs.ProbEntry((short)index, thisProb);
         numUsedSlots++;
       }
