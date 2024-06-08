@@ -30,7 +30,7 @@ namespace CeresTrain.TPG
     /// <summary>
     /// Number of per-position slots in array of legal moves sent to remote evaluator.
     /// </summary>
-    public const int NUM_MOVE_SLOTS_PER_REQUEST = 80;
+    public const int NUM_MOVE_SLOTS_PER_REQUEST = TPGRecord.MAX_MOVES;
 
 
     /// <summary>

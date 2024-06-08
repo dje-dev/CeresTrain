@@ -23,6 +23,7 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.LC0.Batches;
 using Ceres.Chess.MoveGen;
+using Ceres.Chess.MoveGen.Converters;
 using CeresTrain.TPG.TPGGenerator;
 
 #endregion
@@ -200,6 +201,9 @@ namespace CeresTrain.TPG
     [ThreadStatic]
     static TPGRecord[] tempTPGRecords;
 
+    static int countConversions = 0;
+
+
     /// <summary>
     /// Converts input positions defined as IEncodedPositionFlat 
     /// into raw square and move bytes used by the TPGRecord.
@@ -218,10 +222,22 @@ namespace CeresTrain.TPG
                                                         float qPositiveBlunders,
                                                         out MGPosition[] mgPos,
                                                         out byte[] squareBytesAll,
-                                                        out short[] legalMoveIndices)
+                                                        short[] legalMoveIndices)
     {
-      short[] legalMoveIndicesInternal = new short[positions.NumPos * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
-      legalMoveIndices = legalMoveIndicesInternal;
+#if DEBUG
+      short[] legalMoveIndicesAlternate = null;
+      const int FREQUENCY_VERIFY_MOVE_INDICES = 100;
+      bool verifyMoveIndices = countConversions++ % FREQUENCY_VERIFY_MOVE_INDICES == 0;
+
+      if (verifyMoveIndices) 
+      {
+        // Old slow code, replaced below with help of the passed in moves argument.
+        legalMoveIndicesAlternate = new short[positions.NumPos * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
+      }
+#endif
+
+      // Reset legalMoveIndices back to 0.
+      Array.Clear(legalMoveIndices, 0, positions.NumPos * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
 
       // Get all positions from input batch.
       // TODO: Improve efficiency, these array materializations are expensive.
@@ -233,19 +249,19 @@ namespace CeresTrain.TPG
       mgPos = positions.Positions.ToArray();
       byte[] pliesSinceLastMoveAllPositions = positions.LastMovePlies.ToArray();
 
-      int offsetRawBoardBytes = 0;
       squareBytesAll = new byte[positions.NumPos * Marshal.SizeOf<TPGSquareRecord>() * 64];
       byte[] squareBytesAllCopy = squareBytesAll;
 
       // Determine each position and copy converted raw board bytes into rawBoardBytesAll.
       // TODO: for efficiency, avoid doing this if the NN evaluator does not need raw bytes
-      Parallel.For(0, positions.NumPos, new ParallelOptions() { MaxDegreeOfParallelism = 8 }, i =>
+      const int MAX_THREADS = 8;
+      Parallel.For(0, positions.NumPos, new ParallelOptions() { MaxDegreeOfParallelism = MAX_THREADS }, i =>
 
       //for (int i = 0; i < positions.NumPos; i++)
       {
         if (tempTPGRecords == null)
         {
-          tempTPGRecords = new TPGRecord[MAX_TPG_RECORDS_PER_BUFFER];
+          tempTPGRecords = new TPGRecord[MAX_TPG_RECORDS_PER_BUFFER]; // ThreadStatic
         }
 
         if (!lastMovePliesEnabled)
@@ -277,15 +293,93 @@ namespace CeresTrain.TPG
         // Extract as bytes.
         tpgRecord.CopySquares(squareBytesAllCopy, i * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
 
-#if MOVES
-        tpgRecord.CopyMoves(moveBytesAll, i * TPGRecord.MAX_MOVES * Marshal.SizeOf<TPGMoveRecord>());
+        if (legalMoveIndices != null)
+        {
+          int numMoves = Math.Min(TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, moves.Span[i].NumMovesUsed);
+          int indexOfMoveWithNNIndex0 = -1;
+          Span<short> thisPositionLegalMoveIndices = new Span<short>(legalMoveIndices, i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
+
+          for (int moveNum = 0; moveNum < numMoves; moveNum++)
+          {
+            MGMove thisMove = moves.Span[i].MovesArray[moveNum];
+            short nnIndex = (short)ConverterMGMoveEncodedMove.MGChessMoveToEncodedMove(thisMove).IndexNeuralNet;
+            thisPositionLegalMoveIndices[moveNum] = (short)nnIndex;
+
+            if (nnIndex == 0)
+            {
+              indexOfMoveWithNNIndex0 = moveNum;
+            }
+          }
+
+          // Since we use index 0 as a sentinel (unless appears in first slot),
+          // if index 0 actually is present in the legal moves, swap it into the first slot.
+          if (indexOfMoveWithNNIndex0 != -1)
+          {
+            // Move index 0 must be first.
+            short temp = thisPositionLegalMoveIndices[0];
+            thisPositionLegalMoveIndices[0] = thisPositionLegalMoveIndices[indexOfMoveWithNNIndex0];
+            thisPositionLegalMoveIndices[indexOfMoveWithNNIndex0] = temp;
+          }
+
+#if DEBUG
+          if (verifyMoveIndices)
+          {
+            // Old slow code, replaced below with help of the passed in moves argument.
+            TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tempTPGRecords, moves.Span[i], legalMoveIndicesAlternate, i);
+          }
+#endif
+        }
+      });
+
+#if DEBUG
+      if (verifyMoveIndices)
+      {
+        DebugVerifyCorrectLegalMoveIndices(positions, legalMoveIndices, legalMoveIndicesAlternate);
+      }
 #endif
 
-        TPGRecordMovesExtractor.ExtractLegalMoveIndicesForIndex(tempTPGRecords, moves.Span[i], legalMoveIndicesInternal, i);
-      });
     }
 
 
+    /// <summary>
+    /// Diagnostic method to verify that two methods of extracting legal move indices are consistent.
+    /// </summary>
+    /// <param name="positions"></param>
+    /// <param name="legalMoveIndices"></param>
+    /// <param name="legalMoveIndicesAlternate"></param>
+    /// <exception cref="Exception"></exception>
+    private static void DebugVerifyCorrectLegalMoveIndices(IEncodedPositionBatchFlat positions, 
+                                                           short[] legalMoveIndices,
+                                                           short[] legalMoveIndicesAlternate)
+    {
+      short[] copyLegalMoveIndices = new short[TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
+      short[] copyLegalMoveIndicesAlternate = new short[TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
+
+      // Because 0 is reserved sentinel, don't expect it in first slot
+      // (unless we already see that in the correct copy, indicating no legal moves).
+      for (int i = 0; i < positions.NumPos; i++)
+      {
+        ReadOnlySpan<short> thisPositionLegalMoveIndices = new Span<short>(legalMoveIndices, i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
+        ReadOnlySpan<short> thisPositionLegalMoveIndicesAlternate = new Span<short>(legalMoveIndicesAlternate, i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
+
+        Debug.Assert(!(thisPositionLegalMoveIndices[0] == 0 && legalMoveIndicesAlternate[0] != 0));
+
+        // Compare the two methods of extracting legal move indices.
+        // Create copies and sort them to facilitate comparison.
+        thisPositionLegalMoveIndices.CopyTo(copyLegalMoveIndices);
+        thisPositionLegalMoveIndicesAlternate.CopyTo(copyLegalMoveIndicesAlternate);
+        Array.Sort(copyLegalMoveIndices);
+        Array.Sort(copyLegalMoveIndicesAlternate);
+
+        for (int ix = 0; ix < TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST; ix++)
+        {
+          if (copyLegalMoveIndices[ix] != copyLegalMoveIndicesAlternate[ix])
+          {
+            throw new Exception("Mismatch in legal move indices");
+          }
+        }
+      }
+    }
 
     private static TPGRecord CheckPliesSinceLastMovedCorrect(TPGRecord tpgRecord)
     {
@@ -446,7 +540,7 @@ namespace CeresTrain.TPG
       PadPolicies(ref tpgRecord, count);
     }
 
-
+    static int convertCount;
 
     public static unsafe void ConvertToTPGRecordSquares(in EncodedPositionWithHistory posWithHistory,
                                                         bool includeHistory,
@@ -517,18 +611,16 @@ namespace CeresTrain.TPG
                                      tpgRecord.Squares, pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
                                      qNegativeBlunders, qPositiveBlunders,
                                      priorPosWinP, priorPosDrawP, priorPosLossP);
+
 #if DEBUG
-      const bool validate = true;
-#else
-      // Possibly randomly validate some even in non-debug mode.
-      const int VALIDATE_PCT = 0;
-      bool validate = VALIDATE_PCT > 0 && TPGRecord.NUM_SQUARES == 64 && thisPosition.CalcZobristHash(PositionMiscInfo.HashMove50Mode.ValueBoolIfAbove98, false) % 100 < VALIDATE_PCT;
-#endif
+      const int VALIDATE_FREQUENCY = 100; // too slow to do every time
+      bool validate = convertCount++ % VALIDATE_FREQUENCY == 0;
       if (validate)
       {
         TPGRecordValidation.ValidateHistoryReachability(in tpgRecord);
         TPGRecordValidation.ValidateSquares(in posWithHistory, ref tpgRecord);
       }
+#endif
     }
 
 

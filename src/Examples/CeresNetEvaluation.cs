@@ -51,6 +51,10 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.TrainCommands;
 using CeresTrain.UserSettings;
 using Ceres.Chess.UserSettings;
+using System.Numerics.Tensors;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 
 #endregion 
 
@@ -715,10 +719,10 @@ namespace CeresTrain.Examples
         )
       {
         EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
-        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1, f2)
-          => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, f1, f2);
-        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, f1, f2) 
-          => TPGConvertersToFlat.ConvertToFlatTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, history, f1, f2);
+        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1)
+          => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, f1);
+        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, squares, legalMoveIndices) 
+          => TPGConvertersToFlat.ConvertToFlatTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, history, squares, legalMoveIndices);
 
         NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
                                       || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
@@ -762,7 +766,7 @@ namespace CeresTrain.Examples
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
-          return new NNEvaluatorEngineONNX(onnxFN.Replace(".onnx", ""),
+          return new NNEvaluatorEngineONNX(netID,
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
@@ -857,11 +861,10 @@ namespace CeresTrain.Examples
     /// Converts a batch of TPGRecord[] into TPG flat square values.
     /// </summary>
     /// <param name="records"></param>
-    /// <param name="flatValuesPrimary"></param>
-    /// <param name="flatValuesSecondary"></param>
+    /// <param name="flatValues"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public static int ConvertToFlatTPGFromTPG(object records, float qNegativeBlunders, float qPositiveBlunders, byte[] flatValuesPrimary, byte[] flatValuesSecondary)
+    public static int ConvertToFlatTPGFromTPG(object records, float qNegativeBlunders, float qPositiveBlunders, byte[] flatValues)
     {
       // TODO: Requiring the converter to take a materialized array could be inefficient, can we use Memory instead?
       TPGRecord[] tpgRecords = records as TPGRecord[];
@@ -884,10 +887,114 @@ namespace CeresTrain.Examples
       // TODO: This could be made more efficient, fold into the above loop.
       for (int i = 0; i < squareBytesAll.Length; i++)
       {
-        flatValuesPrimary[i] = squareBytesAll[i];
+        flatValues[i] = squareBytesAll[i];
       }
 
       return squareBytesAll.Length;
+    }
+
+
+    /// <summary>
+    /// Copies sourceBytes into targetFloats, also dividing by divisor.
+    /// </summary>
+    /// <param name="sourceBytes"></param>
+    /// <param name="targetFloats"></param>
+    static unsafe void CopyAndDivide(byte[] sourceBytes, float[] targetFloats, float divisor)
+    {
+      int vectorSize = Vector256<byte>.Count;
+      int i = 0;
+
+      if (Avx2.IsSupported)
+      {
+        Vector256<float> divisorVec = Vector256.Create(divisor);
+
+        fixed (byte* squareBytesAllPtr = sourceBytes)
+        fixed (float* flatValuesPrimaryPtr = targetFloats)
+        {
+          // Process in chunks of 32 bytes
+          for (i = 0; i <= sourceBytes.Length - vectorSize; i += vectorSize)
+          {
+            // Load 32 bytes from the byte array
+            Vector256<byte> byteVec = Avx.LoadVector256(&squareBytesAllPtr[i]);
+
+            // Convert the 32 bytes to 32 floats
+            Vector256<short> ushortLow = Avx2.ConvertToVector256Int16(byteVec.GetLower());
+            Vector256<short> ushortHigh = Avx2.ConvertToVector256Int16(byteVec.GetUpper());
+
+            Vector256<float> floatLowLow = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortLow.GetLower()));
+            Vector256<float> floatLowHigh = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortLow.GetUpper()));
+
+            Vector256<float> floatHighLow = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortHigh.GetLower()));
+            Vector256<float> floatHighHigh = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortHigh.GetUpper()));
+
+            // Divide by the divisor
+            Vector256<float> resultLowLow = Avx.Divide(floatLowLow, divisorVec);
+            Vector256<float> resultLowHigh = Avx.Divide(floatLowHigh, divisorVec);
+            Vector256<float> resultHighLow = Avx.Divide(floatHighLow, divisorVec);
+            Vector256<float> resultHighHigh= Avx.Divide(floatHighHigh, divisorVec);
+
+            // Store the results
+            Avx.Store(&flatValuesPrimaryPtr[i], resultLowLow);
+            Avx.Store(&flatValuesPrimaryPtr[i + 8], resultLowHigh);
+            Avx.Store(&flatValuesPrimaryPtr[i + 16], resultHighLow);
+            Avx.Store(&flatValuesPrimaryPtr[i + 24], resultHighHigh);
+          }
+        }
+      }
+      else if (AdvSimd.IsSupported)
+      {
+        throw new NotImplementedException("this code is not yet tested");
+
+        Vector128<float> divisorVec = Vector128.Create(divisor);
+        Vector128<float> reciprocalDivisorVec = AdvSimd.ReciprocalEstimate(divisorVec);
+        fixed (byte* sourceBytesPtr = sourceBytes)
+        fixed (float* targetFloatsPtr = targetFloats)
+        {
+          for (i = 0; i <= sourceBytes.Length - vectorSize; i += vectorSize)
+          {
+            // Load 16 bytes from the byte array
+            Vector128<byte> byteVec = AdvSimd.LoadVector128(&sourceBytesPtr[i]);
+
+            // Split the vector into two 64-bit parts
+            Vector64<byte> byteVecLower = byteVec.GetLower();
+            Vector64<byte> byteVecUpper = byteVec.GetUpper();
+
+            // Zero extend the lower and upper parts
+            Vector128<ushort> ushortVecLower = AdvSimd.ZeroExtendWideningLower(byteVecLower);
+            Vector128<ushort> ushortVecUpper = AdvSimd.ZeroExtendWideningLower(byteVecUpper);
+
+            // Zero extend the widened vectors to 32-bit integers
+            Vector128<uint> uintVecLower1 = AdvSimd.ZeroExtendWideningLower(ushortVecLower.GetLower());
+            Vector128<uint> uintVecLower2 = AdvSimd.ZeroExtendWideningUpper(ushortVecLower);
+            Vector128<uint> uintVecUpper1 = AdvSimd.ZeroExtendWideningLower(ushortVecUpper.GetLower());
+            Vector128<uint> uintVecUpper2 = AdvSimd.ZeroExtendWideningUpper(ushortVecUpper);
+
+            // Convert the 32-bit integers to single-precision floats
+            Vector128<float> floatVecLower1 = AdvSimd.ConvertToSingle(uintVecLower1);
+            Vector128<float> floatVecLower2 = AdvSimd.ConvertToSingle(uintVecLower2);
+            Vector128<float> floatVecUpper1 = AdvSimd.ConvertToSingle(uintVecUpper1);
+            Vector128<float> floatVecUpper2 = AdvSimd.ConvertToSingle(uintVecUpper2);
+
+            // Divide by the divisor using reciprocal approximation
+            Vector128<float> resultVecLower1 = AdvSimd.Multiply(floatVecLower1, reciprocalDivisorVec);
+            Vector128<float> resultVecLower2 = AdvSimd.Multiply(floatVecLower2, reciprocalDivisorVec);
+            Vector128<float> resultVecUpper1 = AdvSimd.Multiply(floatVecUpper1, reciprocalDivisorVec);
+            Vector128<float> resultVecUpper2 = AdvSimd.Multiply(floatVecUpper2, reciprocalDivisorVec);
+
+            // Store the results
+            AdvSimd.Store(&targetFloatsPtr[i], resultVecLower1);
+            AdvSimd.Store(&targetFloatsPtr[i + 4], resultVecLower2);
+            AdvSimd.Store(&targetFloatsPtr[i + 8], resultVecUpper1);
+            AdvSimd.Store(&targetFloatsPtr[i + 12], resultVecUpper2);
+          }
+        }
+      }
+
+      // Process remaining elements (15x slower than vectorized).
+      for (; i < sourceBytes.Length; i++)
+      {
+        targetFloats[i] = sourceBytes[i] / divisor;
+      }
     }
 
 
@@ -896,11 +1003,12 @@ namespace CeresTrain.Examples
     /// </summary>
     /// <param name="batch"></param>
     /// <param name="includeHistory"></param>
-    /// <param name="flatValuesPrimary"></param>
+    /// <param name="squareValues"></param>
     /// <param name="flatValuesSecondary"></param>
     /// <exception cref="NotImplementedException"></exception>
     public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch,
-      float qNegativeBlunders, float qPositiveBlunders, bool includeHistory, float[] flatValuesPrimary, float[] flatValuesSecondary)
+                                        float qNegativeBlunders, float qPositiveBlunders, 
+                                        bool includeHistory, float[] squareValues, short[] legalMoveIndices)
     {
       if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
       {
@@ -921,17 +1029,13 @@ namespace CeresTrain.Examples
 
       byte[] squareBytesAll;
       byte[] moveBytesAll;
-      short[] legalMoveIndices; // TODO: NOT USED, NOT NEEDED, TURN OFF CALC BELOW?
+      // TODO: consider pushing the CopyAndDivide below into this next method
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, batch.Moves, EMIT_PLY_SINCE, 
                                                           qNegativeBlunders, qPositiveBlunders,
-                                                          out _, out squareBytesAll, out legalMoveIndices);
+                                                          out _, out squareBytesAll, legalMoveIndices);
 
-      // NOTE: unrolling loop here does not improve performance.
       // TODO: push this division onto the GPU
-      for (int i = 0; i < squareBytesAll.Length; i++)
-      {
-        flatValuesPrimary[i] = squareBytesAll[i] / TPGSquareRecord.SQUARE_BYTES_DIVISOR;
-      }
+      CopyAndDivide(squareBytesAll, squareValues, TPGSquareRecord.SQUARE_BYTES_DIVISOR);
 
 #if OLD_TPG_COMBO_DIRECT_CONVER
       static bool HAVE_WARNED = false;

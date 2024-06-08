@@ -220,7 +220,8 @@ namespace CeresTrain.NNEvaluators
 
     byte[] squareBytesAll = new byte[MAX_BATCH_SIZE * Marshal.SizeOf<TPGSquareRecord>() * 64];
     MGPosition[] mgPos = new MGPosition[MAX_BATCH_SIZE];
-    MGMoveList moveList = new MGMoveList();
+
+    short[] legalMoveIndicesBuffer = new short[MAX_BATCH_SIZE * TPGRecord.MAX_MOVES];
 
 
     public IPositionEvaluationBatch Evaluate(ReadOnlySpan<TPGRecord> tpgRecords)
@@ -232,7 +233,7 @@ namespace CeresTrain.NNEvaluators
 
       Func<int, MGMoveList> getMoveListAtIndex = (i) =>
       {
-        moveList.Clear();
+        MGMoveList moveList = new MGMoveList();
         MGMoveGen.GenerateMoves(in mgPos[i], moveList);
         return moveList;
       };
@@ -313,11 +314,10 @@ namespace CeresTrain.NNEvaluators
       MGPosition[] mgPos;
       byte[] squareBytesAll;
       byte[] moveBytesAll;
-      short[] legalMoveIndices = null;
 
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled,
                                                           Options.QNegativeBlunders, Options.QPositiveBlunders,
-                                                          out mgPos, out squareBytesAll, out legalMoveIndices);
+                                                          out mgPos, out squareBytesAll, legalMoveIndicesBuffer);
 #if DEBUG
       lastPosition = lastPositionStatic = positions.PositionsBuffer.Span[0];
 
@@ -326,7 +326,7 @@ namespace CeresTrain.NNEvaluators
       IPositionEvaluationBatch batch = RunEvalAndExtractResultBatch(i => positions.States.Length == 0 ? default : positions.States.Span[i], 
                                                                     i => positions.Moves.Span[i], 
                                                                     positions.NumPos,
-                                                                    i => mgPos[i], squareBytesAll, legalMoveIndices);
+                                                                    i => mgPos[i], squareBytesAll, legalMoveIndicesBuffer);
       if (false) // debug code, test against tablebase if accurate
       {
         if (tbEvaluator == null)
@@ -730,7 +730,12 @@ namespace CeresTrain.NNEvaluators
         {
           // The indices of legal moves were provided, therefore
           // extract only the masked legal moves (using torch gather operator).
-          Tensor indices = tensor(legalMovesIndices, ScalarType.Int64, predictionPolicy.device)
+          
+          // Create an array of legal move indices exactly sized for this batch.
+          // TODO: this is inefficent, ideally want a Torchsharp API 
+          short[] legalMoveIndicesSlice = new short[numPositions * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
+          Array.Copy(legalMovesIndices, legalMoveIndicesSlice, legalMoveIndicesSlice.Length);
+          Tensor indices = tensor(legalMoveIndicesSlice, ScalarType.Int64, predictionPolicy.device)
                                 .reshape([numPositions, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST]);
           gatheredLegalMoveProbs = predictionPolicy.gather(1, indices);
           
