@@ -899,8 +899,14 @@ namespace CeresTrain.Examples
     /// </summary>
     /// <param name="sourceBytes"></param>
     /// <param name="targetFloats"></param>
-    static unsafe void CopyAndDivide(byte[] sourceBytes, float[] targetFloats, float divisor)
+    static unsafe void CopyAndDivide(byte[] sourceBytes, Half[] targetFloats, float divisor)
     {
+      for (int i=0;i<sourceBytes.Length;i++)
+      {
+        targetFloats[i] = (Half)(sourceBytes[i] / divisor);
+      }
+      return;
+#if NOT
       int vectorSize = Vector256<byte>.Count;
       int i = 0;
 
@@ -909,7 +915,7 @@ namespace CeresTrain.Examples
         Vector256<float> divisorVec = Vector256.Create(divisor);
 
         fixed (byte* squareBytesAllPtr = sourceBytes)
-        fixed (float* flatValuesPrimaryPtr = targetFloats)
+        fixed (Half* flatValuesPrimaryPtr = targetFloats)
         {
           // Process in chunks of 32 bytes
           for (i = 0; i <= sourceBytes.Length - vectorSize; i += vectorSize)
@@ -948,7 +954,7 @@ namespace CeresTrain.Examples
         Vector128<float> divisorVec = Vector128.Create(divisor);
         Vector128<float> reciprocalDivisorVec = AdvSimd.ReciprocalEstimate(divisorVec);
         fixed (byte* sourceBytesPtr = sourceBytes)
-        fixed (float* targetFloatsPtr = targetFloats)
+        fixed (Half* targetFloatsPtr = targetFloats)
         {
           for (i = 0; i <= sourceBytes.Length - vectorSize; i += vectorSize)
           {
@@ -993,8 +999,9 @@ namespace CeresTrain.Examples
       // Process remaining elements (15x slower than vectorized).
       for (; i < sourceBytes.Length; i++)
       {
-        targetFloats[i] = sourceBytes[i] / divisor;
+        targetFloats[i] = (Half)(sourceBytes[i] / divisor);
       }
+#endif
     }
 
 
@@ -1008,7 +1015,7 @@ namespace CeresTrain.Examples
     /// <exception cref="NotImplementedException"></exception>
     public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch,
                                         float qNegativeBlunders, float qPositiveBlunders, 
-                                        bool includeHistory, float[] squareValues, short[] legalMoveIndices)
+                                        bool includeHistory, Half[] squareValues, short[] legalMoveIndices)
     {
       if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
       {
