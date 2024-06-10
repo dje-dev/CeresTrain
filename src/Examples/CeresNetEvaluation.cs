@@ -767,6 +767,7 @@ namespace CeresTrain.Examples
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
+          Console.WriteLine("Create NEvaluatorEngineONNX " + evaluatorOptions.FractionValueHead2 + " " + onnxFN);
           return new NNEvaluatorEngineONNX(netID,
                                            onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
