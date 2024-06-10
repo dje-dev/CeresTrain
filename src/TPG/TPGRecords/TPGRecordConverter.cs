@@ -119,7 +119,7 @@ namespace CeresTrain.TPG
       TPGRecord tpgRecord = default;
 
       // Write squares.
-      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, default, null,
+      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, 
                                 ref tpgRecord, pliesSinceLastPieceMoveBySquare, pliesSinceLastPieceMoveBySquare != default,
                                 qNegativeBlunders, qPositiveBlunders,
                                 priorPosWinP, priorPosDrawP, priorPosLossP); 
@@ -155,7 +155,7 @@ namespace CeresTrain.TPG
       //       LC0 training data (which is mirrored). Someday undo this mirroring in training and then can remove here.
       EncodedPositionWithHistory encodedPosToConvertMirrored = encodedPosToConvert.Mirrored;
 #endif
-      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, moves, targetInfo, ref tpgRecord, 
+      ConvertToTPGRecordSquares(in encodedPosToConvert, includeHistory, ref tpgRecord, 
                                 pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
                                 qNegativeBlunders, qPositiveBlunders,
                                 priorPosWinP, priorPosDrawP, priorPosLossP);
@@ -396,7 +396,7 @@ namespace CeresTrain.TPG
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
                                                  bool emitPlySinceLastMovePerSquare,
                                                  bool emitMoves,
-                                                 float qNegativeBlunders, float qPositivelBlunders,
+                                                 float qNegativeBlunders, float qPositiveBlunders,
                                                  float priorPosWinP, float priorPosDrawP, float priorPosLossP,
                                                  bool validate)
                                                  
@@ -433,10 +433,15 @@ namespace CeresTrain.TPG
       // Convert the values unrelated to moves and squares
       ConvertToTPGEvalInfo(in targetInfo, ref tpgRecord, validate);
 
+#if DEBUG
+      Debug.Assert(qNegativeBlunders == targetInfo.ForwardSumNegativeBlunders);
+      Debug.Assert(qPositiveBlunders == targetInfo.ForwardSumPositiveBlunders);
+#endif
+
       // Write squares.
-      ConvertToTPGRecordSquares(trainingPos.PositionWithBoards, includeHistory, default, targetInfo, ref tpgRecord,
+      ConvertToTPGRecordSquares(trainingPos.PositionWithBoards, includeHistory, ref tpgRecord,
                                 pliesSinceLastPieceMoveBySquare, emitPlySinceLastMovePerSquare,
-                                qNegativeBlunders, qPositivelBlunders,
+                                qNegativeBlunders, qPositiveBlunders,
                                 priorPosWinP, priorPosDrawP, priorPosLossP);
 
 #if DEBUG
@@ -544,8 +549,6 @@ namespace CeresTrain.TPG
 
     public static unsafe void ConvertToTPGRecordSquares(in EncodedPositionWithHistory posWithHistory,
                                                         bool includeHistory,
-                                                        Memory<MGMoveList> moves,
-                                                        in TrainingPositionWriterNonPolicyTargetInfo? targetInfo,
                                                         ref TPGRecord tpgRecord,
                                                         Span<byte> pliesSinceLastPieceMoveBySquare,
                                                         bool emitPlySinceLastMovePerSquare,
@@ -601,10 +604,6 @@ namespace CeresTrain.TPG
         }
       }
 
-#if DEBUG
-      Debug.Assert(targetInfo == null || qNegativeBlunders == targetInfo.Value.ForwardSumNegativeBlunders);
-      Debug.Assert(targetInfo == null || qPositiveBlunders == targetInfo.Value.ForwardSumPositiveBlunders);
-#endif
       // Write squares.
       TPGSquareRecord.WritePosPieces(in thisPosition, in historyPos1, in historyPos2, in historyPos3,
                                      in historyPos4, in historyPos5, in historyPos6, in historyPos7,
