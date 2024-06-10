@@ -55,6 +55,7 @@ using System.Numerics.Tensors;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
+using System.Runtime.CompilerServices;
 
 #endregion 
 
@@ -898,24 +899,51 @@ namespace CeresTrain.Examples
     /// Copies sourceBytes into targetFloats, also dividing by divisor.
     /// </summary>
     /// <param name="sourceBytes"></param>
-    /// <param name="targetFloats"></param>
-    static unsafe void CopyAndDivide(byte[] sourceBytes, Half[] targetFloats, float divisor)
+    /// <param name="targetHalves"></param>
+    static unsafe void CopyAndDivide(byte[] sourceBytes, Half[] targetHalves, float divisor)
     {
-      for (int i=0;i<sourceBytes.Length;i++)
+      const int CHUNK_SIZE = 1024 * 128;
+
+      if (sourceBytes.Length < CHUNK_SIZE * 2)
       {
-        targetFloats[i] = (Half)(sourceBytes[i] / divisor);
+        CopyAndDivideSIMD(sourceBytes, targetHalves, divisor);
       }
-      return;
-#if NOT
+      else
+      { 
+        Parallel.For(0, sourceBytes.Length / CHUNK_SIZE + 1, (chunkIndex) =>
+        {
+          int startIndex = chunkIndex * CHUNK_SIZE;
+          int numThisBlock = Math.Min(CHUNK_SIZE, sourceBytes.Length - startIndex);
+
+          if (numThisBlock > 0)
+          {
+            Span<byte> sourceBytesThisBlock = sourceBytes.AsSpan().Slice(startIndex, numThisBlock);
+            Span<Half> targetHalvesThisBlock = targetHalves.AsSpan().Slice(startIndex, numThisBlock);
+            CopyAndDivideSIMD(sourceBytesThisBlock, targetHalvesThisBlock, divisor);
+          }
+        });
+      }
+
+    }
+
+
+    /// <summary>
+    /// Copies sourceBytes into targetFloats, also dividing by divisor.
+    /// </summary>
+    /// <param name="sourceBytes"></param>
+    /// <param name="targetHalfs"></param>
+    static unsafe void CopyAndDivideSIMD(Span<byte> sourceBytes, Span<Half> targetHalfs, float divisor)
+    {
       int vectorSize = Vector256<byte>.Count;
       int i = 0;
 
       if (Avx2.IsSupported)
       {
         Vector256<float> divisorVec = Vector256.Create(divisor);
+        ushort* ptrTargetHalfs = (ushort *)Unsafe.AsPointer(ref targetHalfs[0]); // pinned just below
 
         fixed (byte* squareBytesAllPtr = sourceBytes)
-        fixed (Half* flatValuesPrimaryPtr = targetFloats)
+        fixed (Half* flatValuesPrimaryPtr = targetHalfs)
         {
           // Process in chunks of 32 bytes
           for (i = 0; i <= sourceBytes.Length - vectorSize; i += vectorSize)
@@ -925,28 +953,26 @@ namespace CeresTrain.Examples
 
             // Convert the 32 bytes to 32 floats
             Vector256<short> ushortLow = Avx2.ConvertToVector256Int16(byteVec.GetLower());
-            Vector256<short> ushortHigh = Avx2.ConvertToVector256Int16(byteVec.GetUpper());
-
             Vector256<float> floatLowLow = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortLow.GetLower()));
             Vector256<float> floatLowHigh = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortLow.GetUpper()));
+            Vector256<uint> r1 = SingleToHalfAsWidenedUInt32_Vector256(floatLowLow, divisorVec);
+            Vector256<uint> r2 = SingleToHalfAsWidenedUInt32_Vector256(floatLowHigh, divisorVec);
+            Vector256<ushort> source2 = Vector256.Narrow(r1, r2);
+            Avx.Store(&ptrTargetHalfs[i], source2);
 
+            Vector256<short> ushortHigh = Avx2.ConvertToVector256Int16(byteVec.GetUpper());
             Vector256<float> floatHighLow = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortHigh.GetLower()));
             Vector256<float> floatHighHigh = Avx.ConvertToVector256Single(Avx2.ConvertToVector256Int32(ushortHigh.GetUpper()));
-
-            // Divide by the divisor
-            Vector256<float> resultLowLow = Avx.Divide(floatLowLow, divisorVec);
-            Vector256<float> resultLowHigh = Avx.Divide(floatLowHigh, divisorVec);
-            Vector256<float> resultHighLow = Avx.Divide(floatHighLow, divisorVec);
-            Vector256<float> resultHighHigh= Avx.Divide(floatHighHigh, divisorVec);
+            Vector256<uint> r1H = SingleToHalfAsWidenedUInt32_Vector256(floatHighLow, divisorVec);
+            Vector256<uint> r2H = SingleToHalfAsWidenedUInt32_Vector256(floatHighHigh, divisorVec);
+            Vector256<ushort> source2H = Vector256.Narrow(r1H, r2H);
 
             // Store the results
-            Avx.Store(&flatValuesPrimaryPtr[i], resultLowLow);
-            Avx.Store(&flatValuesPrimaryPtr[i + 8], resultLowHigh);
-            Avx.Store(&flatValuesPrimaryPtr[i + 16], resultHighLow);
-            Avx.Store(&flatValuesPrimaryPtr[i + 24], resultHighHigh);
+            Avx.Store(&ptrTargetHalfs[i + 16], source2H);
           }
         }
       }
+#if NOT
       else if (AdvSimd.IsSupported)
       {
         throw new NotImplementedException("this code is not yet tested");
@@ -995,15 +1021,45 @@ namespace CeresTrain.Examples
           }
         }
       }
-
+#endif
       // Process remaining elements (15x slower than vectorized).
       for (; i < sourceBytes.Length; i++)
       {
-        targetFloats[i] = (Half)(sourceBytes[i] / divisor);
+        targetHalfs[i] = (Half)(sourceBytes[i] / divisor);
       }
-#endif
+
     }
 
+    /// <summary>
+    /// Converts a float (after a division by a constant) to a half-precision float using vectorized instructions.
+    /// 
+    /// Code heavily based on .NET runtime (System.Numerics.Tensors.TensorPrimitives)
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="divisorVec"></param>
+    /// <returns></returns>
+    static Vector256<uint> SingleToHalfAsWidenedUInt32_Vector256(Vector256<float> value, Vector256<float> divisorVec)
+    {
+      value = Avx.Divide(value, divisorVec);
+      Vector256<uint> vector8 = value.AsUInt32();
+      Vector256<uint> vector9 = Vector256.ShiftRightLogical(vector8 & Vector256.Create(2147483648u), 16);
+      Vector256<uint> vector10 = Vector256.Equals(value, value).AsUInt32();
+      value = Vector256.Abs(value);
+      value = Vector256.Min(Vector256.Create(65520f), value);
+      Vector256<uint> vector11 = Vector256.Max(value, Vector256.Create(947912704u).AsSingle()).AsUInt32();
+      vector11 &= Vector256.Create(2139095040u);
+      vector11 += Vector256.Create(109051904u);
+      value += vector11.AsSingle();
+      vector8 = value.AsUInt32();
+      Vector256<uint> vector12 = ~vector10 & Vector256.Create(31744u);
+      vector8 -= Vector256.Create(1056964608u);
+      Vector256<uint> vector13 = Vector256.ShiftRightLogical(vector8, 13);
+      vector8 &= vector10;
+      vector8 += vector13;
+      vector8 &= ~vector12;
+      Vector256<uint> vector14 = vector12 | vector9;
+      return vector8 | vector14;
+    }
 
     /// <summary>
     /// Converts a IEncodedPositionBatchFlat of encoded positions into TPG flat square values.
