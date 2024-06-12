@@ -362,7 +362,9 @@ namespace CeresTrain.TPG
         ReadOnlySpan<short> thisPositionLegalMoveIndices = new Span<short>(legalMoveIndices, i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
         ReadOnlySpan<short> thisPositionLegalMoveIndicesAlternate = new Span<short>(legalMoveIndicesAlternate, i * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
 
-        Debug.Assert(!(thisPositionLegalMoveIndices[0] == 0 && legalMoveIndicesAlternate[0] != 0));
+        // This test disabled. This not actually required for Lc0 nets
+        // because they don't use gather/scatter on legal move indices.
+        //Debug.Assert(!(thisPositionLegalMoveIndices[0] == 0 && legalMoveIndicesAlternate[0] != 0));
 
         // Compare the two methods of extracting legal move indices.
         // Create copies and sort them to facilitate comparison.
