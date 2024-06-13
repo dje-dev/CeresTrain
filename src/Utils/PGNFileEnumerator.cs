@@ -118,11 +118,6 @@ namespace CeresTrain.Utils
         MGPosition curPos = startPos;
         PositionWithHistory curPositionAndMoves = new PositionWithHistory(startPos);
 
-        if (acceptFunc == null || acceptFunc(curPositionAndMoves))
-        {
-          yield return curPositionAndMoves;
-        }
-
         foreach (Ceres.Chess.Textual.PgnFileTools.Move move in game.Moves)
         {
           if (move.HasError)
