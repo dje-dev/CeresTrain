@@ -61,7 +61,7 @@ namespace CeresTrain.Utils
     /// <returns></returns>
     public IEnumerable<Position> EnumeratePositions(Predicate<Position> acceptFunc = null, int skipCount = -1)
     {
-      Ceres.Chess.Textual.PgnFileTools.PgnStreamReader pgnReader = new ();
+      Ceres.Chess.Textual.PgnFileTools.PgnStreamReader pgnReader = new();
       foreach (Ceres.Chess.Textual.PgnFileTools.GameInfo game in pgnReader.Read(PGNFileName))
       {
         game.Headers.TryGetValue("FEN", out string startFEN);
@@ -110,13 +110,18 @@ namespace CeresTrain.Utils
     /// <returns></returns>
     public IEnumerable<PositionWithHistory> EnumeratePositionWithHistory(Predicate<PositionWithHistory> acceptFunc = null)
     {
-      Ceres.Chess.Textual.PgnFileTools.PgnStreamReader pgnReader = new ();
+      Ceres.Chess.Textual.PgnFileTools.PgnStreamReader pgnReader = new();
       foreach (Ceres.Chess.Textual.PgnFileTools.GameInfo game in pgnReader.Read(PGNFileName))
       {
         game.Headers.TryGetValue("FEN", out string startFEN);
         MGPosition startPos = startFEN == null ? MGPosition.FromPosition(Position.StartPosition) : MGPosition.FromFEN(startFEN);
         MGPosition curPos = startPos;
         PositionWithHistory curPositionAndMoves = new PositionWithHistory(startPos);
+
+        if (acceptFunc == null || acceptFunc(curPositionAndMoves))
+        {
+          yield return curPositionAndMoves;
+        }
 
         foreach (Ceres.Chess.Textual.PgnFileTools.Move move in game.Moves)
         {
