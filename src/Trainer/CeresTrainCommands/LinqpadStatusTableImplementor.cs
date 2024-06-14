@@ -66,7 +66,8 @@ namespace CeresTrain.Trainer
                                     DateTime time, float elapsedSecs, long numPositions, float totalLoss, float valueLoss,
                                     float valueAcc, float policyLoss, float policyAcc, 
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                    float policyUncertaintyLoss,
                                     float valueDLoss, float value2DLoss,
                                     float actionLoss, float actionUncertaintyLoss,
                                     float curLR)
@@ -93,7 +94,7 @@ namespace CeresTrain.Trainer
       string showStr = $"{time,-11:HH\\:mm\\:ss} {elapsedSecs,5:F1} {numPositions,12:N0}  "
        + $"{posPerSecond,7:N0}   {deltaLoss,7:F3} {totalLoss,7:F3} {policyLoss,7:F3} {valueLoss,7:F3} "
        + $"{100 * policyAcc,7:F2}% {100 * valueAcc,7:F2}%  {mlhLoss,7:F3} {uncLoss,7:F3}  " 
-       + $"{value2Loss,7:F3} {qDeviationMaxLoss,7:F3} {policyUncertaintyLoss,7:F3} " 
+       + $"{value2Loss,7:F3} {qDeviationLowerLoss,7:F3} {qDeviationUpperLoss,7:F3} {policyUncertaintyLoss,7:F3} " 
        + $" {valueDLoss,7:F3} {value2DLoss,7:F3} {actionLoss,7:F3} {actionUncertaintyLoss,7:F3} {Math.Round(curLR, 6),-10:F6}";
 
 

@@ -26,9 +26,12 @@ namespace CeresTrain.Trainer
     float policyAccAdjRunning;
     float lossMLHAdjRunning;
     float lossUNCAdjRunning;
+    float qDevLowerRunning;
+    float qDevUpperRunning;
 
     float lossValue2AdjRunning;
-    float lossQDeviationAdjRunning; 
+    float lossQDeviationLowerAdjRunning;
+    float lossQDeviationUpperAdjRunning;
     float lossPolicyUncertaintyAdjRunning;
     float valueDLossAdjRunning;
     float value2DLossAdjRunning;
@@ -59,8 +62,8 @@ namespace CeresTrain.Trainer
       float lossUNCAdj = TrainingConfig.OptConfig.LossUNCMultiplier == 0 ? 0 : lossUNCBatch.ToSingle();
 
       float lossValue2Adj = TrainingConfig.OptConfig.LossValue2Multiplier == 0 ? 0 : lossValue2Batch.ToSingle();
-      float lossQDeviationLowerAdj = TrainingConfig.OptConfig.LossValueDMultiplier == 0 ? 0 : lossValueDBatch.ToSingle();
-      float lossQDeviationUpperAdj = TrainingConfig.OptConfig.LossValue2DMultiplier == 0 ? 0 : lossValue2DBatch.ToSingle();
+      float lossQDeviationLowerAdj = 0;// TODO TrainingConfig.OptConfig.LossValueDMultiplier == 0 ? 0 : lossQDeviationLowerAdjRunning.ToSingle();
+      float lossQDeviationUpperAdj = 0; // TODO TrainingConfig.OptConfig.LossValue2DMultiplier == 0 ? 0 : lossQDeviationLowerAdjRunning.ToSingle();
       float lossActionAdj = 0; // TODO: TrainingConfig.OptConfig.LossActionMultiplier == 0 ? 0 : lossActionBatch.ToSingle();
       float lossUNCPolicyAdjRunning = 0; // TODO
 
@@ -82,8 +85,10 @@ namespace CeresTrain.Trainer
       lossUNCAdjRunning = SmoothedValue(lossUNCAdj, lossUNCAdjRunning);
 
       lossValue2AdjRunning = SmoothedValue(lossValue2Adj, lossValue2AdjRunning);
-      valueDLossAdjRunning = SmoothedValue(lossQDeviationLowerAdj, valueDLossAdjRunning);
-      value2DLossAdjRunning = SmoothedValue(lossQDeviationUpperAdj, value2DLossAdjRunning);
+      valueDLossAdjRunning = 0; // TBD SmoothedValue(lossDLossRunning, valueDLossAdjRunning);
+      value2DLossAdjRunning = 0; // TBD SmoothedValue(loss2DLossRunning, value2DLossAdjRunning);
+      lossQDeviationLowerAdjRunning = SmoothedValue(lossQDeviationLowerAdj, lossQDeviationLowerAdjRunning);
+      lossQDeviationUpperAdjRunning = SmoothedValue(lossQDeviationUpperAdj, lossQDeviationUpperAdjRunning); 
       actionLossAdjRunning = SmoothedValue(lossActionAdj, actionLossAdjRunning);
 
 
@@ -97,7 +102,8 @@ namespace CeresTrain.Trainer
                           + lossMLHAdjRunning * TrainingConfig.OptConfig.LossMLHMultiplier
                           + lossUNCAdjRunning * TrainingConfig.OptConfig.LossUNCMultiplier
                           + lossValue2AdjRunning * TrainingConfig.OptConfig.LossValue2Multiplier
-                          + lossQDeviationAdjRunning * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                          + lossQDeviationLowerAdjRunning * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                          + lossQDeviationUpperAdjRunning * TrainingConfig.OptConfig.LossQDeviationMultiplier
                           + lossPolicyUncertaintyAdjRunning * TrainingConfig.OptConfig.LossUncertaintyPolicyMultiplier
                           + valueDLossAdjRunning * TrainingConfig.OptConfig.LossValueDMultiplier
                           + value2DLossAdjRunning * TrainingConfig.OptConfig.LossValue2DMultiplier
@@ -115,7 +121,8 @@ namespace CeresTrain.Trainer
                            ("mlh", lossMLHAdjRunning),
                            ("unc", lossUNCAdjRunning),
                            ("val2", lossValue2AdjRunning),
-                           ("qDev", lossQDeviationAdjRunning),
+                           ("qDevL", lossQDeviationLowerAdjRunning),
+                           ("qDevU", lossQDeviationUpperAdjRunning),
                            ("pol_unc", lossUNCPolicyAdjRunning),
                            ("valD", valueDLossAdjRunning),
                            ("val2D", value2DLossAdjRunning),
@@ -133,7 +140,7 @@ namespace CeresTrain.Trainer
                                     lossValueAdjRunning, valueAccAdjRunning, lossPolicyAdjRunning, policyAccAdjRunning, 
                                     lossMLHAdjRunning, lossUNCAdjRunning,
                                     lossValue2AdjRunning, 
-                                    0, 0, // TODO: complete these
+                                    0, 0, 0, // TODO: complete these
                                     valueDLossAdjRunning, value2DLossAdjRunning,
                                     0, 0, // TODO: actionLossRunning,
                                     (float)curLR);

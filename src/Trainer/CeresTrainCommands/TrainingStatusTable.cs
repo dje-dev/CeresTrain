@@ -33,7 +33,9 @@ namespace CeresTrain.Trainer
                                                      float ValueLoss, float ValueAcc,
                                                      float PolicyLoss, float PolicyAcc,
                                                      float MLHLoss, float UNCLoss,
-                                                     float Value2Loss, float QDeviationMaxLoss, float PolicyUncertaintyLoss, 
+                                                     float Value2Loss, 
+                                                     float QDeviationLowerLoss,  float QDeviationUpperLoss,
+                                                     float PolicyUncertaintyLoss, 
                                                      float ValueDLoss, float Value2DLoss,
                                                      float ActionLoss, float ActionUncertaintyLoss,
                                                      float CurLR);
@@ -113,7 +115,8 @@ namespace CeresTrain.Trainer
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
     /// <param name="value2Loss"></param>
-    /// <param name="qDeviationMaxLoss"></param>
+    /// <param name="qDeviationLowerLoss"></param>
+    /// <param name="qDeviationUpperLoss"></param>
     /// <param name="policyUncertaintyLoss"></param>
     /// <param name="valueDLoss"></param>
     /// <param name="value2DLoss"></param>
@@ -124,7 +127,8 @@ namespace CeresTrain.Trainer
                            float totalLoss, float valueLoss, float valueAcc,
                            float policyLoss, float policyAcc,
                            float mlhLoss, float uncLoss,
-                           float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                           float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                           float policyUncertaintyLoss,
                            float valueDLoss, float value2DLoss,
                            float actionLoss, float actionUncertaintyLoss,
                            float curLR)
@@ -140,7 +144,8 @@ namespace CeresTrain.Trainer
                                                  totalLoss, valueLoss, valueAcc,
                                                  policyLoss, policyAcc,
                                                  mlhLoss, uncLoss,                                                 
-                                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss, 
+                                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                                 policyUncertaintyLoss, 
                                                  valueDLoss, value2DLoss,
                                                  actionLoss, actionUncertaintyLoss,
                                                  curLR);
@@ -151,7 +156,8 @@ namespace CeresTrain.Trainer
         {
           implementor.UpdateInfo(configID, host, numRowsAdded, false, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss,
+                                 value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+                                 policyUncertaintyLoss,
                                  valueDLoss, value2DLoss,
                                  actionLoss, actionUncertaintyLoss,
                                  curLR);
@@ -167,7 +173,7 @@ namespace CeresTrain.Trainer
 
           implementor.UpdateInfo(configID, host, numRowsAdded, true, posPerSecond, time, elapsedSecs, numPositions, totalLoss,
                                  valueLoss, valueAcc, policyLoss, policyAcc, mlhLoss, uncLoss, 
-                                 value2Loss, qDeviationMaxLoss, policyUncertaintyLoss, 
+                                 value2Loss, qDeviationLowerLoss,  qDeviationUpperLoss,policyUncertaintyLoss, 
                                  valueDLoss, value2DLoss,                                 
                                  actionLoss, actionUncertaintyLoss,
                                  curLR);

@@ -90,6 +90,8 @@ namespace CeresTrain.Trainer
     Tensor lossValueDBatch;
     Tensor lossValue2DBatch;
     Tensor lossAction2DBatch;
+    Tensor lossQDevLowerBatch;
+    Tensor lossQDevUpperBatch;
 
     Tensor lossTotal;
 
@@ -405,7 +407,7 @@ namespace CeresTrain.Trainer
                                             lossPolicyAdjRunning, policyAccAdjRunning,
                                             lossMLHAdjRunning, lossUNCAdjRunning,
                                             lossValue2AdjRunning,
-                                            float.NaN, float.NaN,
+                                            float.NaN, float.NaN, float.NaN,
                                             valueDLossAdjRunning, value2DLossAdjRunning,
                                             0, 0  /* TODO: actionLossRunning*/);
 

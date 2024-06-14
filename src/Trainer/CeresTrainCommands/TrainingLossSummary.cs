@@ -43,7 +43,8 @@ namespace CeresTrain.Trainer
                                                     float PolicyLoss, float PolicyAccuracy,
                                                     float MLHLoss, float UNCLoss,
                                                     float Value2Loss,
-                                                    float QDeviationMaxLoss, float PolicyUncertaintyLoss,
+                                                    float QDeviationLowerLoss, float QDeviationUpperLoss,
+                                                    float PolicyUncertaintyLoss,
                                                     float ValueDLoss, float Value2DLoss,
                                                     float ActionLoss, float ActionUncertaintyLoss)
   {
@@ -64,7 +65,8 @@ namespace CeresTrain.Trainer
         MLHLoss = float.IsNaN(MLHLoss) ? -999 : MLHLoss,
         UNCLoss = float.IsNaN(UNCLoss) ? -999 : UNCLoss,
         Value2Loss = float.IsNaN(Value2Loss) ? -999 : Value2Loss,
-        QDeviationMaxLoss = float.IsNaN(QDeviationMaxLoss) ? -999 : QDeviationMaxLoss,
+        QDeviationLowerLoss = float.IsNaN(QDeviationLowerLoss) ? -999 : QDeviationLowerLoss,
+        QDeviationUpperLoss = float.IsNaN(QDeviationUpperLoss) ? -999 : QDeviationUpperLoss,
         PolicyUncertaintyLoss = float.IsNaN(PolicyUncertaintyLoss) ? -999 : PolicyUncertaintyLoss,
         ValueDLoss = float.IsNaN(ValueDLoss) ? -999 : ValueDLoss,
         Value2DLoss = float.IsNaN(Value2DLoss) ? -999 : Value2DLoss,
@@ -90,7 +92,8 @@ namespace CeresTrain.Trainer
                $"MLH:{MLHLoss,7:F3}  " +
                $"UNC:{UNCLoss,7:F3}  " +
                $"V2L:{Value2Loss,7:F3}  " +
-               $"QDEV:{QDeviationMaxLoss,7:F3}  " +
+               $"QDEVL:{QDeviationLowerLoss,7:F3}  " +
+               $"QDEVU:{QDeviationUpperLoss,7:F3}  " +
                $"UNCP:{PolicyUncertaintyLoss,7:F3}  " +
                $"VDL:{ValueDLoss,7:F3}  " +
                $"V2DL:{Value2DLoss,7:F3}" +

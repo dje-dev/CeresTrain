@@ -89,9 +89,14 @@ namespace CeresTrain.TrainCommands
     public readonly float LastActionUncertaintyLoss;
 
     /// <summary>
-    /// Foward Q deviation max loss.
+    /// Foward Q deviation lower loss.
     /// </summary>
-    public readonly float LastQDeviationMaxLoss;
+    public readonly float LastQDeviationLowerLoss;
+
+    /// <summary>
+    /// Foward Q deviation upper loss.
+    /// </summary>
+    public readonly float LastQDeviationUpperLoss;
 
     /// <summary>
     /// Policy Uncertainty loss.
@@ -123,14 +128,15 @@ namespace CeresTrain.TrainCommands
       LastMLHLoss = float.Parse(parts[6].Trim());
       LastUNCLoss = float.Parse(parts[7].Trim());
       LastValue2Loss = float.Parse(parts[8].Trim());
-      LastQDeviationMaxLoss = float.Parse(parts[9].Trim());
-      LastPolicyUncertaintyLoss = float.Parse(parts[10].Trim());
+      LastQDeviationLowerLoss = float.Parse(parts[9].Trim());
+      LastQDeviationUpperLoss = float.Parse(parts[10].Trim());
+      LastPolicyUncertaintyLoss = float.Parse(parts[11].Trim());
 
-      LastValueDLoss = float.Parse(parts[11].Trim());
-      LastValue2DLoss = float.Parse(parts[12].Trim());
-      LastActionLoss = float.Parse(parts[13].Trim());
-      LastActionUncertaintyLoss = float.Parse(parts[14].Trim());
-      LastLR = float.Parse(parts[15].Trim());
+      LastValueDLoss = float.Parse(parts[12].Trim());
+      LastValue2DLoss = float.Parse(parts[13].Trim());
+      LastActionLoss = float.Parse(parts[14].Trim());
+      LastActionUncertaintyLoss = float.Parse(parts[15].Trim());
+      LastLR = float.Parse(parts[16].Trim());
     }
   }
 }

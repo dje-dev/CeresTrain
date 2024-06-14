@@ -51,7 +51,8 @@ namespace CeresTrain.Trainer
       table.AddColumn(new TableColumn("UNCLoss").RightAligned());
       table.AddColumn(new TableColumn("PolAcc").RightAligned());
       table.AddColumn(new TableColumn("ValAcc").RightAligned());
-      table.AddColumn(new TableColumn("QDev").RightAligned());
+      table.AddColumn(new TableColumn("QDevL").RightAligned());
+      table.AddColumn(new TableColumn("QDevU").RightAligned());
       table.AddColumn(new TableColumn("PolUnc").RightAligned());
       table.AddColumn(new TableColumn("ValD").RightAligned());
       table.AddColumn(new TableColumn("Val2D").RightAligned());
@@ -87,7 +88,8 @@ namespace CeresTrain.Trainer
                                     float totalLoss, float valueLoss, float valueAcc, 
                                     float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss,
+                                    float policyUncertaintyLoss,
                                     float valueDLoss, float value2DLoss,
                                     float actionLoss, float actionUncertaintyLoss,
                                     float curLR)
@@ -114,7 +116,8 @@ namespace CeresTrain.Trainer
                            MathF.Round(value2Loss, 3).ToString(),
                            MathF.Round(mlhLoss, 3).ToString(), MathF.Round(uncLoss, 3).ToString(),
                            MathF.Round(100*policyAcc, 2).ToString(), MathF.Round(100*valueAcc, 2).ToString(),
-                           MathF.Round(qDeviationMaxLoss, 3).ToString(), MathF.Round(policyUncertaintyLoss, 3).ToString(),
+                           MathF.Round(qDeviationLowerLoss, 3).ToString(), MathF.Round(qDeviationUpperLoss, 3).ToString(),
+                           MathF.Round(policyUncertaintyLoss, 3).ToString(), 
                            MathF.Round(valueDLoss, 3).ToString(), MathF.Round(value2DLoss, 3).ToString(),
                            MathF.Round(actionLoss, 3).ToString(),MathF.Round(actionUncertaintyLoss, 3).ToString(),
 

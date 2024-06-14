@@ -67,7 +67,8 @@ namespace CeresTrain.Trainer
     /// <param name="mlhLoss"></param>
     /// <param name="uncLoss"></param>
     /// <param name="value2Loss"></param>
-    /// <param name="qDeviationMaxLoss"></param>
+    /// <param name="qDeviationLowerLoss"></param>
+    /// <param name="qDeviationUpperLoss"></param>
     /// <param name="policyUncertaintyLoss"></param>
     /// <param name="valueDLoss"></param>
     /// <param name="value2DLoss"></param>
@@ -78,7 +79,7 @@ namespace CeresTrain.Trainer
                                     DateTime time, float elapsedSecs, long numPositions, 
                                     float totalLoss, float valueLoss, float valueAcc, float policyLoss, float policyAcc,
                                     float mlhLoss, float uncLoss,
-                                    float value2Loss, float qDeviationMaxLoss, float policyUncertaintyLoss,
+                                    float value2Loss, float qDeviationLowerLoss, float qDeviationUpperLoss, float policyUncertaintyLoss,
                                     float valueDLoss, float value2DLoss,                                    
                                     float actionLoss, float actionUncertaintyLoss,
                                     float curLR);
