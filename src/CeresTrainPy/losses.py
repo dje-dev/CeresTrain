@@ -204,6 +204,7 @@ class LossCalculator():
     self.POST_SCALE = 10.0
     loss = self.POST_SCALE * nn.MSELoss().forward(output, target)
     self.PENDING_Q_DEVIATION_UPPER_LOSS += loss.item()
+    return loss
 
   def uncertainty_policy_loss(self, target: torch.Tensor, output: torch.Tensor):
     self.POST_SCALE = 10.0
