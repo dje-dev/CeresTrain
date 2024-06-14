@@ -133,22 +133,3 @@ class EncoderLayer(torch.nn.Module):
      
     return out2, None
 
-    # FUNCTIONAL postnorm emultaes C# with 28% faster and slightly better accuracy out to 
-    res = x
-    
-    # Fused QKV projection
-    qkv = self.qkv_projection(x)
-    qkv = qkv.view(qkv.size(0), qkv.size(1), self.num_attention_heads, 3 * self.dim_per_head)
-    q, k, v = torch.split(qkv, qkv.size(3) // 3, dim=3)
-
-    # mha        
-    x = self.attention(q, k, v, global_state)
-#        x = self.ln2(x)
-    x = self.projection(x)
-    
-    x = self.ln1(res +  x)
-    res = x
-    #x = self.ln2(x)
-    x = self.mlp(x)
-    
-    return self.ln2(res + x)
