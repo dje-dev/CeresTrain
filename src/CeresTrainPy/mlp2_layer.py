@@ -34,6 +34,8 @@ class MLP2Layer(torch.nn.Module):
       self.activation_fn = ReLUSquared()
     elif (activation_type == 'Swish'):
       self.activation_fn = Swish()
+    elif (activation_type == 'Mish'):
+      self.activation_fn = torch.nn.Mish()
     elif (activation_type == 'SwiGLU'):
       self.activation_fn = torch.nn.SiLU() # First of SwiGLU here
     else:

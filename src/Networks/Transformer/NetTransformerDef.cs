@@ -73,7 +73,12 @@ namespace CeresTrain.Networks.Transformer
       /// <summary>
       /// SwiGLU activation ("GLU Variants Improve Transformer" by Noam Shazeer)
       /// </summary>
-      SwiGLU
+      SwiGLU,
+
+      /// <summary>
+      /// Mish activation ("Mish: A Self Regularized Non-Monotonic Activation Function" by Diganta Misra)
+      /// </summary>
+      Mish
     }
 
     /// <summary>

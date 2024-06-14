@@ -110,6 +110,7 @@ namespace CeresTrain.Utils
         NetTransformerDef.ActivationType.ReLU => functional.relu(x),
         NetTransformerDef.ActivationType.Swish => x * functional.sigmoid(x),
         NetTransformerDef.ActivationType.SwiGLU => functional.silu(x), // first part of SwiGLU here
+        NetTransformerDef.ActivationType.Mish => functional.Mish(x),
         _ => throw new NotImplementedException()
       };
     }
