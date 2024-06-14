@@ -37,7 +37,7 @@ class EncoderLayer(torch.nn.Module):
                 dual_attention_mode : str = 'None', test : bool = False):
     super().__init__()
 
-    assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish')
+    assert ffn_activation_type in ('ReLUSquared', 'ReLU', 'SwiGLU', 'Swish', 'Mish')
     assert norm_type in ('LayerNorm', 'RMSNorm') # None not supported
 
     self.trunk_type = trunk_type
