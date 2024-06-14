@@ -128,6 +128,8 @@ class CeresNet(pl.LightningModule):
       self.Activation = ReLUSquared()
     elif (config.NetDef_HeadsActivationType == 'Swish'):
       self.Activation = Swish()
+    elif (config.NetDef_HeadsActivationType == 'Mish'):
+      self.Activation = torch.nn.Mish()
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
     self.test = config.Exec_TestFlag
