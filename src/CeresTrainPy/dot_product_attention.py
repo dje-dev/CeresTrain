@@ -30,7 +30,7 @@ class LinearWrapper:
     return self._layer
 
 
-RPE_USE_V = False
+RPE_USE_V = True
 
 class DotProductAttention(torch.nn.Module):
   """
