@@ -270,13 +270,10 @@ namespace CeresTrain.TPG
       Console.WriteLine("  " + FinalPosition.FEN);
       if (withHistory)
       {
-        Console.WriteLine("  " + HistoryPosition(1).FEN + " " + equalHistoryCounts[1]);
-        Console.WriteLine("  " + HistoryPosition(2).FEN + " " + equalHistoryCounts[2]);
-        Console.WriteLine("  " + HistoryPosition(3).FEN + " " + equalHistoryCounts[3]);
-        Console.WriteLine("  " + HistoryPosition(4).FEN + " " + equalHistoryCounts[4]);
-        Console.WriteLine("  " + HistoryPosition(5).FEN + " " + equalHistoryCounts[5]);
-        Console.WriteLine("  " + HistoryPosition(6).FEN + " " + equalHistoryCounts[6]);
-        Console.WriteLine("  " + HistoryPosition(7).FEN + " " + equalHistoryCounts[7]);
+        for (int i = 1; i < TPGSquareRecord.NUM_HISTORY_POS; i++)
+        {
+          Console.WriteLine("  " + HistoryPosition(i).FEN + " " + equalHistoryCounts[i]);
+        }
       }
 
       Console.WriteLine($"WDL            {WDLResultDeblunderedArray[0]:6,2} {WDLResultDeblunderedArray[1]:6,2} {WDLResultDeblunderedArray[2]:6,2}");
