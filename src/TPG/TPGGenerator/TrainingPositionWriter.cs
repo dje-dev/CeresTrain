@@ -527,7 +527,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
           if (outStreams != null)
           {
             // Write bytes to the file.
-            fixed (EncodedTrainingPosition* ptr = positions)
+            fixed (void* convertedToTPGPtr = convertedToTPG)
             {
               ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(convertedToTPG);
               outStreams[targetSetIndex].Write(bufferAsBytes);
