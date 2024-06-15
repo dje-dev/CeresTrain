@@ -150,6 +150,7 @@ namespace CeresTrain.TrainingDataGenerator
       Console.WriteLine("Number positions written total           : " + numPosWrittenTotal.ToString("N0"));
 
       Console.WriteLine("Number supplemental positions generated  : " + numSupplementalPosTotal.ToString("N0"));
+      Console.WriteLine();
     }
 
 
