@@ -74,7 +74,20 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Options for the evaluator.
     /// </summary>
-    public NNEvaluatorTorchsharpOptions Options;
+    public NNEvaluatorTorchsharpOptions Options
+    {
+      get => (NNEvaluatorTorchsharpOptions)OptionsObject;
+      set
+      {
+        if (value.GetType() != typeof(NNEvaluatorTorchsharpOptions))
+        {
+          throw new Exception("Specified options must be an instance of NNEvaluatorTorchsharpOptions"); 
+        }
+
+        OptionsObject = value;
+      }
+    }
+
 
 
     public override EvaluatorInfo Info => 
@@ -567,8 +580,7 @@ namespace CeresTrain.NNEvaluators
       using (no_grad())
       {
         // Move Tensor to the desired device and data type.
-        Tensor cpuTensor = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
-        Tensor inputSquares = cpuTensor.to(Device).to(DataType);
+        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
 
         // *** NOTE: The following alternate methods should be faster, but actually much slower!
         // best:  Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
@@ -644,7 +656,6 @@ namespace CeresTrain.NNEvaluators
           boardStateOutput = null;
         } 
 
-        cpuTensor.Dispose();
         inputSquares.Dispose();
         boardStateInput?.Dispose();
       }

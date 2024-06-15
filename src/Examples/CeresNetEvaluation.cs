@@ -767,9 +767,12 @@ namespace CeresTrain.Examples
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
+          string useONNXFN = netID.ToUpper().EndsWith(".ONNX") 
+                              ? Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netID)
+                              : onnxFN;
           Console.WriteLine("Create NEvaluatorEngineONNX " + evaluatorOptions.FractionValueHead2 + " " + onnxFN);
           return new NNEvaluatorEngineONNX(netID,
-                                           onnxFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
+                                           useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
