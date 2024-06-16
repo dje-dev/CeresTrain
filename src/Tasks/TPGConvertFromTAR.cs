@@ -177,6 +177,7 @@ namespace CeresTrain.Tasks
 
           Deblunder = TPGGeneratorOptions.DeblunderType.PositionQ,
           DeblunderThreshold = 0.10f, // 0.06 sometimes used instead, but 0.10 seems closer to typcical Lc0 threshold
+          DeblunderUnintnededThreshold = 99, // effectively disables the feature
 
           Verbose = debugMode,
           TargetFileNameBase = Path.Combine(targetDirectoryTPGs, @$"TPG_{DateTime.Now.Ticks % 100000}")
