@@ -526,12 +526,11 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
 
           if (outStreams != null)
           {
-            // Write bytes to the file.
-            fixed (void* convertedToTPGPtr = convertedToTPG)
-            {
-              ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(convertedToTPG);
-              outStreams[targetSetIndex].Write(bufferAsBytes);
-            }
+            // Write bytes to the file (via pinned memory).
+            GCHandle tpgDataHandle = GCHandle.Alloc(convertedToTPG, GCHandleType.Pinned);
+            ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(convertedToTPG);
+            outStreams[targetSetIndex].Write(bufferAsBytes);
+            tpgDataHandle.Free();            
           }
         }
         else if (OutputFormat == TPGGeneratorOptions.OutputRecordFormat.EncodedTrainingPos)
@@ -543,13 +542,11 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
 
           if (outStreams != null)
           {
-            // Write bytes to the file.
-            fixed (EncodedTrainingPosition* ptr = positions)
-            {
-              ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<EncodedTrainingPosition, byte>(positions);
-              outStreams[targetSetIndex].Write(bufferAsBytes);
-            }
-
+            // Write bytes to the file (via pinned memory).
+            GCHandle posDataHandle = GCHandle.Alloc(positions, GCHandleType.Pinned);
+            ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<EncodedTrainingPosition, byte>(positions);
+            outStreams[targetSetIndex].Write(bufferAsBytes);
+            posDataHandle.Free();
           }
         }
         else
