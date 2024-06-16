@@ -698,7 +698,7 @@ namespace CeresTrain.TPG.TPGGenerator
         float pctDone = 100.0f * (writer.NumPositionsWritten / (float)Options.NumPositionsTotal);
         lock (consoleOutputLock)
         {
-          Console.WriteLine($"TPGRWITER : {pctDone,6:F2}%,  "
+          Console.WriteLine($"TPGWRITER : {pctDone,6:F2}%,  "
                           + $"{PosGeneratedPerSec,6:F0}/sec,  "
                           + $"scan: {numPosScanned,10:N0}  use: {numPosSentToWriter,9:N0}  skip_dups: {numDuplicatesSkipped,9:N0}  "
                           + $"FRC_reject: {numFRCGamesSkipped,9:N0} "
