@@ -14,6 +14,7 @@ If not, see <http://www.gnu.org/licenses/>.
 import torch
 from activation_functions import Swish, ReLUSquared
 
+USE_BIAS = True # Daniel Moore reported biases useful in FFN
 
 class MLP2Layer(torch.nn.Module):
   def __init__(self, model_dim: int, ffn_inner_dim: int, out_dim : int, activation_type : str) -> None:
@@ -21,8 +22,8 @@ class MLP2Layer(torch.nn.Module):
         
     self.activation_type = activation_type
 
-    self.linear1 = torch.nn.Linear(model_dim, ffn_inner_dim, bias=False)
-    self.linear2 = torch.nn.Linear(ffn_inner_dim, out_dim, bias=False)
+    self.linear1 = torch.nn.Linear(model_dim, ffn_inner_dim, bias=USE_BIAS)
+    self.linear2 = torch.nn.Linear(ffn_inner_dim, out_dim, bias=USE_BIAS)
     if activation_type == 'SwiGLU':
       self.linear3 = torch.nn.Linear(model_dim, ffn_inner_dim, bias=False) 
 

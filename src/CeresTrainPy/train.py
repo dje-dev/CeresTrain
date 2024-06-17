@@ -57,9 +57,11 @@ config = Configuration('.', os.path.join(OUTPUTS_DIR, "configs", TRAINING_ID))
 TPG_TRAIN_DIR = config.Data_TrainingFilesDirectory 
 
 if len(sys.argv) > 3 and sys.argv[3].upper() == 'CONVERT':
-  #  "expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
-  # Settings to facilitate interactive debugging:
-  # N.B. probably need to also:
+  if len(sys.argv) < 5:
+    raise ValueError("expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
+  # example: CUDA_VISIBLE_DEVICES=2 python3 train.py C7_B4_2048_15_32_4_32bn_2024 /mnt/deve/cout CONVERT /mnt/deve/cout/nets/ckpt_HOP_C7_B4_2048_15_32_4_32bn_2024_214538240.ts
+
+  # If desired to do interactive debugging, may want/need to also:
   #  - set TPG_TRAIN_DIR to dummy value (possibly)
   #  - disable torch.compile
   #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
@@ -68,8 +70,6 @@ if len(sys.argv) > 3 and sys.argv[3].upper() == 'CONVERT':
   config.Opt_PyTorchCompileMode = None
   config.Exec_DeviceIDs = [0] # always build based on GPU at index 0
   TPG_TRAIN_DIR = "." # path not actually used/needed
-  if len(sys.argv) < 5:
-    raise ValueError("expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
   checkpoint_path_to_load = sys.argv[4]
   config.Opt_StartingCheckpointFN = os.path.join(OUTPUTS_DIR, 'nets', checkpoint_path_to_load)
 else:
@@ -188,16 +188,8 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
     # below simpler method fails, probably due to use of .compile
     sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(m.device), 
                      torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(m.device)]
-    if True:
-      try:
-        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
-        m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
-        print('INFO: TS_FILENAME', SAVE_TS_PATH )
-        #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
-      except Exception as e:
-        print(f"Warning: to_torchscript save failed, skipping. Exception details: {e}")
 
-    if False: # equivalent to above (this is just the raw PyTorch way rather than Lightning way above)
+    if False: # equivalent to below (this is just the raw PyTorch way rather than Lightning way above)
       try:
         SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + "_jit.ts")
         m_save = torch.jit.trace(m, sample_inputs)        
@@ -207,9 +199,16 @@ def save_to_torchscript(fabric : Fabric, model : CeresNet, state : Dict[str, Any
       except Exception as e:
         print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
+    SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
+    if True:
+      try:
+        m.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
+        print('INFO: TS_FILENAME', SAVE_TS_PATH )
+        #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
+      except Exception as e:
+        print(f"Warning: to_torchscript save failed, skipping. Exception details: {e}")
     
     if save_all_formats:
-
       # Still in beta testing as of PyTorch 2.3, not yet functional: torch.onnx.dynamo_export
       # TorchDynamo based export. Encountered warning/error on export.
       if False:
@@ -390,8 +389,9 @@ def Train():
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
     FRAC_MIN = 0.15
 
-    if num_pos < 20000000 and (fraction_complete < 0.02 or num_pos < 500000):
-      return FRAC_MIN # warmup
+    WARMUP_POS = min(20_000_000, 0.02 * config.Opt_NumTrainingPositions)
+    if num_pos < WARMUP_POS:
+      return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
     elif fraction_complete < FRAC_START_DELAY:
       return 1.0
     elif fraction_complete > 1:
@@ -429,7 +429,8 @@ def Train():
     
       print("converting....")
       save_to_torchscript(fabric, model, state, "postconvert", True)
- 
+      exit(3)
+      
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
 
