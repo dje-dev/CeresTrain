@@ -30,8 +30,6 @@ class LinearWrapper:
     return self._layer
 
 
-RPE_USE_V = True
-
 class DotProductAttention(torch.nn.Module):
   """
   Implements (scaled) Dot Product Attention.
@@ -94,11 +92,10 @@ class DotProductAttention(torch.nn.Module):
     if self.use_rpe:
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
-      RPE_INNER_DIM = 16
+      RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
-      if RPE_USE_V:
-        self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -150,7 +147,7 @@ class DotProductAttention(torch.nn.Module):
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    if self.use_rpe and RPE_USE_V:
+    if self.use_rpe:
       rpe_v = self.rpe_v @ self.rpe_factor
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       

@@ -278,10 +278,6 @@ class CeresNet(pl.LightningModule):
       
     flow = self.embedding_norm(flow)
       
-#    if (self.test):
-#      flow_position = flow_squares[:, :, -16:]
-#      flow = flow + self.pos_encoding(flow_position)
-
     if self.denseformer:
       all_previous_x = [flow]
       
