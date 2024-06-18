@@ -377,6 +377,9 @@ def Train():
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
+  elif config.Opt_Optimizer == 'AdamW8bit':
+    import bitsandbytes as bnb
+    optimizer = bnb.optim.AdamW8bit(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2))    
   else:
     raise ValueError("Unsupported optimizer: " + config.Opt_Optimizer)
 

@@ -32,6 +32,11 @@ namespace CeresTrain.Trainer
     AdamW,
 
     /// <summary>
+    /// Adam optimizer with 8-bit quantization.
+    /// </summary>
+    AdamW8bit,
+
+    /// <summary>
     /// Nadam optimizer (with decoupled weight decay).
     /// 
     /// The paper "Benchmarking Neural Network Training Algorithms" Dahl et al. 2023
@@ -43,7 +48,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Lion optimizer.
     /// </summary>
-    LION
+    LION,
   }
 
 
