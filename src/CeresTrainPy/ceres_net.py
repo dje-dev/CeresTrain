@@ -43,11 +43,14 @@ However this is unnecessary for Ceres nets which are not as deep.
 Also the more complex github implementation uses in place operations that are not supported by torch.compile.
 """
 class DWA(torch.nn.Module): 
-  def __init__(self, n_alphas):
+  def __init__(self, n_alphas, depth=None):
     super().__init__()
     self.n_alphas = n_alphas
     alphas = torch.zeros((n_alphas,))
     alphas[-1] = 1.0
+    if depth is not None:
+      alphas = alphas.unsqueeze(1)
+      alphas = alphas.repeat(1, depth)
     self.alphas = torch.nn.Parameter(alphas)
 
   def forward(self, all_previous_x):
@@ -218,6 +221,7 @@ class CeresNet(pl.LightningModule):
                       smolgen_activation_type = config.NetDef_SmolgenActivationType,
                       alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
                       use_rpe=config.NetDef_UseRPE, 
+                      use_rel_bias=config.NetDef_UseRelBias, 
                       dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
@@ -236,7 +240,7 @@ class CeresNet(pl.LightningModule):
     self.q_ratio = q_ratio
 
     if (self.denseformer):
-      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2) for i in range(self.NUM_LAYERS)])
+      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2, depth=self.EMBEDDING_DIM) for i in range(self.NUM_LAYERS)])
  
 
   def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

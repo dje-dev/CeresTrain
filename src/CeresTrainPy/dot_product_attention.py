@@ -51,6 +51,7 @@ class DotProductAttention(torch.nn.Module):
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
                use_rpe : bool = False,
+               use_rel_bias: bool = False,
                test : bool = False) -> None:
     super().__init__()
 
@@ -66,6 +67,9 @@ class DotProductAttention(torch.nn.Module):
     self.test = test    
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
+    self.use_rel_bias = use_rel_bias
+
+    assert self.use_smolgen + self.use_rpe + self.use_rel_bias <= 1, "only one of smolgen, rpe, and rel bias can be enabled"
     
     if self.use_smolgen:
       if (smolgen_activation_type == 'None'):
@@ -89,13 +93,20 @@ class DotProductAttention(torch.nn.Module):
     self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
     
-    if self.use_rpe:
+
+    if self.use_rpe or self.use_rel_bias:
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
 
-      RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
+    RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
+
+    if self.use_rpe:
+
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+
+    if self.use_rel_bias:
+      self.rel_bias = torch.nn.Parameter(torch.zeros(self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
     self.smolgen_per_square_dim = smolgen_per_square_dim
     self.smolgen_intermediate_dim = smolgen_intermediate_dim
@@ -134,8 +145,11 @@ class DotProductAttention(torch.nn.Module):
       scores = scores + einsum(Q, rpe_q, "b h q d, d h q k->b h q k")
       scores = scores + einsum(K, rpe_k, "b h k d, d h q k->b h q k")
       # consider using scaling below as (3 * self.d_k) due to extra terms
-      
+       
     scores = scores / math.sqrt(self.d_k)
+
+    if self.use_rel_bias:
+      scores = scores + torch.reshape(self.rel_bias @ self.rpe_factor, [-1, 64, 64])
 
     if self.use_smolgen:
       assert self.num_tokens_q == self.num_tokens_kv, "use_smolgen requires equal number of tokens for Q and K"

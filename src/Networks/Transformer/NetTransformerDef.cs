@@ -282,6 +282,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool UseRPE { get; init; } = true;
 
     /// <summary>
+    /// If relative bias should be used for RPE.
+    /// </summary>
+    public readonly bool UseRelBias { get; init; } = false;
+
+    /// <summary>
     /// Multiplier applied to the width of the default size of each layers in the output heads.
     /// </summary>
     public readonly int HeadWidthMultiplier { get; init; } = 4;
