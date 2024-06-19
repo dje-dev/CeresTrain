@@ -16,7 +16,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-
 using Ceres.Base.DataType;
 using Ceres.Chess;
 
@@ -26,6 +25,11 @@ namespace CeresTrain.TPG
 {
   /// <summary>
   /// Binary structure representing one square on board from a training position.
+  /// All positions are stored from the perspective of side to move.
+  /// 
+  /// Bytes are used to represent the values so they can be compactly represented.
+  /// However fixed divisor (such as 10 or 100) is typically applied after the bytes are sent 
+  /// to the computing device (e.g. GPU) but before the neural network sees the values.
   /// </summary>
   [Serializable]
   [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -49,7 +53,6 @@ namespace CeresTrain.TPG
 
     public static (PieceType pieceType, bool isOurPiece) GetPieceInfo(ReadOnlySpan<ByteScaled> pieceTypeOneHot)
     {
-
       if (pieceTypeOneHot[0].Value > 0) return (default, true);
       if (pieceTypeOneHot[1].Value > 0) return (PieceType.Pawn, true);
       if (pieceTypeOneHot[2].Value > 0) return (PieceType.Knight, true);
@@ -104,27 +107,92 @@ namespace CeresTrain.TPG
 
     #region Raw fields
 
+    /// <summary>
+    /// Total number of positions (current and prior) encoded.
+    /// </summary>
+    public const int NUM_HISTORY_POS = 8;
 
-    public const int NUM_HISTORY_POS = 8; // Total of 8 positions history
+    /// <summary>
+    /// Length of the one-hot piece encodings.
+    /// </summary>
     const int NUM_BYTES_PER_HISTORY_PLANE = 13; // Empty square, 6 white pieces, 6 black pieces
+    
+    /// <summary>
+    /// Total number of bytes used for the piece encoding for all history planes.
+    /// </summary>
     const int TOTAL_BYTES_HISTORY_POS = NUM_HISTORY_POS * NUM_BYTES_PER_HISTORY_PLANE;
 
+    /// <summary>
+    /// Array indicating which piece (if any) is on the square for each of thie history positions.
+    /// Conceptually this is a 2-D array of [NUM_HISTORY_POS, NUM_BYTES_PER_HISTORY_PLANE] 
+    /// where the values are one-hot encodings of the enumeration Ceres.Chess.PieceType.
+    /// </summary>
     fixed byte pieceTypeHistoryAllHistoryPositions[NUM_HISTORY_POS * NUM_BYTES_PER_HISTORY_PLANE]; // N.B. Actually represented as ByteScaled
 
-    // If each of the history planes are repetitions
-    fixed byte historyRepetitionCounts[NUM_HISTORY_POS]; // N.B. Actually represented as ByteScaled
+    /// <summary>
+    /// Binary (1 or 0) indicating if each of the history planes has nonzero repetition counter.
+    /// </summary>
+    fixed byte historyRepetitionCounts[NUM_HISTORY_POS];
 
+    /// <summary>
+    /// Binary (1 or 0) indicating if the side to play retains kingside castling rights.
+    /// </summary>
     public ByteScaled CanOO;
+
+    /// <summary>
+    /// Binary (1 or 0) indicating if the side to play retains queenside castling rights.
+    /// </summary>
     public ByteScaled CanOOO;
+
+    /// <summary>
+    /// Binary (1 or 0) indicating if the opponent retains kingside castling rights.
+    /// </summary>
     public ByteScaled OpponentCanOO;
+
+    /// <summary>
+    /// Binary (1 or 0) indicating if the opponent retains queenside castling rights.
+    /// </summary>
     public ByteScaled OpponentCanOOO;
+
+    /// <summary>
+    /// Counter of ply for the purposes of 50 move rule in chess
+    /// (ply since last castling, pawn move, or capture).
+    /// </summary>
     public ByteScaled Move50Count;
+
+    /// <summary>
+    /// The number of plies since the last move of the piece on this square.
+    /// Not used.
+    /// </summary>
     public ByteScaled PlySinceLastMove;
+
+    /// <summary>
+    /// Binary (1 or 0) indicating if the side to play has en passant rights for any legal move.
+    /// </summary>
     public ByteScaled IsEnPassant;
+
+    /// <summary>
+    /// Sum of all future positive blunders (negative optimal moves played by opponent) in the game.
+    /// Scaled by 100 (e.g. cumulative 0.17 blunders would be 17).
+    /// For inference (where this is unknowable) typically a nonzero but small value is used (e.g. 3).
+    /// </summary>
     public ByteScaled QPositiveBlunders;
+
+    /// <summary>
+    /// Sum of all future negative blunders (negative optimal moves played by side to play) in the game.
+    /// Scaled by 100 (e.g. cumulative 0.17 blunders would be 17).
+    /// For inference (where this is unknowable) typically a nonzero but small value is used (e.g. 3).
+    /// </summary>
     public ByteScaled QNegativeBlunders;
 
+    /// <summary>
+    /// One-hot encoding of the rank of this square starting at back rank = 0.
+    /// </summary>
     fixed byte rankEncoding[8];
+
+    /// <summary>
+    /// One-hot encoding of the file of this square, starting at A=0.
+    /// </summary>
     fixed byte fileEncoding[8];
 
 #endregion
