@@ -45,8 +45,17 @@ class TPGDataset(Dataset):
       rank (int): The rank of the process in distributed training.
       world_size (int): Total number of processes in distributed training.
       num_workers (int): Number of worker processes for data loading.
+      boards_per_batch (int): Number of boards per batch.
+      test (bool): If the Exec test flag is enabled.
   """
-  def __init__(self, root_dir, batch_size, wdl_smoothing, rank, world_size, num_workers, boards_per_batch):
+  def __init__(self, root_dir, 
+               batch_size: int, 
+               wdl_smoothing : bool, 
+               rank : int, 
+               world_size : int, 
+               num_workers : int, 
+               boards_per_batch : int, 
+               test : bool = False):
 
     self.root_dir = root_dir
     self.batch_size = batch_size
@@ -54,6 +63,7 @@ class TPGDataset(Dataset):
     self.num_workers = num_workers
     self.generator = self.item_generator()
     self.boards_per_batch = boards_per_batch
+    self.test = test
     
     # Get the list of files in the specified directory and select the subset appropriate for this worker.
     all_files = fnmatch.filter(os.listdir(root_dir), '*.zst')
