@@ -9,7 +9,7 @@ namespace CeresTrain.NNEvaluators
   /// <summary>
   /// Set of options for NNEvaluatorTorchsharp.
   /// </summary>
-  public record NNEvaluatorTorchsharpOptions
+  public record struct NNEvaluatorTorchsharpOptions
   {
     /// <summary>
     /// If the prior state information should be used.

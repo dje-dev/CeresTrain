@@ -763,20 +763,34 @@ namespace CeresTrain.Examples
           }
         }
 
+        if (customEvaluatorIndex == 1)
+        {
+          NNEvaluatorFactory.Custom1Options = evaluatorOptions;
+        }
+        else if (customEvaluatorIndex == 2)
+        {
+          NNEvaluatorFactory.Custom2Options = evaluatorOptions;
+        }
+        else
+        {
+          throw new NotImplementedException();
+        }
+
         //CeresTrainingRunAnalyzer.DumpAndBenchmarkONNXNetInfo(onnxFN);
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
-          string useONNXFN = netID.ToUpper().EndsWith(".ONNX") 
+          string useONNXFN = (netID != null  && netID.ToUpper().EndsWith(".ONNX")) 
                               ? Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netID)
                               : onnxFN;
-          Console.WriteLine("Create NEvaluatorEngineONNX " + evaluatorOptions.FractionValueHead2 + " " + onnxFN);
+          NNEvaluatorTorchsharpOptions captureOptions = (NNEvaluatorTorchsharpOptions)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options 
+                                                                                                                 : NNEvaluatorFactory.Custom2Options);
           return new NNEvaluatorEngineONNX(netID,
                                            useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
-                                           false, ENABLE_PROFILING, false, useHistory, evaluatorOptions,
-                                           true, evaluatorOptions.ValueHead1Temperature, evaluatorOptions.ValueHead2Temperature, evaluatorOptions.FractionValueHead2,
+                                           false, ENABLE_PROFILING, false, useHistory, captureOptions,
+                                           true, captureOptions.ValueHead1Temperature, captureOptions.ValueHead2Temperature, captureOptions.FractionValueHead2,
                                            USE_STATE);
         };
       }
