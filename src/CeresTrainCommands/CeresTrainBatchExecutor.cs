@@ -30,6 +30,35 @@ namespace CeresTrain.TrainCommands
   /// </summary>
   public static class CeresTrainBatchExecutor
   {
+    public enum BatchExecutorMode
+    {
+      WriteConfigsOnly,
+      WriteConfigsAndRunTrainingSessions
+    }
+
+    /// <summary>
+    /// Runs a series of training configurations on specified host/device.
+    /// </summary>
+    /// <param name="mode"></param>
+    /// <param name="variants"></param>
+    /// <returns></returns>
+    public static TrainingResultSummary[] RunSessions(BatchExecutorMode mode, params IEnumerable<TrainingSessionSpecification> variants)
+    {
+      return RunSessions(null, mode, variants);
+    }
+
+    /// <summary>
+    /// Runs a series of training configurations on specified host/device.
+    /// </summary>
+    /// <param name="piecesString"></param>
+    /// <param name="variants"></param>
+    /// <returns></returns>
+    public static TrainingResultSummary[] RunSessions(string piecesString, params IEnumerable<TrainingSessionSpecification> variants)
+    {
+      return RunSessions(piecesString, BatchExecutorMode.WriteConfigsAndRunTrainingSessions, variants);
+    }
+
+
     /// <summary>
     /// Runs a series of training configurations on specified host/device.
     /// </summary>
@@ -37,7 +66,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="numPositions"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] TestBatchParallel(string piecesString, params TrainingSessionSpecification[] variants)
+    public static TrainingResultSummary[] RunSessions(string piecesString, BatchExecutorMode mode, params IEnumerable<TrainingSessionSpecification> variants)
     {
       // Throw exception if any of the variants have the same ID
       string[] variantsArray = variants.Select(v => v.variantID).ToArray();
