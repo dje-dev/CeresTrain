@@ -386,6 +386,65 @@ namespace CeresTrain.TPG
       }
     }
 
-  }
+
+    /// <summary>
+    /// Dumps a human-readable representation of the underlying bytes to the Console.
+    /// </summary>
+    public void Dump()
+    {
+      Console.WriteLine("Dump of raw square bytes");
+      Console.WriteLine();
+      Console.WriteLine("pieceTypeHistoryAllHistoryPositions:");
+      for (int i = 0; i < NUM_HISTORY_POS; i++)
+      {
+        for (int j = 0; j < NUM_BYTES_PER_HISTORY_PLANE; j++)
+        {
+          Console.Write(pieceTypeHistoryAllHistoryPositions[i * NUM_BYTES_PER_HISTORY_PLANE + j] + " ");
+        }
+        Console.WriteLine();
+      }
+
+      Console.WriteLine("\nhistoryRepetitionCounts:");
+      fixed (byte* ptr = historyRepetitionCounts)
+      {
+        for (int i = 0; i < NUM_HISTORY_POS; i++)
+        {
+          Console.Write(ptr[i] + " ");
+        }
+        Console.WriteLine();
+      }
+
+      Console.WriteLine("\nCanOO:\n" + CanOO);
+      Console.WriteLine("\nCanOOO:\n" + CanOOO);
+      Console.WriteLine("\nOpponentCanOO:\n" + OpponentCanOO);
+      Console.WriteLine("\nOpponentCanOOO:\n" + OpponentCanOOO);
+      Console.WriteLine("\nMove50Count:\n" + Move50Count);
+      Console.WriteLine("\nPlySinceLastMove:\n" + PlySinceLastMove);
+      Console.WriteLine("\nIsEnPassant:\n" + IsEnPassant);
+      Console.WriteLine("\nQPositiveBlunders:\n" + QPositiveBlunders);
+      Console.WriteLine("\nQNegativeBlunders:\n" + QNegativeBlunders);
+
+      Console.WriteLine("\nrankEncoding:");
+      fixed (byte* ptr = rankEncoding)
+      {
+        for (int i = 0; i < 8; i++)
+        {
+          Console.Write(ptr[i] + " ");
+        }
+        Console.WriteLine();
+
+      }
+
+      Console.WriteLine("\nfileEncoding:");
+      fixed (byte* ptr = fileEncoding)
+      {
+        for (int i = 0; i < 8; i++)
+        {
+          Console.Write(ptr[i] + " ");
+        }
+        Console.WriteLine();
+      }
+    }
+}
 
 }
