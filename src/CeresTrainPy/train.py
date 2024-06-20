@@ -48,9 +48,6 @@ torch.backends.cuda.enable_flash_sdp(False)
 torch.backends.cuda.enable_mem_efficient_sdp(True) # efficient seems faster than flash for short sequences
 
 
-if len(sys.argv) < 3:
-  raise ValueError("expected: train.py <config_name> <outputs_directory>")
-
 TRAINING_ID = sys.argv[1]
 OUTPUTS_DIR = sys.argv[2]
 
