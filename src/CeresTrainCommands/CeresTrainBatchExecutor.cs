@@ -36,13 +36,15 @@ namespace CeresTrain.TrainCommands
       WriteConfigsAndRunTrainingSessions
     }
 
+
+
     /// <summary>
     /// Runs a series of training configurations on specified host/device.
     /// </summary>
     /// <param name="mode"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] RunSessions(BatchExecutorMode mode, params IEnumerable<TrainingSessionSpecification> variants)
+    public static TrainingResultSummary[] RunSessions(BatchExecutorMode mode, params TrainingSessionSpecification[] variants)
     {
       return RunSessions(null, mode, variants);
     }
@@ -53,7 +55,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="piecesString"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] RunSessions(string piecesString, params IEnumerable<TrainingSessionSpecification> variants)
+    public static TrainingResultSummary[] RunSessions(string piecesString, TrainingSessionSpecification[] variants)
     {
       return RunSessions(piecesString, BatchExecutorMode.WriteConfigsAndRunTrainingSessions, variants);
     }
@@ -66,7 +68,7 @@ namespace CeresTrain.TrainCommands
     /// <param name="numPositions"></param>
     /// <param name="variants"></param>
     /// <returns></returns>
-    public static TrainingResultSummary[] RunSessions(string piecesString, BatchExecutorMode mode, params IEnumerable<TrainingSessionSpecification> variants)
+    public static TrainingResultSummary[] RunSessions(string piecesString, BatchExecutorMode mode, TrainingSessionSpecification[] variants)
     {
       // Throw exception if any of the variants have the same ID
       string[] variantsArray = variants.Select(v => v.variantID).ToArray();

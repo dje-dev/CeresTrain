@@ -63,7 +63,7 @@ namespace CeresTrain.Examples
     /// </summary>
     public static void Run()
     {
-      List<TrainingSessionSpecification> trainingRuns =
+      TrainingSessionSpecification[] trainingRuns =
       [
         // RUN1: Baseline run (Mish activation for FFN) on GPU 0.
         MakeSessionSpec(ROOT_RUN_ID + "_mish", HOST_ID, [0], TRAINING_FILES_DIR, NUM_TRAINING_POS),
