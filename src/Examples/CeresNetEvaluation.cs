@@ -735,6 +735,11 @@ namespace CeresTrain.Examples
         bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
 
+        if (netFN.EndsWith(".ts"))
+        {
+          ConsoleUtils.WriteLineColored(ConsoleColor.Red, ".ts file provided but evaluator was configured as ONNX " + netFN);
+        }
+
         string onnxFN;
         if (netFN.ToUpper().EndsWith(".ONNX"))
         {
