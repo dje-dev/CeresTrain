@@ -147,6 +147,9 @@ namespace CeresTrain.Trainer
 
     /// <summary>
     /// Data type to be used for weights/parameters of the model.
+    /// 
+    /// N.B. The Python code supports an additional mode "BFloat16Pure" but this is not expressable in the C# code currently.
+    /// TODO: lift this restriction, convert this from type ScalarType to string (but verify backward compatability).
     /// </summary>
     public readonly ScalarType DataType { get; init; } = ScalarType.BFloat16;
 

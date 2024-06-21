@@ -112,7 +112,7 @@ devices = config.Exec_DeviceIDs
 BATCH_SIZE = config.Opt_BatchSizeBackwardPass
 
 assert config.NetDef_PreNorm == False, 'PreNorm not supported'
-assert config.Exec_DataType == 'BFloat16', 'Only BFloat16 training supported'
+assert config.Exec_DataType == 'BFloat16' or config.Exec_DataType == 'BFloat16Pure', 'Only BFloat16 or BFloat16Pure training supported'
 
 MAX_POSITIONS = config.Opt_NumTrainingPositions
 
@@ -148,10 +148,11 @@ def Train():
 #    precision = TransformerEnginePrecision(dtype=torch.bfloat16, recipe=recipe, replace_layers=False)
 #    fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
 #                    loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
-    fabric = Fabric(precision="transformer-engine",accelerator=accelerator, devices=devices,
+    fabric = Fabric(precision='transformer-engine',accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
   else:
-    fabric = Fabric(precision="bf16-mixed", accelerator=accelerator, devices=devices,
+    fabric = Fabric(precision='bf16-pure' if config.Exec_DataType == 'BFloat16Pure' else 'bf16-mixed', 
+                    accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
 
 
