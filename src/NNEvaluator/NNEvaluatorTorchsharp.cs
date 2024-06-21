@@ -177,6 +177,7 @@ namespace CeresTrain.NNEvaluators
     public override bool HasM => true;
     public override bool IsWDL => true;
     public override bool HasUncertaintyV => true;
+    public override bool HasUncertaintyP => true;
     public override bool HasAction => hasAction;
 
     public override bool HasState => Options.UsePriorState;
@@ -456,6 +457,7 @@ namespace CeresTrain.NNEvaluators
     [ThreadStatic] static FP16[] l2;
     [ThreadStatic] static FP16[] m;
     [ThreadStatic] static FP16[] uncertaintyV;
+    [ThreadStatic] static FP16[] uncertaintyP;
     [ThreadStatic] static Half[] state;
 
 
@@ -520,6 +522,7 @@ namespace CeresTrain.NNEvaluators
         l2 = new FP16[MAX_BATCH_SIZE];
         m = new FP16[MAX_BATCH_SIZE];
         uncertaintyV = new FP16[MAX_BATCH_SIZE];
+        uncertaintyP = new FP16[MAX_BATCH_SIZE];
         extraStats0 = new FP16[MAX_BATCH_SIZE];
         extraStats1 = new FP16[MAX_BATCH_SIZE];
         if (Options.UsePriorState && getState != null)
@@ -836,6 +839,7 @@ namespace CeresTrain.NNEvaluators
 //          float rawM = (float)predictionsMLH[i] * NetTransformer.MLH_DIVISOR;
 //          m[i] = (FP16)Math.Max(rawM, 0);
           uncertaintyV[i] = (FP16)(float)predictionsUncertaintyV[i];
+          uncertaintyP[i] = FP16.NaN; //(FP16)(float)predictionsUncertaintyP[i];
         }
 
         Half[][] states = null;
@@ -851,9 +855,10 @@ namespace CeresTrain.NNEvaluators
             states[i] = state.AsSpan(i * stateSize, stateSize).ToArray();
           } 
         }
-        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasAction, HasValueSecondary, HasState,
+        PositionEvaluationBatch resultBatch = new PositionEvaluationBatch(IsWDL, HasM, HasUncertaintyV, HasUncertaintyP,
+                                                                          HasAction, HasValueSecondary, HasState,
                                                                           numPositions, policiesToReturn, actionsToReturn,
-                                                                          w, l, w2, l2, m, uncertaintyV, states, null, new TimingStats(),
+                                                                          w, l, w2, l2, m, uncertaintyV, uncertaintyP, states, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
         if (Options.UseAction)

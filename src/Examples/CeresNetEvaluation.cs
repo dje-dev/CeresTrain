@@ -730,7 +730,8 @@ namespace CeresTrain.Examples
                                       ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
         bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
-        const bool HAS_UNCERTAINTY = false; // someday conditionally enable this
+        const bool HAS_UNCERTAINTY_V = false; // someday conditionally enable this
+        const bool HAS_UNCERTAINTY_P = false; // someday conditionally enable this
         const bool ENABLE_PROFILING = false;
         bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
@@ -793,7 +794,7 @@ namespace CeresTrain.Examples
           return new NNEvaluatorEngineONNX(netID,
                                            useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
-                                           PRECISION, true, true, HAS_UNCERTAINTY, HAS_ACTION, "policy", "value", "mlh", "unc", true,
+                                           PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, captureOptions,
                                            true, captureOptions.ValueHead1Temperature, captureOptions.ValueHead2Temperature, captureOptions.FractionValueHead2,
                                            USE_STATE);
