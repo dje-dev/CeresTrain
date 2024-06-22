@@ -730,8 +730,8 @@ namespace CeresTrain.Examples
                                       ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
         bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
                     || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT;
-        const bool HAS_UNCERTAINTY_V = false; // someday conditionally enable this
-        const bool HAS_UNCERTAINTY_P = false; // someday conditionally enable this
+        const bool HAS_UNCERTAINTY_V = true;
+        const bool HAS_UNCERTAINTY_P = true;
         const bool ENABLE_PROFILING = false;
         bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
@@ -797,7 +797,7 @@ namespace CeresTrain.Examples
                                            PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, captureOptions,
                                            true, captureOptions.ValueHead1Temperature, captureOptions.ValueHead2Temperature, captureOptions.FractionValueHead2,
-                                           USE_STATE);
+                                           policyTemperatureScalingFactor: evaluatorOptions.PolicyUncertaintyTemperatureScalingFactor, USE_STATE);
         };
       }
       else

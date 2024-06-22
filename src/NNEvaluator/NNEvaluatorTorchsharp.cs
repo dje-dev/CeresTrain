@@ -76,7 +76,7 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public NNEvaluatorTorchsharpOptions Options
     {
-      get => (NNEvaluatorTorchsharpOptions)OptionsObject;
+      get => (NNEvaluatorTorchsharpOptions)Options;
       set
       {
         if (value.GetType() != typeof(NNEvaluatorTorchsharpOptions))
@@ -84,7 +84,7 @@ namespace CeresTrain.NNEvaluators
           throw new Exception("Specified options must be an instance of NNEvaluatorTorchsharpOptions"); 
         }
 
-        OptionsObject = value;
+        Options = value;
       }
     }
 
@@ -679,9 +679,14 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
         Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature, 
-                                                          Options.UseValueTemperature ? predictionQDeviationLower : null,
-                                                          Options.UseValueTemperature ? predictionQDeviationUpper : null);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature,   null, null);
+
+        if (Options.Value1UncertaintyTemperatureScalingFactor != 0 || Options.Value1UncertaintyTemperatureScalingFactor != 0)
+        {
+          throw new NotImplementedException();
+        }
+//                                                          Options.UseValueTemperature ? predictionQDeviationLower : null,
+//                                                          Options.UseValueTemperature ? predictionQDeviationUpper : null);
 
         static float WtdPowerMean(float a, float b, float w1, float w2, float p)
         {
@@ -756,8 +761,8 @@ namespace CeresTrain.NNEvaluators
           //predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
           
           // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
-          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, Options.PolicyTemperatureBase,
-                                                                            predictionQDeviationUpper, Options.PolicyTemperatureScalingFactor);
+          predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, Options.PolicyTemperature,
+                                                                            predictionQDeviationUpper, Options.PolicyUncertaintyTemperatureScalingFactor);
         }
         else
         {
@@ -918,6 +923,7 @@ namespace CeresTrain.NNEvaluators
       Tensor valueFloat = predictionValue.to(ScalarType.Float32);
       if (valueTemperatures is not null)
       {
+        throw new NotImplementedException();
         temperature = temperature ?? 1.0f;
 
         Tensor t = temperature + 1.25 * valueTemperatures + 1 * uncertaintyTemperature;// torch.full_like(valueTemperatures, temperature);

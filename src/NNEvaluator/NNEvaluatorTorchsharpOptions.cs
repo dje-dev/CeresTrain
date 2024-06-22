@@ -1,15 +1,17 @@
 ﻿#region Using directives
 
+using Ceres.Chess.NNEvaluators;
 using System;
 
 #endregion
 
 namespace CeresTrain.NNEvaluators
 {
+
   /// <summary>
   /// Set of options for NNEvaluatorTorchsharp.
   /// </summary>
-  public record struct NNEvaluatorTorchsharpOptions
+  public record NNEvaluatorTorchsharpOptions : NNEvaluatorOptions
   {
     /// <summary>
     /// If the prior state information should be used.
@@ -32,43 +34,10 @@ namespace CeresTrain.NNEvaluators
     public float QPositiveBlunders { get; init; } = 0;
 
     /// <summary>
-    /// Fraction of the value head 2 that is used to blend into the primary value.
-    /// </summary>
-    public float FractionValueHead2 { get; init; } = 0;
-
-    /// <summary>
-    /// If true, monitor activations of the neural network. 
-    /// </summary>
-    public bool MonitorActivations { get; init; } = false;
-
-    public bool UseValueTemperature { get; init; } = false; 
-
-    /// <summary>
-    /// Temperature for the value head 2.
-    /// </summary>
-    public float ValueHead1Temperature { get; init; } = 1;
-    /// <summary>
-    /// Temperature for the value head 2.
-    /// </summary>
-    public float ValueHead2Temperature { get; init; } = 1;
-
-
-    /// <summary>
     /// The order of the power mean used to combine the value heads.
     /// Default value of 1 corresponds to the arithmetic mean (0 for geometric).
     /// </summary>
     public float ValueHeadAveragePowerMeanOrder { get; init; } = 1;
-
-    /// <summary>
-    /// Optional scaling factor that determines the amount by which 
-    /// the policy temperature is scaled based on position-specific policy uncertainty.
-    /// </summary>
-    public float PolicyTemperatureScalingFactor { get; init; } = 0;
-
-    /// <summary>
-    /// Base policy temperature to apply.
-    /// </summary>
-    public float PolicyTemperatureBase { get; init; } = 1.0f;
 
 
     /// <summary>
@@ -90,7 +59,7 @@ namespace CeresTrain.NNEvaluators
     /// <param name="valueHead2Temperature"></param>
     /// <param name="valueHeadAveragePowerMeanOrder"></param>
     /// <param name="policyTemperatureBase"></param>
-    /// <param name="policyTemperatureScalingFactor"></param>
+    /// <param name="policyTemperatureUncertaintyScalingFactor"></param>
     /// <param name="useAction"></param>
     /// <param name="usePriorState"></param>
     /// <exception cref="ArgumentException"></exception>
@@ -101,10 +70,11 @@ namespace CeresTrain.NNEvaluators
                                         float valueHead2Temperature = 1,
                                         float valueHeadAveragePowerMeanOrder = 1,
                                         float policyTemperatureBase = 1,
-                                        float policyTemperatureScalingFactor = 0,
+                                        float policyTemperatureUncertaintyScalingFactor = 0,
                                         bool useAction = false,
                                         bool usePriorState = false,
-                                        bool useValueTemperature = false)
+                                        float value1UncertaintyTemperatureScalingFactor = 0,
+                                        float value2UncertaintyTemperatureScalingFactor = 0)
     {
       if (valueHead1Temperature <= 0 || valueHead2Temperature <= 0)
       {
@@ -118,11 +88,12 @@ namespace CeresTrain.NNEvaluators
       ValueHead1Temperature = valueHead1Temperature;      
       ValueHead2Temperature = valueHead2Temperature;
       ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
-      PolicyTemperatureBase = policyTemperatureBase;
-      PolicyTemperatureScalingFactor = policyTemperatureScalingFactor;
+      PolicyTemperature = policyTemperatureBase;
+      PolicyUncertaintyTemperatureScalingFactor = policyTemperatureUncertaintyScalingFactor;
       UseAction = useAction;
       UsePriorState = usePriorState;
-      UseValueTemperature = useValueTemperature;
+      Value1UncertaintyTemperatureScalingFactor = value1UncertaintyTemperatureScalingFactor;
+      Value2UncertaintyTemperatureScalingFactor = value2UncertaintyTemperatureScalingFactor;
     }
 
     /// <summary>
@@ -130,7 +101,7 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public string ShortStr => (UseAction ? "A" : "") + (UsePriorState ? "S" : "")
                            + $"NB: {QNegativeBlunders,4:F2}  PB: {QPositiveBlunders,4:F2} V2: {FractionValueHead2,4:F2} "
-                           + $"T: {PolicyTemperatureBase,4:F2}  TS: {PolicyTemperatureScalingFactor,4:F2} ";
+                           + $"T: {PolicyTemperature,4:F2}  TS: {PolicyUncertaintyTemperatureScalingFactor,4:F2} ";
 
   }
 
