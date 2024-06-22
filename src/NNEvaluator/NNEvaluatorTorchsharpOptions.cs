@@ -33,12 +33,6 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public float QPositiveBlunders { get; init; } = 0;
 
-    /// <summary>
-    /// The order of the power mean used to combine the value heads.
-    /// Default value of 1 corresponds to the arithmetic mean (0 for geometric).
-    /// </summary>
-    public float ValueHeadAveragePowerMeanOrder { get; init; } = 1;
-
 
     /// <summary>
     /// Default constructor.
@@ -87,7 +81,6 @@ namespace CeresTrain.NNEvaluators
       MonitorActivations = monitorActivations;
       ValueHead1Temperature = valueHead1Temperature;      
       ValueHead2Temperature = valueHead2Temperature;
-      ValueHeadAveragePowerMeanOrder = valueHeadAveragePowerMeanOrder;
       PolicyTemperature = policyTemperatureBase;
       PolicyUncertaintyTemperatureScalingFactor = policyTemperatureUncertaintyScalingFactor;
       UseAction = useAction;

@@ -31,6 +31,7 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
+using Ceres.Base.Misc;
 
 #endregion
 
@@ -271,6 +272,7 @@ namespace CeresTrain.NNEvaluators
 
     static bool haveInitialized = false;
     static bool haveWarned = false;
+    static bool haveWarned1 = false;
     bool firstTime = true;
     public EncodedPositionWithHistory lastPosition;
     public static EncodedPositionWithHistory lastPositionStatic;
@@ -678,23 +680,17 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionQDeviationUpperCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationUpper.to(ScalarType.Float16).cpu().bytes);
 
-        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
-        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature,   null, null);
-
-        if (Options.Value1UncertaintyTemperatureScalingFactor != 0 || Options.Value1UncertaintyTemperatureScalingFactor != 0)
+        if (!haveWarned1)
         {
-          throw new NotImplementedException();
+          ConsoleUtils.WriteLineColored(ConsoleColor.Red, "NNEvaluatorTorchsharp uses old code for processing Options,"
+                                                        + "should instead leverage shared code now present in PositionEvaluationBatch");
+          haveWarned1 = true;
         }
+        Span<Half> wdlProbabilitiesCPU = ExtractValueWDL(predictionValue, Options.ValueHead1Temperature);
+        Span<Half> wdl2ProbabilitiesCPU = ExtractValueWDL(predictionValue2, Options.ValueHead2Temperature, null, null);
+
 //                                                          Options.UseValueTemperature ? predictionQDeviationLower : null,
 //                                                          Options.UseValueTemperature ? predictionQDeviationUpper : null);
-
-        static float WtdPowerMean(float a, float b, float w1, float w2, float p)
-        {
-          float sum = w1 * MathF.Pow(a, p)
-                    + w2 * MathF.Pow(b, p);
-          sum /= (w1 + w2);
-          return MathF.Pow(sum, 1.0f / p);
-        }
 
         float fraction1 = 1.0f - Options.FractionValueHead2;
         float fractionNonDeblundered = Options.FractionValueHead2;
@@ -708,8 +704,6 @@ namespace CeresTrain.NNEvaluators
           // ***********************
         }
 
-        if (Options.ValueHeadAveragePowerMeanOrder == 1)
-        {
 
           for (int i = 0; i < wdlProbabilitiesCPU.Length; i++)
           {
@@ -717,15 +711,19 @@ namespace CeresTrain.NNEvaluators
                       + (float)wdl2ProbabilitiesCPU[i] * fractionNonDeblundered;
             wdlProbabilitiesCPU[i] = (Half)avg;
           }
-        }
-        else
+#if NOT
+        static float WtdPowerMean(float a, float b, float w1, float w2, float p)
         {
-          // TODO: improve efficiency
-          for (int i = 0; i < wdlProbabilitiesCPU.Length; i += 3)
-          {
-            // Geometric mean is value as PowerMean appraches with order 0.
-            // Avoid need of special-case logic, map to a value very close to 0.
-            float pToUse = Options.ValueHeadAveragePowerMeanOrder == 0 ? 0.001f
+          float sum = w1 * MathF.Pow(a, p)
+                    + w2 * MathF.Pow(b, p);
+          sum /= (w1 + w2);
+          return MathF.Pow(sum, 1.0f / p);
+        }
+
+
+        // Geometric mean is value as PowerMean appraches with order 0.
+        // Avoid need of special-case logic, map to a value very close to 0.
+        float pToUse = Options.ValueHeadAveragePowerMeanOrder == 0 ? 0.001f
                                                                        : Options.ValueHeadAveragePowerMeanOrder;
 
             float w = WtdPowerMean((float)wdlProbabilitiesCPU[i], (float)wdl2ProbabilitiesCPU[i], fraction1, fractionNonDeblundered, pToUse);
@@ -737,12 +735,13 @@ namespace CeresTrain.NNEvaluators
             wdlProbabilitiesCPU[i] = (Half)(w / sum);
             wdlProbabilitiesCPU[i + 1] = (Half)(d / sum);
             wdlProbabilitiesCPU[i + 2] = (Half)(l / sum);
-          }
-        }
+#endif
+
       
 
-        //ReadOnlySpan<Half> predictionsPolicy = null;
-        ReadOnlySpan<Half> predictionsPolicyMasked = null;
+
+      //ReadOnlySpan<Half> predictionsPolicy = null;
+      ReadOnlySpan<Half> predictionsPolicyMasked = null;
         Tensor gatheredLegalMoveProbs = default;
 
         if (legalMovesIndices != null)
