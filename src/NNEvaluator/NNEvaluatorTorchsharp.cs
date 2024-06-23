@@ -75,18 +75,9 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Options for the evaluator.
     /// </summary>
-    public NNEvaluatorTorchsharpOptions Options
+    public NNEvaluatorTorchsharpOptions OptionsTorchsharp
     {
       get => (NNEvaluatorTorchsharpOptions)Options;
-      set
-      {
-        if (value.GetType() != typeof(NNEvaluatorTorchsharpOptions))
-        {
-          throw new Exception("Specified options must be an instance of NNEvaluatorTorchsharpOptions"); 
-        }
-
-        Options = value;
-      }
     }
 
 
@@ -100,7 +91,7 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     Func<long> getNumModelParams = null;
 
-    bool hasAction => Options.UseAction;
+    bool hasAction => OptionsTorchsharp.UseAction;
 
 
     /// <summary
@@ -181,7 +172,7 @@ namespace CeresTrain.NNEvaluators
     public override bool HasUncertaintyP => true;
     public override bool HasAction => hasAction;
 
-    public override bool HasState => Options.UsePriorState;
+    public override bool HasState => OptionsTorchsharp.UsePriorState;
 
     public bool hasValue2 = true; // TODO: cleanup
 
@@ -332,7 +323,7 @@ namespace CeresTrain.NNEvaluators
       byte[] moveBytesAll;
 
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(positions, IncludeHistory, positions.Moves, LastMovePliesEnabled,
-                                                          Options.QNegativeBlunders, Options.QPositiveBlunders,
+                                                          OptionsTorchsharp.QNegativeBlunders, OptionsTorchsharp.QPositiveBlunders,
                                                           out mgPos, out squareBytesAll, legalMoveIndicesBuffer);
 #if DEBUG
       lastPosition = lastPositionStatic = positions.PositionsBuffer.Span[0];
@@ -527,7 +518,7 @@ namespace CeresTrain.NNEvaluators
         uncertaintyP = new FP16[MAX_BATCH_SIZE];
         extraStats0 = new FP16[MAX_BATCH_SIZE];
         extraStats1 = new FP16[MAX_BATCH_SIZE];
-        if (Options.UsePriorState && getState != null)
+        if (OptionsTorchsharp.UsePriorState && getState != null)
         {
           state = new Half[MAX_BATCH_SIZE * 64 * 32]; // TODO: improve, hardcoded to largest expected state size (4k each position)
         }
@@ -609,7 +600,7 @@ namespace CeresTrain.NNEvaluators
 #endif
 
 
-        if (Options.UsePriorState && getState != null && getState(0) != null)
+        if (OptionsTorchsharp.UsePriorState && getState != null && getState(0) != null)
         {
           // Allocate buffer to hold values across states for all positions.
           int stateLength = getState(0).Length;
@@ -655,7 +646,7 @@ namespace CeresTrain.NNEvaluators
   predictionPolicy = evalNoState.policy;
 }
 #endif
-        if (!Options.UsePriorState)
+        if (!OptionsTorchsharp.UsePriorState)
         {
           boardStateOutput?.Dispose();
           boardStateOutput = null;
@@ -780,7 +771,7 @@ namespace CeresTrain.NNEvaluators
         ReadOnlySpan<TPGSquareRecord> squareRecords = MemoryMarshal.Cast<byte, TPGSquareRecord>(squareBytesAll);
 
         Half[] actionsSpan = null;
-        if (Options.UseAction &&  (object)actions != null)
+        if (OptionsTorchsharp.UseAction &&  (object)actions != null)
         {
           const float TEMPERATURE = 1.0f;
           if (TEMPERATURE != 1)
@@ -865,7 +856,7 @@ namespace CeresTrain.NNEvaluators
                                                                           w, l, w2, l2, m, uncertaintyV, uncertaintyP, states, null, new TimingStats(),
                                                                           extraStats0, extraStats1, false);
 
-        if (Options.UseAction)
+        if (OptionsTorchsharp.UseAction)
         {
 //          resultBatch.RewriteWDLToBlendedValueAction();
         }
