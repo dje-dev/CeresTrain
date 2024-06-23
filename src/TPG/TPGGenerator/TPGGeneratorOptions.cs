@@ -171,8 +171,9 @@ namespace CeresTrain.TPG.TPGGenerator
     /// If position focus should be enabled, which alters distribution of selected positions:
     ///   - rejects if the blunder magnitude or imbaalance between sides is extremely large (target too noisy)
     ///   - upsamples the "harder" positions, i.e. those where value head and search results were different
+    /// NOTE: extensive tests in June 2024 showed that this feature was clearly unhelpful (circa -15 Elo).
     /// </summary>
-    public bool EnablePositionFocus { init; get; } = true;
+    public bool EnablePositionFocus { init; get; } = false;
 
 
     // Minimum probability for a legal move.
