@@ -109,10 +109,10 @@ namespace CeresTrain.NNEvaluators
                                  NNEvaluatorTorchsharpOptions options = default)
       : this(engineType, 
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
-                                                 (NetTransformerDef)ceresTransformerNetDef,
-                                                  device, dataType, options.UsePriorState),
-                                                  device, dataType,
-                                                  configNetExec.UseHistory, lastMovePliesEnabled, options)
+                                                 ceresTransformerNetDef is NetTransformerDef ? (NetTransformerDef)ceresTransformerNetDef : default,
+                                                 device, dataType, options.UsePriorState),
+                                                 device, dataType,
+                                                 configNetExec.UseHistory, lastMovePliesEnabled, options)
     {
       getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
     }
