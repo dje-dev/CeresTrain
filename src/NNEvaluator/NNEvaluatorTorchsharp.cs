@@ -572,6 +572,8 @@ namespace CeresTrain.NNEvaluators
       Tensor actions;
       Tensor boardStateInput = default;
       Tensor boardStateOutput;
+      Tensor actionUncertainty;
+      Tensor uncertaintyPolicy;
 
       using (no_grad())
       {
@@ -633,10 +635,9 @@ namespace CeresTrain.NNEvaluators
           }
         }
 
-        // Evaluate using neural net.
-        (predictionValue, predictionPolicy, predictionMLH, predictionUNC, 
-        predictionValue2, predictionQDeviationLower, predictionQDeviationUpper,
-        actions, boardStateOutput,
+    (predictionPolicy, predictionValue, predictionMLH, predictionUNC, 
+        predictionValue2, predictionQDeviationLower, predictionQDeviationUpper, uncertaintyPolicy,
+        actions, boardStateOutput, actionUncertainty,
         _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, boardStateInput));
 
 #if NOT

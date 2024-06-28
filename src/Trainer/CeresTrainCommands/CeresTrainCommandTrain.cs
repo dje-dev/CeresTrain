@@ -222,6 +222,8 @@ namespace CeresTrain.Trainer
           Tensor qDeviationUpper;
           Tensor action;
           Tensor boardState;
+          Tensor uncertaintyPolicy;
+          Tensor actionUncertainty;
 
           FP16[] extraStats0;
           FP16[] extraStats1;
@@ -231,8 +233,8 @@ namespace CeresTrain.Trainer
 
             inputSquares = inputSquares.to(TrainingConfig.ExecConfig.DataType).div(ByteScaled.SCALING_FACTOR);
 
-            (value, policy, mlh, unc, value2, qDeviationLower, qDeviationUpper, 
-              action, boardState, extraStats0, extraStats1) = evaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+            (policy, value, mlh, unc, value2, qDeviationLower, qDeviationUpper, uncertaintyPolicy,
+             action, boardState, actionUncertainty, extraStats0, extraStats1) = evaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
           }
           else
           {

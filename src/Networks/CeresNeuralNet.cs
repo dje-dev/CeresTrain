@@ -28,7 +28,7 @@ namespace CeresTrain.Networks
   /// <summary>
   /// Base class from which all Ceres neural networks are derived.  
   /// </summary>
-  public abstract class CeresNeuralNet : Module<(Tensor squares, Tensor priorState), (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)>, IModuleNNEvaluator
+  public abstract class CeresNeuralNet : Module<(Tensor squares, Tensor priorState), (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)>, IModuleNNEvaluator
   {
     /// <summary>
     /// Constructor.
@@ -45,9 +45,9 @@ namespace CeresTrain.Networks
     /// <param name="inputSquares"></param>
     /// <param name="inputMoves"></param>
     /// <returns></returns>
-    public abstract (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
-                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-                     Tensor action, Tensor boardState,
+    public abstract (Tensor policy, Tensor value, Tensor mlh, Tensor unc, 
+                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper, Tensor policyUncertainty,
+                     Tensor action, Tensor boardState, Tensor actionUncertainty,
                      FP16[] extraStats0, FP16[] extraStats1) Forward((Tensor squares, Tensor priorState) inputs);
 
 
@@ -56,9 +56,9 @@ namespace CeresTrain.Networks
       throw new NotImplementedException();
     }
 
-    public virtual (Tensor value, Tensor policy, Tensor mlh, Tensor unc,
+    public virtual (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-                    Tensor action, Tensor boardState,
+                    Tensor uncertaintyPolicy, Tensor action, Tensor boardState, Tensor actionUncertainty,
                     FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC((Tensor squares, Tensor priorState) inputs)
     {
       return Forward((inputs.squares, inputs.priorState));

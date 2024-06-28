@@ -150,8 +150,6 @@ namespace CeresTrain.NNEvaluators
     }
 
 
-    
-
     /// <summary>
     /// Runs forward pass.
     /// </summary>
@@ -159,9 +157,10 @@ namespace CeresTrain.NNEvaluators
     /// <param name="priorState"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
+    public (Tensor policy, Tensor value, Tensor mlh, Tensor unc, 
             Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-            Tensor action, Tensor boardState,
+            Tensor uncertaintyPolicy,
+            Tensor action, Tensor boardState, Tensor actionUncertainty,
             FP16[] extraStats0, FP16[] extraStats1) forwardValuePolicyMLH_UNC((Tensor squares, Tensor priorState) input)
     {
       FP16[] extraStats0 = null;
@@ -174,8 +173,8 @@ namespace CeresTrain.NNEvaluators
           lock (this)
           {
             (Tensor policy1858, Tensor valueWDL, Tensor mlh, Tensor unc, Tensor value2, 
-             Tensor qDeviationLower, Tensor qDeviationUpper,
-             Tensor actions, Tensor boardState) ret = default;
+             Tensor qDeviationLower, Tensor qDeviationUpper, Tensor uncertaintyPolicy,
+             Tensor actions, Tensor boardState, Tensor actionUncertainty) ret = default;
 
             bool hasAction;
             bool networkExpectsBoardState = UseState && TransformerConfig.PriorStateDim > 0;
@@ -207,8 +206,10 @@ namespace CeresTrain.NNEvaluators
 
               ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
                      rawRet.Length > 7 ? rawRet[7] : default,
-                     rawRet.Length > 8 ? rawRet[8] : default);
-              hasAction = rawRet.Length > 7;
+                     rawRet.Length > 8 ? rawRet[8] : default,
+                     rawRet.Length > 9 ? rawRet[9] : default,
+                     rawRet.Length > 10 ? rawRet[10] : default);
+              hasAction = rawRet.Length > 8;
             }
             else
             {
@@ -223,15 +224,17 @@ namespace CeresTrain.NNEvaluators
               extraStats0 = ceresTransformer.IntrinsicDimensionalitiesLastBatch;
             }
 
-            return (ret.valueWDL.MoveToOuterDisposeScope(),
-                    ret.policy1858.MoveToOuterDisposeScope(),
+            return (ret.policy1858.MoveToOuterDisposeScope(),
+                    ret.valueWDL.MoveToOuterDisposeScope(),
                     ret.mlh.MoveToOuterDisposeScope(),
                     ret.unc.MoveToOuterDisposeScope(),
                     ret.value2.MoveToOuterDisposeScope(),
                     (object)ret.qDeviationLower == null ? null : ret.qDeviationLower.MoveToOuterDisposeScope(),
                     (object)ret.qDeviationUpper == null ? null : ret.qDeviationUpper.MoveToOuterDisposeScope(),
+                    null, // TODO: implement policy uncertainty 
                     hasAction ? ret.actions.MoveToOuterDisposeScope() : null,
                     networkExpectsBoardState ? ret.boardState.MoveToOuterDisposeScope() : null,
+                    null, // TODO: implement action uncertainty
                     extraStats0, null);
           }
         }

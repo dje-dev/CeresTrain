@@ -409,7 +409,7 @@ namespace CeresTrain.Networks.Transformer
     public Tensor lastOutputTrunk;
 
 
-    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward((Tensor squares, Tensor priorState) input)
+    public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward((Tensor squares, Tensor priorState) input)
     {
       Tensor flowCS = layerEmbedding.call(input.squares);
       Tensor flowState = null;
@@ -465,9 +465,10 @@ namespace CeresTrain.Networks.Transformer
       Tensor flowBoardState = default;
       flowCS.Dispose();
 
+      // TODO: implement policy uncertainty, action uncertainty
       return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead, flowValue2Head, 
-              flowQDeviationLowerHead, flowQDeviationUpperHead,
-              flowAction, flowBoardState);
+              flowQDeviationLowerHead, flowQDeviationUpperHead, default,
+              flowAction, flowBoardState, default);
     }
 
 
@@ -476,15 +477,15 @@ namespace CeresTrain.Networks.Transformer
       this.to(type);
     }
 
-    public override (Tensor value, Tensor policy, Tensor mlh, Tensor unc, 
-                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
-                     Tensor action, Tensor boardState,
+    public override (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
+                     Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper, Tensor policyUncertainty,
+                     Tensor action, Tensor boardState, Tensor actionUncertainty,
 
                     FP16[] extraStats0, FP16[] extraStats1) Forward((Tensor squares, Tensor priorState)input)
     {
-      (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU, Tensor a, Tensor bs) = forward((input.squares.to(ExecutionConfig.DataType), input.priorState));
+      (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU, Tensor pU, Tensor bs, Tensor a, Tensor aU) = forward((input.squares.to(ExecutionConfig.DataType), input.priorState));
 
-      return (v, p, m, u, v2, qL, qU, a, bs, null, null);
+      return (v, p, m, u, v2, qL, qU, pU, bs, a, aU, null, null);
     }
   }
 }
