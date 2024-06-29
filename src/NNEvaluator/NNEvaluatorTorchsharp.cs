@@ -102,14 +102,12 @@ namespace CeresTrain.NNEvaluators
     /// <param name="configNetExec"></param>
     /// <param name="lastMovePliesEnabled"></param>
     public NNEvaluatorTorchsharp(NNEvaluatorInferenceEngineType engineType, 
-                                 ICeresNeuralNetDef ceresTransformerNetDef,
                                  ConfigNetExecution configNetExec,
                                  Device device, ScalarType dataType,
                                  bool lastMovePliesEnabled = false,
                                  NNEvaluatorTorchsharpOptions options = default)
       : this(engineType, 
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
-                                                 ceresTransformerNetDef is NetTransformerDef ? (NetTransformerDef)ceresTransformerNetDef : default,
                                                  device, dataType, options.UsePriorState),
                                                  device, dataType,
                                                  configNetExec.UseHistory, lastMovePliesEnabled, options)
@@ -490,6 +488,7 @@ namespace CeresTrain.NNEvaluators
       }
 
       // Subtract the max from logits and exponentiate (in Float32 to preserve accuracy during exponentiation and division).
+      // TODO: consider doing this directly with torch.logit.
       Tensor max_logits = torch.max(valueFloat, dim: 1, keepdim: true).values;
       Tensor exp_logits = torch.exp(valueFloat - max_logits);
 
@@ -779,7 +778,7 @@ namespace CeresTrain.NNEvaluators
           {
             actions /= TEMPERATURE;
           }
-
+          
           actions = torch.nn.functional.softmax(actions, -1);
           actionsSpan = MemoryMarshal.Cast<byte, Half>(actions.to(ScalarType.Float16).cpu().bytes).ToArray();
         }
@@ -792,12 +791,7 @@ namespace CeresTrain.NNEvaluators
           {
             InitPolicyAndActionProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, 
                                              policiesToReturn, actionsSpan, actionsToReturn, hasAction);
-
-//            if (hasAction && Options.ShrinkExtremes)
-//            { 
-//              SmoothActions(ref actionsToReturn[i], in policiesToReturn[i]);
-//            }  
-        }
+          }
           else
           {
             throw new Exception("this code should be retested");
@@ -1043,13 +1037,7 @@ namespace CeresTrain.NNEvaluators
       }     
     }
 
-    static void SmoothActions(ref CompressedActionVector actions, in CompressedPolicyVector policies)
-    {
-      Smooth(ref actions, in policies, 0.15f, 0.3f * 0.5f);
-      Smooth(ref actions, in policies, 0.02f, 0.5f * 0.5f);
-    }
-
-
+    
     static void InitPolicyAndActionProbabilities(int i,
                                                  Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
                                                  short[] legalMoveIndices,
@@ -1076,10 +1064,11 @@ namespace CeresTrain.NNEvaluators
 
         if (!actionValues.IsEmpty)
         {
-          int actionBaseIndex = i * 1858 + index * 3;
+          int actionBaseIndex = i * 1858 * 3 + index * 3;
           Half w = actionValues[actionBaseIndex];
           Half l = actionValues[actionBaseIndex + 2];
           Debug.Assert(w >= Half.Zero && l >= Half.Zero); // expected already converted from logits to probabilities
+
           actionsToReturn[i][m] = (w, l);
         }
 

@@ -11,6 +11,7 @@ using CeresTrain.Utils;
 using CeresTrain.Networks;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
+using Ceres.Chess.NNEvaluators;
 
 #endregion
 
@@ -43,11 +44,6 @@ namespace CeresTrain.NNEvaluators
     /// </summary>
     public readonly CeresNeuralNet CeresNet;
 
-    /// <summary>
-    /// Transformer configuration.
-    /// </summary>
-    public readonly NetTransformerDef TransformerConfig;
-
 
     /// <summary>
     /// The loaded Torchscript module.
@@ -57,8 +53,6 @@ namespace CeresTrain.NNEvaluators
     
     public readonly bool UseState;
 
-    bool hasPriorStateOutput;
-
 
     /// <summary>
     /// Constructor from given Ceres net definition.
@@ -67,7 +61,6 @@ namespace CeresTrain.NNEvaluators
     /// <param name="transformerConfig"></param>
     /// <exception cref="Exception"></exception>
     public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, 
-                                            in NetTransformerDef transformerConfig,
                                             Device device, ScalarType dataType,
                                             bool useState = true)
     {
@@ -82,11 +75,6 @@ namespace CeresTrain.NNEvaluators
       Device = device;
       DataType = dataType;  // ScalarType.Float16;
       UseState = useState;
-      TransformerConfig = transformerConfig;
-
-      hasPriorStateOutput = transformerConfig.PriorStateDim > 0;
-
-      //Environment.SetEnvironmentVariable("PYTORCH_NVFUSER_DISABLE_FALLBACK", "1");
 
       Console.WriteLine("LOAD OF TORCHSCRIPT MODEL **********");
       Console.WriteLine("  " + executionConfig.SaveNetwork1FileName);
@@ -97,8 +85,9 @@ namespace CeresTrain.NNEvaluators
 
       if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
-        CeresNet = transformerConfig.CreateNetwork(executionConfig);
-        CeresNet.eval();
+        throw new Exception("Need remediation to push the creation of the network outside this constructor and keep this class pure");
+//        CeresNet = transformerConfig.CreateNetwork(executionConfig);
+//        CeresNet.eval();
       }
       else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
@@ -177,11 +166,11 @@ namespace CeresTrain.NNEvaluators
              Tensor actions, Tensor boardState, Tensor actionUncertainty) ret = default;
 
             bool hasAction;
-            bool networkExpectsBoardState = UseState && TransformerConfig.PriorStateDim > 0;
+            bool networkExpectsBoardState = UseState;
             if (module != null)
             {
               Tensor[] rawRet = default;
-              if (hasPriorStateOutput && UseState)
+              if (UseState)
               {
                 Tensor priorState;
                 if (input.priorState is not null)
@@ -191,8 +180,7 @@ namespace CeresTrain.NNEvaluators
                 else
                 {
                   // TODO: this allocation on every call is expensive, someday allow passing of None to the neural network instead?
-                  int size = TransformerConfig.PriorStateDim == 0 ? 4 : TransformerConfig.PriorStateDim;
-                  priorState = torch.zeros([input.squares.shape[0], 64, size], dtype: DataType, device: Device);
+                  priorState = torch.zeros([input.squares.shape[0], 64, NNEvaluator.SIZE_STATE_PER_SQUARE], dtype: DataType, device: Device);
                 }
 
                 rawRet = module.forward(input.squares, priorState); // N.B. Possible bug, calling this twice sometimes results in slightly different return values

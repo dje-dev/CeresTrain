@@ -110,13 +110,13 @@ namespace CeresTrain.Examples
       if (usePieceCountLimit)
       {
         posPredicate = (Position pos) => pos.PieceCount <= upperBoundCount;
-        description+= $"_LE{upperBoundCount}";
+        description += $"_LE{upperBoundCount}";
         SKIP_COUNT = CeresTrainGenerateTPGDefault.SKIP_COUNT_IF_FILTERED_POSITIONS;
       }
       else if (pieces != null)
       {
         posPredicate = (Position pos) => pieces.PositionMatches(pos);
-        description+= $"_{piecesString}";
+        description += $"_{piecesString}";
         SKIP_COUNT = CeresTrainGenerateTPGDefault.SKIP_COUNT_IF_FILTERED_POSITIONS;
       }
 
@@ -125,7 +125,7 @@ namespace CeresTrain.Examples
       DateTime startTime = DateTime.Now;
       using (new TimingBlock("GenerateTPGFilesFromLC0TrainingData"))
       {
-        const long BLOCK_SIZE = 8192 * 1640; 
+        const long BLOCK_SIZE = 8192 * 1640;
         numPositions = MathUtils.RoundedUp(numPositions, BLOCK_SIZE);
         CeresTrainGenerateTPGDefault.GenerateTPG(tarDirectory, outputDirectory, numPositions, description,
                                                    (EncodedTrainingPositionGame game, int positionIndex, in Position position)
@@ -161,7 +161,7 @@ namespace CeresTrain.Examples
       long NUM_BATCHES_TO_WRITE = numPositions / (NUM_THREADS * BATCH_SIZE);
       ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"GenerateTPGFileFromRandomTablebasePositions positions {numPositions} "
                                                      + $"of {piecesString} with {NUM_THREADS} threads to {outputDirectory}");
-      
+
       // Launch and wait for parallel threads, each writing to separate file.
       DateTime startTime = DateTime.Now;
       const bool SUCCEED_IF_INCOMPLETE_DTZ_INFORMATION = true;
@@ -230,7 +230,7 @@ namespace CeresTrain.Examples
     /// <param name="useBestValueRepetitionHeuristic"></param>
     /// <returns></returns>
     public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
-                                             ICeresNeuralNetDef netDef, 
+                                             ICeresNeuralNetDef netDef,
                                              int deviceID, in ConfigNetExecution execConfig,
                                              string netFN, bool useBestValueRepetitionHeuristic,
                                              object options)
@@ -239,17 +239,20 @@ namespace CeresTrain.Examples
       if (netFN != null && !File.Exists(netFN))
       {
         string orgNetFN = netFN;
-        netFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);  
+        netFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);
         if (!File.Exists(netFN))
         {
           throw new Exception($"Ceres net file {orgNetFN} not found in DirCeresNetworks {CeresUserSettingsManager.Settings.DirCeresNetworks}");
         }
       }
 
-      NNEvaluatorTorchsharp evaluator = new(engineType, netDef, execConfig with {DeviceIDs = [deviceID], 
-       
-                                            SaveNetwork1FileName = netFN }, execConfig.Device, execConfig.DataType,
-                                            options:(NNEvaluatorTorchsharpOptions) options);
+      NNEvaluatorTorchsharp evaluator = new(engineType, execConfig with
+      {
+        DeviceIDs = [deviceID],
+
+        SaveNetwork1FileName = netFN
+      }, execConfig.Device, execConfig.DataType,
+                                            options: (NNEvaluatorTorchsharpOptions)options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -269,10 +272,10 @@ namespace CeresTrain.Examples
     /// <param name="verbose"></param>
     public static TournamentResultStats RunTournament(NNEvaluatorInferenceEngineType engineType,
                                                       ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
-                                                      string netFN, string opponentNetID, string ceresDeviceSpec, 
+                                                      string netFN, string opponentNetID, string ceresDeviceSpec,
                                                       PositionGenerator posGenerator,
-                                                      SearchLimit searchLimit, 
-                                                      int numGamePairs = 50, bool verbose = false, 
+                                                      SearchLimit searchLimit,
+                                                      int numGamePairs = 50, bool verbose = false,
                                                       bool opponentTablebasesEnabled = false)
     {
       EnginePlayerDef player1;
@@ -282,7 +285,7 @@ namespace CeresTrain.Examples
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
         NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
-        InstallCustomEvaluator(1, engineType, "cuda", 0, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory, options);
+        InstallCustomEvaluator(1, engineType, "cuda", 0, TorchSharp.torch.ScalarType.BFloat16, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory, options);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
       }
@@ -344,7 +347,7 @@ namespace CeresTrain.Examples
         PositionWithHistory pos = posEnumerator.Current;
 
         NNEvaluatorResult evalResult = evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY);
-        NNEvaluatorResult resultCompar = evaluatorCompare == null ? default : evaluatorCompare.Evaluate(pos, true, extraInputs:NNEvaluator.InputTypes.Positions);
+        NNEvaluatorResult resultCompar = evaluatorCompare == null ? default : evaluatorCompare.Evaluate(pos, true, extraInputs: NNEvaluator.InputTypes.Positions);
 
         int gameResultTablebase = tbEvaluator.ProbeWDLAsV(pos.FinalPosition);
         bool netValueCorrect = gameResultTablebase == evalResult.MostProbableGameResult;
@@ -409,8 +412,8 @@ namespace CeresTrain.Examples
     /// </summary>
     /// <param name="netFN"></param>
     /// <param name="numPositionsToTest"></param>
-    public static (float valueAccuracy, float policyAccuracy) TestNetValueAccuracy(NNEvaluator evaluator, string piecesStr, 
-                                                                                  int numPositionsToTest = 4096, 
+    public static (float valueAccuracy, float policyAccuracy) TestNetValueAccuracy(NNEvaluator evaluator, string piecesStr,
+                                                                                  int numPositionsToTest = 4096,
                                                                                   string epdOrPGNFileName = null,
                                                                                   bool verbose = false)
     {
@@ -421,7 +424,7 @@ namespace CeresTrain.Examples
 
       IEnumerable<Position> positionSourceEnum = epdOrPGNFileName == null
                                             ? generator.AsPositionEnumerable()
-                                            : PositionsWithHistory.FromEPDOrPGNFile(epdOrPGNFileName, numPositionsToTest, p => generator.PositionMatches(in p)).Select(s=>s.FinalPosition).AsEnumerable();
+                                            : PositionsWithHistory.FromEPDOrPGNFile(epdOrPGNFileName, numPositionsToTest, p => generator.PositionMatches(in p)).Select(s => s.FinalPosition).AsEnumerable();
       IEnumerator<Position> posEnumerator = positionSourceEnum.AsEnumerable().GetEnumerator();
 
       int numCorrectValue = 0;
@@ -467,8 +470,8 @@ namespace CeresTrain.Examples
 
           if (verbose)
           {
-            Console.WriteLine((valueCorrect ? " " : "v") + " " + (policyCorrect ? " " : "p") 
-                            + $"  {batchPositions[i].FEN,-35}   {nnResults[i].V,8:F2} { nnResults[i].Policy}");
+            Console.WriteLine((valueCorrect ? " " : "v") + " " + (policyCorrect ? " " : "p")
+                            + $"  {batchPositions[i].FEN,-35}   {nnResults[i].V,8:F2} {nnResults[i].Policy}");
           }
 
         }
@@ -535,12 +538,12 @@ namespace CeresTrain.Examples
     /// <param name="lc0NetToUseForUncoveredPositions"></param>
     /// <param name="ceresDeviceSpec"></param>
     public static void RunUCILoop(ICeresNeuralNetDef netDef, in ConfigNetExecution execConfig,
-                                  string netFN, string lc0NetToUseForUncoveredPositions, 
+                                  string netFN, string lc0NetToUseForUncoveredPositions,
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
       NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
 
-      InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, "cuda", 0, netDef, execConfig, netFN, posGenerator,
+      InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, "cuda", 0, TorchSharp.torch.ScalarType.BFloat16, netDef, execConfig, netFN, posGenerator,
                              lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory, options);
       Ceres.Program.LaunchUCI(["network=CUSTOM1"], (ParamsSearch search) => { search.EnableTablebases = false; });
     }
@@ -576,6 +579,7 @@ namespace CeresTrain.Examples
     public static void InstallCustomEvaluatorEx(int evaluatorIndex, string configID,
                                                NNEvaluatorInferenceEngineType engineType,
                                                string deviceType,
+                                               TorchSharp.torch.ScalarType dataType,
                                                int deviceID,
                                                bool useHistory,
                                                string net1ReplacementNumStepsNetToUse = null,
@@ -602,62 +606,70 @@ namespace CeresTrain.Examples
         }
       }
 #endif
-      string configsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs");
-      string fullConfigPath = Path.Combine(configsDir, configID);
-      TrainingResultSummary? resultsFile;
+
+      string netFileName1 = null;
+      string netFileName2 = null;
+
       ConfigTraining config = default;
-      if (!CeresTrainCommandUtils.CheckConfigFound(configID, configsDir))
+      if (configID != null)
       {
-        throw new Exception($"Config not found: {configID} at {fullConfigPath}");
-      }
+        string configsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "configs");
+        string fullConfigPath = Path.Combine(configsDir, configID);
+        TrainingResultSummary? resultsFile;
+        if (!CeresTrainCommandUtils.CheckConfigFound(configID, configsDir))
+        {
+          throw new Exception($"Config not found: {configID} at {fullConfigPath}");
+        }
 
-      resultsFile = CeresTrainCommandUtils.ReadResultsForConfig(configID);
-      if (resultsFile == null && netFNOverride == null)
-      {
-        throw new Exception("Unable to load results for " + configID);
-      }
+        resultsFile = CeresTrainCommandUtils.ReadResultsForConfig(configID);
+        if (resultsFile == null && netFNOverride == null)
+        {
+          throw new Exception("Unable to load results for " + configID);
+        }
 
-      string netFileNameBase;
-      if (netFNOverride != null)
-      {
-        netFileNameBase = netFNOverride;
-      }
-      else
-      {
-        // Determine network full path, remapping saved path to directory under main output directory.
-        netFileNameBase = resultsFile.Value.NetFileName;
-        netFileNameBase = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "nets", Path.GetFileName(netFileNameBase.Replace("\\", "/")));
-      }
+        string netFileNameBase;
+        if (netFNOverride != null)
+        {
+          netFileNameBase = netFNOverride;
+        }
+        else
+        {
+          // Determine network full path, remapping saved path to directory under main output directory.
+          netFileNameBase = resultsFile.Value.NetFileName;
+          netFileNameBase = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "nets", Path.GetFileName(netFileNameBase.Replace("\\", "/")));
+        }
 
-      string netFileName1 = netFileNameBase;
-      string netFileName2 = null; // Default is not to use a second net.
+        netFileName1 = netFileNameBase;
+        netFileName2 = null; // Default is not to use a second net.
 
-      // Potentially use a different saved net (at a specified number of steps).
-      if (net1ReplacementNumStepsNetToUse != null)
-      {
-        netFileName1 = netFileName1.Replace("_final", $"_{net1ReplacementNumStepsNetToUse}");
-      }
+        // Potentially use a different saved net (at a specified number of steps).
+        if (net1ReplacementNumStepsNetToUse != null)
+        {
+          netFileName1 = netFileName1.Replace("_final", $"_{net1ReplacementNumStepsNetToUse}");
+        }
 
-      // Potentially use a different saved net (at a specified number of steps).
-      if (net2ReplacementNumStepsNetToUse != null)
-      {
-        netFileName2 = netFileNameBase.Replace("_final", $"_{net2ReplacementNumStepsNetToUse}");
-      }
+        // Potentially use a different saved net (at a specified number of steps).
+        if (net2ReplacementNumStepsNetToUse != null)
+        {
+          netFileName2 = netFileNameBase.Replace("_final", $"_{net2ReplacementNumStepsNetToUse}");
+        }
 
-      if (netFNOverride2 != null)
-      {
-        netFileName2 = netFNOverride2;
-      }
+        if (netFNOverride2 != null)
+        {
+          netFileName2 = netFNOverride2;
+        }
 
-      config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, "KPkp", null); // TODO: don't require pieces
-      if (config.ExecConfig.SaveNetwork2FileName != null)
-      {
-        throw new NotImplementedException("SaveNetwork2FileName support not completed (how to reconcile netFileName above and this value?)");
+
+        config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, "KPkp", null); // TODO: don't require pieces
+        if (config.ExecConfig.SaveNetwork2FileName != null)
+        {
+          throw new NotImplementedException("SaveNetwork2FileName support not completed (how to reconcile netFileName above and this value?)");
+        }
       }
 
       InstallCustomEvaluator(evaluatorIndex,
                              engineType,
-                             deviceType, deviceID,
+                             deviceType, deviceID, dataType,
                              config.NetDefConfig,
                              config.ExecConfig with
                              {
@@ -688,22 +700,24 @@ namespace CeresTrain.Examples
                                               NNEvaluatorInferenceEngineType engineType,
                                               string deviceType,
                                               int deviceIndex,
-                                              ICeresNeuralNetDef netDef, 
-                                              ConfigNetExecution execConfig, 
-                                              string netFN, 
+                                              TorchSharp.torch.ScalarType dataType,
+                                              ICeresNeuralNetDef netDef,
+                                              ConfigNetExecution execConfig,
+                                              string netFN,
                                               PositionGenerator posGenerator,
                                               string lc0NetToUseForUncoveredPositions,
                                               string lc0DeviceToUseForUncoveredPositions,
                                               bool useHistory,
                                               NNEvaluatorTorchsharpOptions evaluatorOptions)
     {
-      ArgumentNullException.ThrowIfNullOrEmpty(netFN);
-
-      execConfig = execConfig with { UseHistory = useHistory, 
-                                     ActivationMonitorDumpSkipCount = evaluatorOptions.MonitorActivations ? 1 : 0,
-                                     DeviceType = deviceType,
-                                     DeviceIDs = [deviceIndex]
-                                   };
+      execConfig = execConfig with
+      {
+        UseHistory = useHistory,
+        ActivationMonitorDumpSkipCount = evaluatorOptions.MonitorActivations ? 1 : 0,
+        DeviceType = deviceType,
+        DataType = dataType,
+        DeviceIDs = [deviceIndex]
+      };
       bool useBestValueRepetitionHeuristic = !useHistory;
       // Create evaluator for the specified trained neural network and also a fallback LC0 network.
       //      NNEvaluator evaluatorCeres = GetNNEvaluator(netDef, in execConfig, netFN, useBestValueRepetitionHeuristic);
@@ -722,10 +736,10 @@ namespace CeresTrain.Examples
         EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
         NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1)
           => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, f1);
-        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, squares, legalMoveIndices) 
+        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, squares, legalMoveIndices)
           => TPGConvertersToFlat.ConvertToFlatTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, history, squares, legalMoveIndices);
 
-        NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 
+        NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
                                       || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
                                       ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
         bool USE_TRT = engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
@@ -735,36 +749,39 @@ namespace CeresTrain.Examples
         const bool ENABLE_PROFILING = false;
         bool USE_STATE = evaluatorOptions.UsePriorState;
         bool HAS_ACTION = evaluatorOptions.UseAction;
+        string onnxFN = null;
 
-        if (netFN.EndsWith(".ts"))
+        if (netFN != null)
         {
-          ConsoleUtils.WriteLineColored(ConsoleColor.Red, ".ts file provided but evaluator was configured as ONNX " + netFN);
-        }
-
-        string onnxFN;
-        if (netFN.ToUpper().EndsWith(".ONNX"))
-        {
-          // Take filename as is.
-          onnxFN = netFN;
-        }
-        else
-        {
-          onnxFN = netFN + ".onnx";
-          if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
+          if (netFN.EndsWith(".ts"))
           {
-            onnxFN = onnxFN + "_fp16.onnx";
+            ConsoleUtils.WriteLineColored(ConsoleColor.Red, ".ts file provided but evaluator was configured as ONNX " + netFN);
           }
-        }
 
-        if (!File.Exists(onnxFN))
-        {
-          if (netFN != null && !File.Exists(netFN))
+          if (netFN.ToUpper().EndsWith(".ONNX"))
           {
-            string orgNetFN = onnxFN;
-            onnxFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);
-            if (!File.Exists(onnxFN))
+            // Take filename as is.
+            onnxFN = netFN;
+          }
+          else
+          {
+            onnxFN = netFN + ".onnx";
+            if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16 || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
             {
-              throw new Exception($"Ceres ONNX net file {orgNetFN} not found in DirCeresNetworks {CeresUserSettingsManager.Settings.DirCeresNetworks}");
+              onnxFN = onnxFN + "_fp16.onnx";
+            }
+          }
+
+          if (!File.Exists(onnxFN))
+          {
+            if (netFN != null && !File.Exists(netFN))
+            {
+              string orgNetFN = onnxFN;
+              onnxFN = Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netFN);
+              if (!File.Exists(onnxFN))
+              {
+                throw new Exception($"Ceres ONNX net file {orgNetFN} not found in DirCeresNetworks {CeresUserSettingsManager.Settings.DirCeresNetworks}");
+              }
             }
           }
         }
@@ -786,17 +803,17 @@ namespace CeresTrain.Examples
 
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
-          string useONNXFN = (netID != null  && netID.ToUpper().EndsWith(".ONNX")) 
+          string useONNXFN = (netID != null && netID.ToUpper().EndsWith(".ONNX"))
                               ? Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netID)
                               : onnxFN;
-          NNEvaluatorTorchsharpOptions captureOptions = (NNEvaluatorTorchsharpOptions)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options 
+          NNEvaluatorTorchsharpOptions captureOptions = (NNEvaluatorTorchsharpOptions)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options
                                                                                                                  : NNEvaluatorFactory.Custom2Options);
           return new NNEvaluatorEngineONNX(netID,
                                            useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
                                            ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                            PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                            false, ENABLE_PROFILING, false, useHistory, captureOptions,
-                                           true,  USE_STATE);
+                                           true, USE_STATE);
         };
       }
       else
@@ -804,8 +821,8 @@ namespace CeresTrain.Examples
         getEvaluatorFunc = (string netID, int gpuID, object options) =>
         {
           string netFNToUse = netID == null ? netFN : netID;
-          ConfigNetExecution execConfigToUse = execConfig with { UseHistory = useHistory };
-          NNEvaluator evaluator = GetNNEvaluator(engineType, netDef, gpuID, execConfig, netFNToUse, useBestValueRepetitionHeuristic, evaluatorOptions);
+          ConfigNetExecution execConfigToUse = execConfig with { UseHistory = useHistory, DataType = TorchSharp.torch.ScalarType.BFloat16 };
+          NNEvaluator evaluator = GetNNEvaluator(engineType, netDef, gpuID, execConfigToUse, netFNToUse, useBestValueRepetitionHeuristic, evaluatorOptions);
           evaluator.Description = "CERES [" + evaluatorOptions.ShortStr + "] " + netFNToUse;
           return evaluator;
         };
@@ -831,7 +848,7 @@ namespace CeresTrain.Examples
       // Install a handler to map the "CUSTOM<id>" evaluator to our evaluator for this network.
       if (customEvaluatorIndex == 1)
       {
-        NNEvaluatorFactory.Custom1Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options) 
+        NNEvaluatorFactory.Custom1Factory = (string netID, int gpuID, NNEvaluator referenceEvaluator, object options)
           => possiblyWrapEvaluatorFunc(getEvaluatorFunc(netID, gpuID, options), gpuID);
       }
       else if (customEvaluatorIndex == 2)
@@ -932,7 +949,7 @@ namespace CeresTrain.Examples
         CopyAndDivideSIMD(sourceBytes, targetHalves, divisor);
       }
       else
-      { 
+      {
         Parallel.For(0, sourceBytes.Length / CHUNK_SIZE + 1, (chunkIndex) =>
         {
           int startIndex = chunkIndex * CHUNK_SIZE;
@@ -963,7 +980,7 @@ namespace CeresTrain.Examples
       if (Avx2.IsSupported)
       {
         Vector256<float> divisorVec = Vector256.Create(divisor);
-        ushort* ptrTargetHalfs = (ushort *)Unsafe.AsPointer(ref targetHalfs[0]); // pinned just below
+        ushort* ptrTargetHalfs = (ushort*)Unsafe.AsPointer(ref targetHalfs[0]); // pinned just below
 
         fixed (byte* squareBytesAllPtr = sourceBytes)
         fixed (Half* flatValuesPrimaryPtr = targetHalfs)
@@ -1093,7 +1110,7 @@ namespace CeresTrain.Examples
     /// <param name="flatValuesSecondary"></param>
     /// <exception cref="NotImplementedException"></exception>
     public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch,
-                                        float qNegativeBlunders, float qPositiveBlunders, 
+                                        float qNegativeBlunders, float qPositiveBlunders,
                                         bool includeHistory, Half[] squareValues, short[] legalMoveIndices)
     {
       if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
@@ -1116,7 +1133,7 @@ namespace CeresTrain.Examples
       byte[] squareBytesAll;
       byte[] moveBytesAll;
       // TODO: consider pushing the CopyAndDivide below into this next method
-      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, batch.Moves, EMIT_PLY_SINCE, 
+      TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, batch.Moves, EMIT_PLY_SINCE,
                                                           qNegativeBlunders, qPositiveBlunders,
                                                           out _, out squareBytesAll, legalMoveIndices);
 

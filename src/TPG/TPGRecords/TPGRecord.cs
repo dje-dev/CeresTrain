@@ -77,6 +77,12 @@ namespace CeresTrain.TPG
   public unsafe struct TPGRecord
   {
     /// <summary>
+    /// Currently hardcoded value for the per-square dimension of the prior state information, 
+    /// if the network has a state output. Linked to TPGRecord.SIZE_STATE_PER_SQUARE.NNEvaluator
+    /// </summary>
+    public const int SIZE_STATE_PER_SQUARE = 4;
+
+    /// <summary>
     /// If the feature that encodes number of ply since last move on each square is enabled.
     /// </summary>
     public const bool EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE = false;
