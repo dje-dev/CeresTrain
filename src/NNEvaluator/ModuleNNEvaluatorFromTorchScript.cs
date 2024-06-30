@@ -221,7 +221,7 @@ namespace CeresTrain.NNEvaluators
                     (object)ret.qDeviationUpper == null ? null : ret.qDeviationUpper.MoveToOuterDisposeScope(),
                     null, // TODO: implement policy uncertainty 
                     hasAction ? ret.actions.MoveToOuterDisposeScope() : null,
-                    networkExpectsBoardState ? ret.boardState.MoveToOuterDisposeScope() : null,
+                    (networkExpectsBoardState && (object)ret.boardState != null) ? ret.boardState.MoveToOuterDisposeScope() : null,
                     null, // TODO: implement action uncertainty
                     extraStats0, null);
           }
