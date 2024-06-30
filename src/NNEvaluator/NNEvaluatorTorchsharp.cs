@@ -1062,7 +1062,9 @@ namespace CeresTrain.NNEvaluators
           break;
         }
 
-        if (!actionValues.IsEmpty)
+        if (!actionValues.IsEmpty
+          && actionValues.Length >= 1858 * 3 // Temporary addition check to recognize networks with older format
+          )
         {
           int actionBaseIndex = i * 1858 * 3 + index * 3;
           Half w = actionValues[actionBaseIndex];
