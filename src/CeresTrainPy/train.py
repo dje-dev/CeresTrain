@@ -148,7 +148,6 @@ def Train():
     recipe = {"fp8_format": "HYBRID", "amax_history_len": 256, "amax_compute_algo": "max"} # default length 1024 but slower
     precision = TransformerEnginePrecision(weights_dtype=torch.bfloat16, 
                                            fallback_compute_dtype=torch.bfloat16,
-                                           override_linear_precision = (False, False, False), # fwd, dgrad, wgrad
                                            recipe=recipe, replace_layers=False)
     fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
