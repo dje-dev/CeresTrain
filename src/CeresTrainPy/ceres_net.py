@@ -100,7 +100,8 @@ class CeresNet(pl.LightningModule):
 
     self.fabric = fabric
     self.save_hyperparameters()
-
+    self.config = config
+    
     self.MAX_MOVES = 1858
     self.NUM_INPUT_BYTES_PER_SQUARE = 137 # N.B. also update in train.py
 
@@ -404,6 +405,22 @@ class CeresNet(pl.LightningModule):
         self.fabric.log("value2_diff_loss", value2_diff_loss, step=num_pos)
         self.fabric.log("action_loss", action_loss, step=num_pos)
         self.fabric.log("action_uncertainty_loss", action_uncertainty_loss, step=num_pos)
+
+        for gpu_num in range(torch.cuda.device_count()):
+          # Note: we enumerate all devices on the host instead of only those used 
+          #       for this training run (self.config.Exec_DeviceIDs) for two reasons:
+          #       1. The torch.cuda numbering scheme (highest performance at lowest index)
+          #          is potentially different from the what the application sees
+          #          (unless the enviroment variable is set: CUDA_DEVICE_ORDER=PCI_BUS_ID).
+          #       2. Potentially (for power and thermal reasons) it is useful to monitor all devices
+          #          even if not used by this training run.                   
+          try:
+            self.fabric.log("gpu_temp_"+str(gpu_num), torch.cuda.temperature(gpu_num), step=num_pos)
+            self.fabric.log("gpu_memory_used_"+str(gpu_num), torch.cuda.memory_usage(gpu_num), step=num_pos)
+            self.fabric.log("gpu_power_draw_"+str(gpu_num), torch.cuda.power_draw(gpu_num)/1000, step=num_pos)
+            self.fabric.log("gpu_utilization_"+str(gpu_num), torch.cuda.utilization(gpu_num), step=num_pos)
+            self.fabric.log("gpu_clock_rate_"+str(gpu_num), torch.cuda.clock_rate(gpu_num), step=num_pos)
+          except:
+            pass # requires pynvml, may fail on Windows
         
     return total_loss
-                    

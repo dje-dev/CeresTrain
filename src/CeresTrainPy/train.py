@@ -33,6 +33,7 @@ from rms_norm import RMSNorm
 from losses import LossCalculator
 from tpg_dataset import TPGDataset
 from config import Configuration
+from utils import calc_flops
 
 from ceres_net import CeresNet
 from soft_moe_batched_dual import SoftMoEBatchedDual
@@ -144,8 +145,11 @@ def Train():
 
   if config.Exec_UseFP8:
     from lightning.fabric.plugins import TransformerEnginePrecision
-    recipe = {"fp8_format": "HYBRID", "amax_history_len": 16, "amax_compute_algo": "max"}
-    precision = TransformerEnginePrecision(weights_dtype=torch.bfloat16, recipe=recipe, replace_layers=True)
+    recipe = {"fp8_format": "HYBRID", "amax_history_len": 256, "amax_compute_algo": "max"} # default length 1024 but slower
+    precision = TransformerEnginePrecision(weights_dtype=torch.bfloat16, 
+                                           fallback_compute_dtype=torch.bfloat16,
+                                           override_linear_precision = (False, False, False), # fwd, dgrad, wgrad
+                                           recipe=recipe, replace_layers=False)
     fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
     
@@ -313,7 +317,8 @@ def Train():
 
 
   NUM_POS_TO_SKIP = 0
-
+  FLOPS_CALCULATED = False
+  
   if config.Opt_StartingCheckpointFN is not None:
     loaded = fabric.load(config.Opt_StartingCheckpointFN)
     model.load_state_dict(loaded["model"])
@@ -333,7 +338,8 @@ def Train():
   model.train()
 
   wdl_reverse = torch.tensor([2, 1, 0]) # for reversing perspective on WDL
- 
+  
+
   # Train Network
   for batch_idx, (batch) in enumerate(dataloader):
     if (num_pos >= MAX_POSITIONS):
@@ -343,12 +349,19 @@ def Train():
     model.train()
 
     # Periodically log statistics
-    show_losses =  (fabric.is_global_zero) and (num_pos % (1024 * 64) == 0)
+    show_losses = (fabric.is_global_zero) and (num_pos % (1024 * 64) == 0)
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
       this_lr = scheduler.get_last_lr()
-      
+
+      if not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
+        calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=False)
+        calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=True)
+        optimizer.zero_grad()
+        FLOPS_CALCULATED = True
+
+        
       if BOARDS_PER_BATCH == 1:
         batch = batch[0]
         num_processing_now = batch['squares'].shape[0]
