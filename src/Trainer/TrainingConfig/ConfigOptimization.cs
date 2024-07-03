@@ -107,7 +107,7 @@ namespace CeresTrain.Trainer
     
     /// <summary>
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).
-    /// Valid values: "none", "max-autotune", "reduce-overhead", "default".
+    /// Valid values: "default", "reduce-overhead", or "max-autotune".
     /// </summary>
     public readonly string PyTorchCompileMode { get; init; } = "max-autotune";
 
