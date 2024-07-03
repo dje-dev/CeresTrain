@@ -24,20 +24,23 @@ Note that if custom layers (such as TransformerEngine) are in use,
 these FLOPS counts may be incorrect (underestimated).
 """
 def calc_flops(model_test, batch, loss_calc, optimizer, num_pos, batch_size, calc_backward=False):
-  from torch.utils.flop_counter import FlopCounterMode
-  flop_counter = FlopCounterMode(display=False)
+  try:
+    from torch.utils.flop_counter import FlopCounterMode
+    flop_counter = FlopCounterMode(display=False)
     
-  with flop_counter:
-    policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower, q_deviation_upper, uncertainty_policy_out, _, _, _ = model_test(batch['squares'], None)       
-    loss = model_test.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
-                                        value2_out, q_deviation_lower, q_deviation_upper, uncertainty_policy_out, 
-                                        None, None, 
-                                        None, None,
-                                        None,
-                                        0, num_pos, 0, False)
+    with flop_counter:
+      policy_out, value_out, moves_left_out, unc_out, value2_out, q_deviation_lower, q_deviation_upper, uncertainty_policy_out, _, _, _ = model_test(batch['squares'], None)       
+      loss = model_test.compute_loss(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
+                                          value2_out, q_deviation_lower, q_deviation_upper, uncertainty_policy_out, 
+                                          None, None, 
+                                          None, None,
+                                          None,
+                                          0, num_pos, 0, False)
         
-    if calc_backward:
-      loss.backward()
+      if calc_backward:
+        loss.backward()
     
-  flops_per_pos = flop_counter.get_total_flops() / batch_size
-  print(f"INFO: MODEL_GFLOPS_" + ("TRAIN:" if calc_backward else "INFERENCE:"), round(flops_per_pos / 1_000_000_000, 3))
+    flops_per_pos = flop_counter.get_total_flops() / batch_size
+    print(f"INFO: MODEL_GFLOPS_" + ("TRAIN:" if calc_backward else "INFERENCE:"), round(flops_per_pos / 1_000_000_000, 3))
+  except:
+    pass
