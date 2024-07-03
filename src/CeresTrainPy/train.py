@@ -96,11 +96,16 @@ elif not os.listdir(TPG_TRAIN_DIR):
 
 def print_model_trainable_details(model):
   num_params = 0
+  num_layers = 0
+  print("Model details (trainable parameters only):\n")
   for name, param in model.named_parameters():
     if param.requires_grad:
+      print(f"Layer: {name} | Size: {param.size()} | Total parameters: {param.numel()}")
       num_params+= param.numel()
+      num_layers = num_layers + 1
   print()
   print("INFO: NUM_PARAMETERS", str(num_params))
+
 
 NAME = socket.gethostname() + "_" + TRAINING_ID
 
