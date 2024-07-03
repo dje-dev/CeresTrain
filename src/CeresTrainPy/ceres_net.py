@@ -30,6 +30,9 @@ from config import Configuration
 from mlp2_layer import MLP2Layer
 from rms_norm import RMSNorm
 
+from config import NUM_TOKENS_INPUT, NUM_TOKENS_NET, NUM_INPUT_BYTES_PER_SQUARE
+
+
 """
 Code from:
   "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
@@ -101,19 +104,13 @@ class CeresNet(pl.LightningModule):
     self.fabric = fabric
     self.save_hyperparameters()
     self.config = config
-    
-    self.MAX_MOVES = 1858
-    self.NUM_INPUT_BYTES_PER_SQUARE = 137 # N.B. also update in train.py
-
-    self.NUM_TOKENS_INPUT = 64
-    self.NUM_TOKENS_NET = 64   
-  
+     
     self.DROPOUT_RATE = config.Exec_DropoutRate
     self.EMBEDDING_DIM = config.NetDef_ModelDim
     self.NUM_LAYERS = config.NetDef_NumLayers
 
 
-    self.TRANSFORMER_OUT_DIM = self.EMBEDDING_DIM * self.NUM_TOKENS_NET
+    self.TRANSFORMER_OUT_DIM = self.EMBEDDING_DIM * NUM_TOKENS_NET
 
     self.NUM_HEADS = config.NetDef_NumHeads
     self.FFN_MULT = config.NetDef_FFNMultiplier
@@ -138,8 +135,8 @@ class CeresNet(pl.LightningModule):
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
     self.test = config.Exec_TestFlag
 
-    self.embedding_layer = nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
-    self.embedding_layer2 = None if self.NUM_TOKENS_NET == self.NUM_TOKENS_INPUT else nn.Linear(self.NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
+    self.embedding_layer = nn.Linear(NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
+    self.embedding_layer2 = None if NUM_TOKENS_NET == NUM_TOKENS_INPUT else nn.Linear(NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
     self.embedding_norm = torch.nn.LayerNorm(self.EMBEDDING_DIM, eps=1E-6) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(self.EMBEDDING_DIM, eps=1E-6)
 
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
@@ -199,12 +196,12 @@ class CeresNet(pl.LightningModule):
     EPS = 1E-6
     
     if SMOLGEN_PER_SQUARE_DIM > 0 and SMOLGEN_INTERMEDIATE_DIM > 0:
-      self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM // config.NetDef_SmolgenToHeadDivisor, self.NUM_TOKENS_NET * self.NUM_TOKENS_NET)
+      self.smolgenPrepLayer = nn.Linear(SMOLGEN_INTERMEDIATE_DIM // config.NetDef_SmolgenToHeadDivisor, NUM_TOKENS_NET * NUM_TOKENS_NET)
     else:
       self.smolgenPrepLayer = None
 
-    num_tokens_q = self.NUM_TOKENS_NET
-    num_tokens_kv = self.NUM_TOKENS_NET
+    num_tokens_q = NUM_TOKENS_NET
+    num_tokens_kv = NUM_TOKENS_NET
     self.transformer_layer = torch.nn.Sequential(
        *[EncoderLayer('T', num_tokens_q, num_tokens_kv,
                       self.NUM_LAYERS, self.EMBEDDING_DIM,
@@ -253,31 +250,26 @@ class CeresNet(pl.LightningModule):
       
     flow = squares
 
-#    if self.test:
-#      flow[:, :, 109] = 0
-#      flow[:, :, 110] = 0
-#      flow[:, :, 111] = 0
 
 #    flow[:, :, 119] = 0 # QNegativeBlunders
 #    flow[:, :, 120] = 0 # QPositiveBlunders
-
-#      condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
-#      flow[:, :, 107] = condition.bfloat16()
-#      flow[:, :, 108] = 1 - flow[:, :, 107]
+#    condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
+#    flow[:, :, 107] = condition.bfloat16()
+#    flow[:, :, 108] = 1 - flow[:, :, 107]
       
 
     # Embedding layer.
-    flow_squares = flow.reshape(-1, self.NUM_TOKENS_INPUT, (self.NUM_TOKENS_INPUT * self.NUM_INPUT_BYTES_PER_SQUARE) // self.NUM_TOKENS_INPUT)
+    flow_squares = flow.reshape(-1, NUM_TOKENS_INPUT, (NUM_TOKENS_INPUT * NUM_INPUT_BYTES_PER_SQUARE) // NUM_TOKENS_INPUT)
 
     if self.prior_state_dim > 0:
       # Append prior state to the input if is available for this position.
       append_tensor = prior_state if prior_state is not None else torch.zeros(squares.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
-      append_tensor = append_tensor.reshape(squares.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim)
+      append_tensor = append_tensor.reshape(squares.shape[0], NUM_TOKENS_INPUT, self.prior_state_dim)
       flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
     flow = self.embedding_layer(flow_squares)
 
-    if self.NUM_TOKENS_NET > self.NUM_TOKENS_INPUT:
+    if NUM_TOKENS_NET > NUM_TOKENS_INPUT:
       flow2 = self.embedding_layer2(flow_squares)
       flow = torch.cat([flow, flow2], 1)
       
@@ -288,7 +280,6 @@ class CeresNet(pl.LightningModule):
       
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
-      # Main policy encoder block
       flow, _ = self.transformer_layer[i](flow, None)
 
       if self.denseformer:

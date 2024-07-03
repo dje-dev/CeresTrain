@@ -14,6 +14,14 @@ If not, see <http://www.gnu.org/licenses/>.
 import os
 import json
 
+"""
+Global constants.
+"""
+NUM_TOKENS_INPUT = 64 # Raw input number of tokens
+NUM_TOKENS_NET = 64 # Number of tokens used by net
+NUM_INPUT_BYTES_PER_SQUARE = 137 # Raw input width per token
+
+
 def read_config(file_path):
   """Reads a JSON configuration file and returns a dictionary."""
   with open(file_path, 'r') as file:

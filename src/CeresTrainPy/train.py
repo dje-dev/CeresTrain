@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-#from torchsummary import summary
+from torchinfo import summary
 from torch import nn, optim
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -33,6 +33,7 @@ from rms_norm import RMSNorm
 from losses import LossCalculator
 from tpg_dataset import TPGDataset
 from config import Configuration
+from config import NUM_TOKENS_INPUT, NUM_TOKENS_NET, NUM_INPUT_BYTES_PER_SQUARE
 from utils import calc_flops
 
 from ceres_net import CeresNet
@@ -95,13 +96,9 @@ elif not os.listdir(TPG_TRAIN_DIR):
 
 def print_model_trainable_details(model):
   num_params = 0
-  num_layers = 0
-  print("Model details (trainable parameters only):\n")
   for name, param in model.named_parameters():
     if param.requires_grad:
-      print(f"Layer: {name} | Size: {param.size()} | Total parameters: {param.numel()}")
       num_params+= param.numel()
-      num_layers = num_layers + 1
   print()
   print("INFO: NUM_PARAMETERS", str(num_params))
 
@@ -135,7 +132,6 @@ time_last_save_transient = datetime.datetime.now()
 
 
 
-
 def Train():
   global num_pos
   global fraction_complete
@@ -145,7 +141,7 @@ def Train():
 
   if config.Exec_UseFP8:
     from lightning.fabric.plugins import TransformerEnginePrecision
-    recipe = {"fp8_format": "HYBRID", "amax_history_len": 256, "amax_compute_algo": "max"} # default length 1024 but slower
+    recipe = {"fp8_format": "HYBRID", "amax_history_len": 32, "amax_compute_algo": "max"}
     precision = TransformerEnginePrecision(weights_dtype=torch.bfloat16, 
                                            fallback_compute_dtype=torch.bfloat16,
                                            recipe=recipe, replace_layers=False)
@@ -181,6 +177,11 @@ def Train():
   if config.Opt_PyTorchCompileMode is not None:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
 
+  if fabric.is_global_zero:
+    SUMMARY_COL_NAMES_TO_SHOW = ("input_size", "output_size", "num_params", "params_percent", "mult_adds", "trainable",)
+    model_stats = summary(model_nocompile, [(256, NUM_TOKENS_INPUT, NUM_INPUT_BYTES_PER_SQUARE), (256, NUM_TOKENS_INPUT, 4)], verbose=2, col_names = SUMMARY_COL_NAMES_TO_SHOW)
+    print(model_stats)
+
   
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
@@ -197,11 +198,15 @@ def Train():
               no_decay.add(fpn)
           elif "rpe" in fpn:
               decay.add(fpn)
+          elif "transformer_layer" in fpn:
+              decay.add(fpn)           
           elif "rpe_factor" in fpn:
               pass
           elif "alphas" in fpn: # for Denseformer
               decay.add(fpn)
           elif ".mem_" in fpn:
+              decay.add(fpn)
+          elif "mlp.linear" in fpn:
               decay.add(fpn)
           elif "qkv" in fpn:
               decay.add(fpn)
@@ -238,14 +243,21 @@ def Train():
 
   fraction_complete = 0
 
+
+  """
+  Lambda which determines current learning rate (as  a fraction of the maximum).
+  """
   def lr_lambda(epoch : int):
     global fraction_complete
     global num_pos
-    
-    FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
-    FRAC_MIN = 0.15
 
-    WARMUP_POS = min(20_000_000, 0.02 * config.Opt_NumTrainingPositions)
+    # After warmup phase, the LR is held constant until some fraction of training is complete
+    # and thereafter ramps down linearly to some minimum fraction.
+    FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
+    FRAC_MIN = 0.10
+
+    # Warmup is 3% of positions (but not more than 20mm)
+    WARMUP_POS = min(20_000_000, 0.03 * config.Opt_NumTrainingPositions)
     if num_pos < WARMUP_POS:
       return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
     elif fraction_complete < FRAC_START_DELAY:
@@ -253,7 +265,6 @@ def Train():
     elif fraction_complete > 1:
       return FRAC_MIN # shouldn't happen
     else:
-      # Once decay starts, LR multiplier starts at fraction remaining and linearly decreases to FRAC_MIN
       fraction_remaining = 1.0 - fraction_complete
       frac_end_delay = 1.0 - FRAC_START_DELAY
       return FRAC_MIN + (fraction_remaining/frac_end_delay) * (frac_end_delay - FRAC_MIN)      
@@ -310,7 +321,7 @@ def Train():
   dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)
 
-  if rank == 0:
+  if fabric.is_global_zero:
     config.pretty_print()
     print_model_trainable_details(model)
 
@@ -557,5 +568,3 @@ def Train():
     print("INFO: EXIT_STATUS", "SUCCESS")
 
 Train()
-
-
