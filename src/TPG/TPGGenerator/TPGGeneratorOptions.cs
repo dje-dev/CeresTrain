@@ -203,7 +203,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// If Deblunder enabled, sets the minimum difference in Q required
     /// for a move to be considered an unintended blunder 
     /// (based on negative change in evaluations see within next 2 moves).
-    public float DeblunderUnintnededThreshold { init; get; } = 0.15f;
+    public float DeblunderUnintnededThreshold { init; get; } = 999;// disabled, found unhelpful, was 0.15f
 
     /// <summary>
     /// If the value head estimate (win/loss probabilities)
