@@ -263,7 +263,7 @@ class CeresNet(pl.LightningModule):
 
     if self.prior_state_dim > 0:
       # Append prior state to the input if is available for this position.
-      append_tensor = prior_state if prior_state is not None else torch.zeros(squares.shape[0], self.NUM_TOKENS_INPUT, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
+      append_tensor = prior_state if prior_state is not None else torch.zeros(squares.shape[0], NUM_TOKENS_INPUT, self.prior_state_dim).to(flow.device).to(torch.bfloat16)
       append_tensor = append_tensor.reshape(squares.shape[0], NUM_TOKENS_INPUT, self.prior_state_dim)
       flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
