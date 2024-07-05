@@ -182,11 +182,6 @@ def Train():
   if config.Opt_PyTorchCompileMode is not None:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
 
-  if fabric.is_global_zero:
-    SUMMARY_COL_NAMES_TO_SHOW = ("input_size", "output_size", "num_params", "params_percent", "mult_adds", "trainable",)
-    model_stats = summary(model_nocompile, [(256, NUM_TOKENS_INPUT, NUM_INPUT_BYTES_PER_SQUARE), (256, NUM_TOKENS_INPUT, 4)], verbose=2, col_names = SUMMARY_COL_NAMES_TO_SHOW)
-    print(model_stats)
-
   
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
@@ -305,6 +300,18 @@ def Train():
       
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
+
+  if fabric.is_global_zero:
+    SUMMARY_DTYPE = torch.float16 # summarize as if float16 because this is the likely target inference type
+    SUMMARY_COL_NAMES_TO_SHOW = ("input_size", "output_size", "num_params", "params_percent", "mult_adds", "trainable",)
+    model_for_summary = model_nocompile.to(SUMMARY_DTYPE)
+    model_stats = summary(model_for_summary,
+                          input_data=[torch.rand((256, NUM_TOKENS_INPUT, NUM_INPUT_BYTES_PER_SQUARE), dtype=SUMMARY_DTYPE, device=model_for_summary.device),
+                                      torch.rand((256, NUM_TOKENS_INPUT, 4), dtype=SUMMARY_DTYPE, device=model_for_summary.device)], 
+                          dtypes=(SUMMARY_DTYPE, SUMMARY_DTYPE),
+                          verbose=2, col_names = SUMMARY_COL_NAMES_TO_SHOW)
+    print(model_stats)
+    del model_for_summary
 
   batch_size_forward = config.Opt_BatchSizeForwardPass
 
