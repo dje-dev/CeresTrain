@@ -44,6 +44,8 @@ from save_model import save_model
 from lightning.fabric import Fabric
 from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
 
+from schedulefree_ceres import AdamWScheduleFree
+
 print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.enable_flash_sdp(False)
@@ -235,6 +237,10 @@ def Train():
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
+  elif config.Opt_Optimizer == 'AdamWScheduleFree':
+    # r=r, k=0, weight_sum=0.0, lr_max=-1.0, weight_lr_power=weight_lr_power, foreach=foreach)
+    num_warmup_steps = num_warmup_positions() // BATCH_SIZE
+    optimizer = AdamWScheduleFree(optim_groups, lr= LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), warmup_steps=num_warmup_steps)
   elif config.Opt_Optimizer == 'AdamW8bit':
     import bitsandbytes as bnb
     optimizer = bnb.optim.AdamW8bit(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2))    
@@ -244,6 +250,11 @@ def Train():
   fraction_complete = 0
 
 
+  def num_warmup_positions():
+    # Warmup is 3% of positions (but not more than 20mm)
+    return round(min(20_000_000, 0.03 * config.Opt_NumTrainingPositions), 0)
+
+  
   """
   Lambda which determines current learning rate (as  a fraction of the maximum).
   """
@@ -251,13 +262,17 @@ def Train():
     global fraction_complete
     global num_pos
 
+    # In the case of AdamWScheduleFree, the optimizer itself manages scheduling
+    # (though the paper mentions it would be possible to overlay additional scheduling, e.g. quick decay at end of training).
+    if config.Opt_Optimizer == 'AdamWScheduleFree':
+      return 1.0
+    
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down linearly to some minimum fraction.
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
     FRAC_MIN = 0.10
 
-    # Warmup is 3% of positions (but not more than 20mm)
-    WARMUP_POS = min(20_000_000, 0.03 * config.Opt_NumTrainingPositions)
+    WARMUP_POS = num_warmup_positions
     if num_pos < WARMUP_POS:
       return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
     elif fraction_complete < FRAC_START_DELAY:
@@ -301,7 +316,10 @@ def Train():
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
 
-  if fabric.is_global_zero:
+  # Possibly dump summary of model layers.
+  DUMP_SUMMARY = False # *** WARNING *** Inexplicably enabling this causes much worse loses (already seen at 5mm pos).
+                       # Therefore this should only be enabled to capture the summary, not to include training.
+  if DUMP_SUMMARY and fabric.is_global_zero:
     SUMMARY_DTYPE = torch.float16 # summarize as if float16 because this is the likely target inference type
     SUMMARY_COL_NAMES_TO_SHOW = ("input_size", "output_size", "num_params", "params_percent", "mult_adds", "trainable",)
     model_for_summary = model_nocompile.to(SUMMARY_DTYPE)
@@ -311,7 +329,7 @@ def Train():
                           dtypes=(SUMMARY_DTYPE, SUMMARY_DTYPE),
                           verbose=2, col_names = SUMMARY_COL_NAMES_TO_SHOW)
     print(model_stats)
-    del model_for_summary
+    exit(0) # See warning comment above.
 
   batch_size_forward = config.Opt_BatchSizeForwardPass
 
@@ -375,7 +393,7 @@ def Train():
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
-      this_lr = scheduler.get_last_lr()
+      this_lr = -optimizer.last_alpha if config.Exec_TestFlag else scheduler.get_last_lr()[0]
 
       if not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
         calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=False)

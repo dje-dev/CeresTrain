@@ -380,7 +380,7 @@ class CeresNet(pl.LightningModule):
         policy_accuracy = 0 if policy_out is None else loss_calc.calc_accuracy(policy_target, policy_out, True)
         value_accuracy = 0 if value_out is None else loss_calc.calc_accuracy(value_target, value_out, False)
         self.fabric.log("pos_mm", num_pos // 1000000., step=num_pos)
-        self.fabric.log("LR", last_lr[0], step=num_pos)
+        self.fabric.log("LR", last_lr, step=num_pos)
         self.fabric.log("total_loss", total_loss, step=num_pos)
         self.fabric.log("policy_loss", p_loss,  step=num_pos)
         self.fabric.log("policy_acc",policy_accuracy,  step=num_pos)
