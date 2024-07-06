@@ -103,7 +103,7 @@ namespace CeresTrain.TrainCommands
         }
 
         // Random sleep to avoid overloading the server.
-        System.Threading.Thread.Sleep((int)(2000f * Random.Shared.NextSingle()));
+        System.Threading.Thread.Sleep((int)(4000f * Random.Shared.NextSingle()));
 
         TrainingResultSummary result = CeresTrainCommands.ProcessTrainCommand(fullConfigID, piecesString, null, variant.hostConfig.HostName, null, variant.deviceIDs, sharedStatusTable);
 
