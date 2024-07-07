@@ -66,7 +66,7 @@ class EncoderLayer(torch.nn.Module):
                                            1, 0, 0, 0, None, smolgen_activation_type, False, None, None, None, None, test)
       self.ln3 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
       if self.dual_attention_mode == 'DualAttentionAndFFN':
-        self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
+        self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, use_te = False) 
         self.ln4 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dropout_rate > 0:
@@ -89,7 +89,7 @@ class EncoderLayer(torch.nn.Module):
       self.moe = None
 
     if ffn_hidden_size > 0:
-      self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type) 
+      self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, use_te = False) 
 
 
   def forward(self, x: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:

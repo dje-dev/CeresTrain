@@ -148,13 +148,12 @@ def Train():
 
   if config.Exec_UseFP8:
     from lightning.fabric.plugins import TransformerEnginePrecision
-    recipe = {"fp8_format": "HYBRID", "amax_history_len": 32, "amax_compute_algo": "max"}
+    recipe = {"fp8_format": "HYBRID", "amax_history_len": 16, "amax_compute_algo": "max"}
     precision = TransformerEnginePrecision(weights_dtype=torch.bfloat16, 
                                            fallback_compute_dtype=torch.bfloat16,
-                                           recipe=recipe, replace_layers=False)
+                                           recipe=recipe, replace_layers=True)
     fabric = Fabric(plugins=precision,accelerator=accelerator, devices=devices,
                     loggers=TensorBoardLogger(os.path.join(OUTPUTS_DIR, 'tblogs'), name=NAME))  
-    
   else:
     fabric = Fabric(precision='bf16-pure' if config.Exec_DataType == 'BFloat16Pure' else 'bf16-mixed', 
                     accelerator=accelerator, devices=devices,
