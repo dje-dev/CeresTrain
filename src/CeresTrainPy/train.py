@@ -232,6 +232,12 @@ def Train():
       {"params": [param_dict[pn] for pn in sorted(list(no_decay)) if "rpe_factor" not in pn], "weight_decay": 0.0},
   ]
 
+
+  def num_warmup_positions():
+    # Warmup is 3% of positions (but not more than 20mm)
+    return int(min(20_000_000, 0.03 * config.Opt_NumTrainingPositions))
+
+
   # Loss and optimizer
   if config.Opt_Optimizer == 'NAdamW':
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
@@ -250,11 +256,7 @@ def Train():
   fraction_complete = 0
 
 
-  def num_warmup_positions():
-    # Warmup is 3% of positions (but not more than 20mm)
-    return round(min(20_000_000, 0.03 * config.Opt_NumTrainingPositions), 0)
-
-  
+ 
   """
   Lambda which determines current learning rate (as  a fraction of the maximum).
   """
@@ -272,7 +274,7 @@ def Train():
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
     FRAC_MIN = 0.10
 
-    WARMUP_POS = num_warmup_positions
+    WARMUP_POS = num_warmup_positions()
     if num_pos < WARMUP_POS:
       return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
     elif fraction_complete < FRAC_START_DELAY:
@@ -393,7 +395,7 @@ def Train():
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
-      this_lr = -optimizer.last_alpha if config.Exec_TestFlag else scheduler.get_last_lr()[0]
+      this_lr = -optimizer.last_alpha if config.Opt_Optimizer == 'AdamWScheduleFree' else scheduler.get_last_lr()[0]
 
       if not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
         calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=False)
