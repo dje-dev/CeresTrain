@@ -38,7 +38,7 @@ def save_model(NAME : str,
     model_nocompile.eval()
 
     # AOT export. Works (generates .so file), but seemingly slower than ONNX export options.
-    if False and CONVERT_ONLY:
+    if False and fabric.is_global_zero and CONVERT_ONLY:
       try:
         #m = m.cuda().to(convert_type) # this might be necessary for AOT convert, but may cause subsequent failures if running net
 
@@ -81,7 +81,7 @@ def save_model(NAME : str,
     sample_inputs = [torch.rand(256, 64, 137).to(convert_type).to(model_nocompile.device), 
                      torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(model_nocompile.device)]
 
-    if False: # equivalent to below (this is just the raw PyTorch way rather than Lightning way above)
+    if False and fabric.is_global_zero: # equivalent to below (this is just the raw PyTorch way rather than Lightning way above)
       try:
         SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + "_jit.ts")
         m_save = torch.jit.trace(model_nocompile, sample_inputs)        
@@ -92,7 +92,7 @@ def save_model(NAME : str,
         print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
     SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
-    if True:
+    if fabric.is_global_zero:
       try:
         model_nocompile.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
         print('INFO: TS_FILENAME', SAVE_TS_PATH )
@@ -103,7 +103,7 @@ def save_model(NAME : str,
     if save_all_formats:
       # Still in beta testing as of PyTorch 2.3, not yet functional: torch.onnx.dynamo_export
       # TorchDynamo based export. Encountered warning/error on export.
-      if False:
+      if False and fabric.is_global_zero:
         ONNX_SAVE_PATH = SAVE_TS_PATH + ".dynamo.onnx"
         ONNX16_SAVE_PATH = SAVE_TS_PATH + "dynamo.fp16.onnx"
 
@@ -116,7 +116,7 @@ def save_model(NAME : str,
           print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
       # Legacy ONNX export.
-      if True:
+      if True and fabric.is_global_zero:
         ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
         ONNX16_SAVE_PATH = SAVE_TS_PATH + ".fp16.onnx"
 
@@ -165,12 +165,7 @@ def save_model(NAME : str,
 
 
     # Save PyTorch checkpoint.
-    # N.B. If running multi-GPU, this tends to hang for unknown reasons.
-    #      Therefore if multi-GPU do not checkpoint (unless triggered with special file)
-    #if devices.count == 1 or os.path.isfile("FORCE_CHECKPOINT"): # or net_step == "final" 
-    if False:  
-      fabric.barrier() # try to prevent problems with hanging
-      state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : num_pos}
-      fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
-      print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
-
+    # N.B. This should be called independent of fabric.is_global_zero (https://github.com/Lightning-AI/pytorch-lightning/issues/19780)    
+    state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : net_step}
+    fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
+    print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)

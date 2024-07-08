@@ -178,11 +178,11 @@ def Train():
                    q_ratio=config.Data_FractionQ)
 
    
+  # Possibly compile model (as recommended by Lightning docs, comile should appear before fabric.setup).
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
   model_nocompile = model
   if config.Opt_PyTorchCompileMode is not None:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
-
   
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
@@ -521,81 +521,81 @@ def Train():
     num_pos = num_pos + (fabric.world_size * num_processing_now)
 
 
-    if (fabric.is_global_zero):
-      current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now()
 
-      global time_start
-      global time_last_status_update
-      global time_last_save_transient
-      global time_last_save_permanent
+    global time_start
+    global time_last_status_update
+    global time_last_save_transient
+    global time_last_save_permanent
 
-      time_since_start = (current_time - time_start).seconds
-      time_since_status_update = (current_time - time_last_status_update).seconds
-      time_since_save_transient = (current_time - time_last_save_transient).seconds
-      time_since_save_permanent = (current_time - time_last_save_permanent).seconds
+    time_since_start = (current_time - time_start).seconds
+    time_since_status_update = (current_time - time_last_status_update).seconds
+    time_since_save_transient = (current_time - time_last_save_transient).seconds
+    time_since_save_permanent = (current_time - time_last_save_permanent).seconds
 
-      STATUS_UPDATE_INTERVAL = 5
-      should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
+    STATUS_UPDATE_INTERVAL = 5
+    should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
 
-      should_save_permanent = time_since_save_permanent > 120 * 60 # permanent save named by step every 2 hours
-      should_save_transient = time_since_save_transient > 45 * 60  # transient save as "last" every 45 minutes
+    should_save_permanent = time_since_save_permanent > 120 * 60 # permanent save named by step every 2 hours
+    should_save_transient = time_since_save_transient > 45 * 60  # transient save as "last" every 45 minutes
          
-      if should_save_permanent:
-        save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
-        time_last_save_permanent = datetime.datetime.now()
+    if should_save_permanent:
+      save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
+      time_last_save_permanent = datetime.datetime.now()
 
-      if should_save_transient and not should_save_permanent:
-        save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "last", True)
-        time_last_save_transient  = datetime.datetime.now()
+    if should_save_transient and not should_save_permanent:
+      save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "last", True)
+      time_last_save_transient  = datetime.datetime.now()
 
-      if should_show_status:
-        # Note that this code executes only for primary worker (if multi-GPU),
-        # and the statistics are collected over the recent training history only for that worker.
-        # Although incomplete, the resulting statistics should nevertheless be reasonably accurate.
-        total_loss =  (config.Opt_LossPolicyMultiplier * loss_calc.LAST_POLICY_LOSS
-                     + config.Opt_LossValueMultiplier * loss_calc.LAST_VALUE_LOSS
-                     + config.Opt_LossValue2Multiplier * loss_calc.LAST_VALUE2_LOSS
-                     + config.Opt_LossMLHMultiplier * loss_calc.LAST_MLH_LOSS
-                     + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS
-                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_LOWER_LOSS       
-                     + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS       
-                     + config.Opt_LossUncertaintyPolicyMultiplier * loss_calc.LAST_UNCERTAINTY_POLICY_LOSS
+    if should_show_status:
+      # Note that this code executes only for primary worker (if multi-GPU),
+      # and the statistics are collected over the recent training history only for that worker.
+      # Although incomplete, the resulting statistics should nevertheless be reasonably accurate.
+      total_loss =  (config.Opt_LossPolicyMultiplier * loss_calc.LAST_POLICY_LOSS
+                    + config.Opt_LossValueMultiplier * loss_calc.LAST_VALUE_LOSS
+                    + config.Opt_LossValue2Multiplier * loss_calc.LAST_VALUE2_LOSS
+                    + config.Opt_LossMLHMultiplier * loss_calc.LAST_MLH_LOSS
+                    + config.Opt_LossUNCMultiplier * loss_calc.LAST_UNC_LOSS
+                    + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_LOWER_LOSS       
+                    + config.Opt_LossQDeviationMultiplier * loss_calc.LAST_Q_DEVIATION_UPPER_LOSS       
+                    + config.Opt_LossUncertaintyPolicyMultiplier * loss_calc.LAST_UNCERTAINTY_POLICY_LOSS
                      
-                     + config.Opt_LossValueDMultiplier * loss_calc.LAST_VALUE_DIFF_LOSS
-                     + config.Opt_LossValue2DMultiplier * loss_calc.LAST_VALUE2_DIFF_LOSS
+                    + config.Opt_LossValueDMultiplier * loss_calc.LAST_VALUE_DIFF_LOSS
+                    + config.Opt_LossValue2DMultiplier * loss_calc.LAST_VALUE2_DIFF_LOSS
                      
-                     + config.Opt_LossActionMultiplier * loss_calc.LAST_ACTION_LOSS)
+                    + config.Opt_LossActionMultiplier * loss_calc.LAST_ACTION_LOSS)
 
         
-        # Note that this output line is parsed by the C# class CeresTrainProgressLoggingLine
-        print("TRAIN:", num_pos, ",", 
-              total_loss, ",", 
-              loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_POLICY_LOSS if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_VALUE_ACC if config.Opt_LossValueMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_POLICY_ACC if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_MLH_LOSS if config.Opt_LossMLHMultiplier > 0 else 0, ",",  
-              loss_calc.LAST_UNC_LOSS if config.Opt_LossUNCMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_VALUE2_LOSS if config.Opt_LossValue2Multiplier > 0 else 0, ",", 
-              loss_calc.LAST_Q_DEVIATION_LOWER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_Q_DEVIATION_UPPER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_UNCERTAINTY_POLICY_LOSS if config.Opt_LossUncertaintyPolicyMultiplier > 0 else 0, ",", 
+      # Note that this output line is parsed by the C# class CeresTrainProgressLoggingLine
+      print("TRAIN:", num_pos, ",", 
+            total_loss, ",", 
+            loss_calc.LAST_VALUE_LOSS if config.Opt_LossValueMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_POLICY_LOSS if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_VALUE_ACC if config.Opt_LossValueMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_POLICY_ACC if config.Opt_LossPolicyMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_MLH_LOSS if config.Opt_LossMLHMultiplier > 0 else 0, ",",  
+            loss_calc.LAST_UNC_LOSS if config.Opt_LossUNCMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_VALUE2_LOSS if config.Opt_LossValue2Multiplier > 0 else 0, ",", 
+            loss_calc.LAST_Q_DEVIATION_LOWER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_Q_DEVIATION_UPPER_LOSS if config.Opt_LossQDeviationMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_UNCERTAINTY_POLICY_LOSS if config.Opt_LossUncertaintyPolicyMultiplier > 0 else 0, ",", 
 
-              loss_calc.LAST_VALUE_DIFF_LOSS if config.Opt_LossValueDMultiplier > 0 else 0, ",", 
-              loss_calc.LAST_VALUE2_DIFF_LOSS if config.Opt_LossValue2DMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_VALUE_DIFF_LOSS if config.Opt_LossValueDMultiplier > 0 else 0, ",", 
+            loss_calc.LAST_VALUE2_DIFF_LOSS if config.Opt_LossValue2DMultiplier > 0 else 0, ",", 
 
-              loss_calc.LAST_ACTION_LOSS if config.Opt_LossActionMultiplier > 0 else 0, ",",
-              loss_calc.LAST_ACTION_UNCERTAINTY_LOSS if config.Opt_LossActionUncertaintyMultiplier > 0 else 0, ",",
+            loss_calc.LAST_ACTION_LOSS if config.Opt_LossActionMultiplier > 0 else 0, ",",
+            loss_calc.LAST_ACTION_UNCERTAINTY_LOSS if config.Opt_LossActionUncertaintyMultiplier > 0 else 0, ",",
               
-              scheduler.get_last_lr()[0], flush=True)
-        loss_calc.reset_counters()
-        time_last_status_update = datetime.datetime.now()
+            scheduler.get_last_lr()[0], flush=True)
+      loss_calc.reset_counters()
+      time_last_status_update = datetime.datetime.now()
 
   # final save and convert to Torchscript
-  if (fabric.is_global_zero):
-    save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "final", True)
+  save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "final", True)
 
-    # Emit special phrase to indicate end of training.
-    print("INFO: EXIT_STATUS", "SUCCESS")
+  # Emit special phrase to indicate end of training.
+  print("INFO: EXIT_STATUS", "SUCCESS")
 
 Train()
+
+Fabric.barrier()
