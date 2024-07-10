@@ -16,6 +16,7 @@ import fnmatch
 import sys
 import socket
 import datetime
+import math
 import numpy as np
 from typing import Dict, Any
 
@@ -39,7 +40,7 @@ from utils import calc_flops
 from ceres_net import CeresNet
 from soft_moe_batched_dual import SoftMoEBatchedDual
 from multi_expert import MultiExpertLayer
-from save_model import save_model
+from save_model import save_model, save_checkpoint
 
 from lightning.fabric import Fabric
 from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
@@ -54,6 +55,11 @@ torch.backends.cuda.enable_mem_efficient_sdp(True) # efficient seems faster than
 
 TRAINING_ID = sys.argv[1]
 OUTPUTS_DIR = sys.argv[2]
+
+# make sure any required subdirectories exist
+os.makedirs(os.path.join(OUTPUTS_DIR, "nets"), exist_ok=True)
+os.makedirs(os.path.join(OUTPUTS_DIR, "logs"), exist_ok=True)
+os.makedirs(os.path.join(OUTPUTS_DIR, "tblogs"), exist_ok=True)
 
 config = Configuration('.', os.path.join(OUTPUTS_DIR, "configs", TRAINING_ID))
 TPG_TRAIN_DIR = config.Data_TrainingFilesDirectory 
@@ -136,7 +142,6 @@ time_last_save = datetime.datetime.now()
 time_start = datetime.datetime.now()
 time_last_save_permanent = datetime.datetime.now()
 time_last_save_transient = datetime.datetime.now()
-
 
 
 def Train():
@@ -243,7 +248,6 @@ def Train():
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
   elif config.Opt_Optimizer == 'AdamWScheduleFree':
-    # r=r, k=0, weight_sum=0.0, lr_max=-1.0, weight_lr_power=weight_lr_power, foreach=foreach)
     num_warmup_steps = num_warmup_positions() // BATCH_SIZE
     optimizer = AdamWScheduleFree(optim_groups, lr= LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), warmup_steps=num_warmup_steps)
   elif config.Opt_Optimizer == 'AdamW8bit':
@@ -291,7 +295,7 @@ def Train():
 
 
   if False:
-    torchscript_model = torch.jit.load("/mnt/deve/cout/nets/ckpt_DGX_C5_B1_512_15_16_4_32bn_2024_final_jit.ts")
+    torchscript_model = torch.jit.load("/mnt/deve/cout/nets/ckpt_DGX_C_256_12_8_6_4bn_B1_2024_vl01_sf_final.ts")
     with torch.no_grad():
       for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
          pytorch_param.data.copy_(torchscript_param.data)
@@ -358,6 +362,8 @@ def Train():
 
 
   NUM_POS_TO_SKIP = 0
+  
+  COMPUTE_FLOPS = False # WARNING: This is disabled because it causes dramatically higher VRAM usage on GPU 0, use only to generate stats.
   FLOPS_CALCULATED = False
   
   if config.Opt_StartingCheckpointFN is not None:
@@ -396,7 +402,7 @@ def Train():
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
       this_lr = -optimizer.last_alpha if config.Opt_Optimizer == 'AdamWScheduleFree' else scheduler.get_last_lr()[0]
 
-      if not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
+      if COMPUTE_FLOPS and not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
         calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=False)
         calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=True)
         optimizer.zero_grad()
@@ -519,31 +525,33 @@ def Train():
     
     # update number of positions processed across all workers
     num_pos = num_pos + (fabric.world_size * num_processing_now)
+    num_batches = num_pos // BATCH_SIZE
+
+    # emit output files including checkpoint if specified interval passed
+    if config.Opt_CheckpointFrequencyNumPositions > 0:
+      num_batches_between_checkpoints = config.Opt_CheckpointFrequencyNumPositions // BATCH_SIZE
+      print(num_batches, num_batches_between_checkpoints)
+      if num_batches % num_batches_between_checkpoints == 0:
+        save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos))
+        if fabric.is_global_zero:
+          save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
 
 
     current_time = datetime.datetime.now()
-
     global time_start
     global time_last_status_update
     global time_last_save_transient
-    global time_last_save_permanent
 
     time_since_start = (current_time - time_start).seconds
     time_since_status_update = (current_time - time_last_status_update).seconds
     time_since_save_transient = (current_time - time_last_save_transient).seconds
-    time_since_save_permanent = (current_time - time_last_save_permanent).seconds
 
-    STATUS_UPDATE_INTERVAL = 5
+    STATUS_UPDATE_INTERVAL = 5 # log output to console very 5 seconds
     should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
-
-    should_save_permanent = time_since_save_permanent > 120 * 60 # permanent save named by step every 2 hours
-    should_save_transient = time_since_save_transient > 45 * 60  # transient save as "last" every 45 minutes
-         
-    if should_save_permanent:
-      save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
-      time_last_save_permanent = datetime.datetime.now()
-
-    if should_save_transient and not should_save_permanent:
+  
+    SAVE_LAST_INTERVAL = 60 * 60 # save output artifacts every 60 minutes (with label "last")    
+    should_save_transient = time_since_save_transient > SAVE_LAST_INTERVAL
+    if should_save_transient:
       save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "last", True)
       time_last_save_transient  = datetime.datetime.now()
 
@@ -591,11 +599,10 @@ def Train():
       time_last_status_update = datetime.datetime.now()
 
   # final save and convert to Torchscript
-  save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "final", True)
+  save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "final")
 
   # Emit special phrase to indicate end of training.
   print("INFO: EXIT_STATUS", "SUCCESS")
 
 Train()
 
-Fabric.barrier()

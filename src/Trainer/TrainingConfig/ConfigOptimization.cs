@@ -106,11 +106,10 @@ namespace CeresTrain.Trainer
     /// </summary>
     public readonly string StartingCheckpointFN { get; init; }
 
-
     /// <summary>
-    /// If StartingCheckpointFN is not null, this is the number of positions which were trained as of the end of that checkpoint file.
+    /// The (approximate) number of positions between successive checkpoints.
     /// </summary>
-    public readonly long StartingCheckpointLastPosNum { get; init; }
+    public readonly int CheckpointFrequencyNumPositions { get; init; } = 200_000_000;
     
     /// <summary>
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).

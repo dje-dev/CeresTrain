@@ -400,7 +400,8 @@ namespace CeresTrain.Trainer
       using (DataLoader dataLoader = new DataLoader(tpgDataset, 1, device: TrainingConfig.ExecConfig.Device))
       {
         TrainingLoop(TrainingConfig.ExecConfig.ID, Model,
-                     TrainingConfig.OptConfig.StartingCheckpointFN, TrainingConfig.OptConfig.StartingCheckpointLastPosNum,
+                     TrainingConfig.OptConfig.StartingCheckpointFN, 
+                     0, // unknown StartingCheckpointLastPosNum,
                      dataLoader, tpgDataset, trainingSessionDescription);
         // TODO: tpgDataset should be a  member of class, not passed explicitly
       }

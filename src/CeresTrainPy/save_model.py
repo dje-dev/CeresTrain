@@ -21,6 +21,24 @@ from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
 
 from config import Configuration
 
+def save_checkpoint(NAME : str, 
+               OUTPUTS_DIR : str,
+               config : Configuration,  
+               fabric : Fabric, 
+               model_nocompile,
+               state : Dict[str, Any], 
+               num_pos : str):
+
+  # Save PyTorch checkpoint.
+  # N.B. This should be called independent of fabric.is_global_zero (https://github.com/Lightning-AI/pytorch-lightning/issues/19780)    
+  CKPT_NAME = "ckpt_" + NAME + "_" + num_pos
+  state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : num_pos}
+  fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
+  fabric.barrier()
+  if fabric.is_global_zero:
+    print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
+  print ("end ckp")
+
 
 def save_model(NAME : str, 
                OUTPUTS_DIR : str,
@@ -28,9 +46,9 @@ def save_model(NAME : str,
                fabric : Fabric, 
                model_nocompile,
                state : Dict[str, Any], 
-               net_step : str, 
+               num_pos : str, 
                save_all_formats : str):
-  CKPT_NAME = "ckpt_" + NAME + "_" + net_step
+  CKPT_NAME = NAME + "_" + num_pos
 
   with torch.no_grad():
     convert_type = model_nocompile.dtype
@@ -162,10 +180,3 @@ def save_model(NAME : str,
 
         except Exception as e:
           print(f"Warning: torch.onnx.export save failed, skipping. Exception details: {e}")       
-
-
-    # Save PyTorch checkpoint.
-    # N.B. This should be called independent of fabric.is_global_zero (https://github.com/Lightning-AI/pytorch-lightning/issues/19780)    
-    state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : net_step}
-    fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
-    print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)

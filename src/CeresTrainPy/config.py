@@ -87,7 +87,7 @@ class Configuration:
     self.Opt_BatchSizeBackwardPass = config_opt.get('BatchSizeBackwardPass', 2048)
     self.Opt_Optimizer = config_opt.get('Optimizer', 'AdamW')
     self.Opt_StartingCheckpointFN = config_opt.get('StartingCheckpointFN')
-    self.Opt_StartingCheckpointLastPosNum = config_opt.get('StartingCheckpointLastPosNum')
+    self.Opt_CheckpointFrequencyNumPositions = config_opt.get('CheckpointFrequencyNumPositions', 200_000_000)
     self.Opt_PyTorchCompileMode = config_opt.get('PyTorchCompileMode', "max-autotune")
     self.Opt_WeightDecay = config_opt.get('WeightDecay', 0.01)
     self.Opt_LearningRateBase = config_opt.get('LearningRateBase', 0.0005)
