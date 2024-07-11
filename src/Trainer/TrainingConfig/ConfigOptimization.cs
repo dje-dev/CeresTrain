@@ -102,15 +102,15 @@ namespace CeresTrain.Trainer
     public readonly OptimizerType Optimizer { get; init; } = OptimizerType.AdamW;
 
     /// <summary>
-    /// Optional name of file containing the starting checkpoint from which training will be resumed.
-    /// </summary>
-    public readonly string StartingCheckpointFN { get; init; }
-
-    /// <summary>
     /// The (approximate) number of positions between successive checkpoints.
     /// </summary>
     public readonly int CheckpointFrequencyNumPositions { get; init; } = 200_000_000;
-    
+
+    /// <summary>
+    /// Optional name of file containing the starting checkpoint from which training will be resumed.
+    /// </summary>
+    public readonly string CheckpointResumeFromFileName { get; init; }
+
     /// <summary>
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).
     /// Valid values: "default", "reduce-overhead", or "max-autotune".

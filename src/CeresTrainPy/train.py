@@ -366,11 +366,13 @@ def Train():
   COMPUTE_FLOPS = False # WARNING: This is disabled because it causes dramatically higher VRAM usage on GPU 0, use only to generate stats.
   FLOPS_CALCULATED = False
   
-  if config.Opt_StartingCheckpointFN is not None:
-    loaded = fabric.load(config.Opt_StartingCheckpointFN)
+  if config.Opt_CheckpointResumeFromFileName is not None:
+    loaded = fabric.load(config.Opt_CheckpointResumeFromFileName)
     model.load_state_dict(loaded["model"])
     optimizer.load_state_dict(loaded["optimizer"])
-    num_pos = config.Opt_StartingCheckpointLastPosNum # N.B. be sure to use a multiple of the batch size
+    num_pos = int(loaded["num_pos"]) # N.B. be sure to use a multiple of the batch size
+    print("INFO: LOAD_CHECKPOINT", config.Opt_CheckpointResumeFromFileName, num_pos)
+
     # NUM_POS_TO_SKIP = num_pos # enable this line if want to skip training data already seen (but slow)
     del loaded
 
@@ -530,7 +532,6 @@ def Train():
     # emit output files including checkpoint if specified interval passed
     if config.Opt_CheckpointFrequencyNumPositions > 0:
       num_batches_between_checkpoints = config.Opt_CheckpointFrequencyNumPositions // BATCH_SIZE
-      print(num_batches, num_batches_between_checkpoints)
       if num_batches % num_batches_between_checkpoints == 0:
         save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos))
         if fabric.is_global_zero:
