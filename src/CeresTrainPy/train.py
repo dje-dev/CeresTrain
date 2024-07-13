@@ -382,7 +382,7 @@ def Train():
   num_batches_gradient_accumulate = batch_size_opt // batch_size_forward
   batch_accumulation_counter = 0
 
-  loss_calc = LossCalculator()
+  loss_calc = LossCalculator(model)
 
   model.train()
 

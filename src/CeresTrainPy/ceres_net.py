@@ -94,8 +94,7 @@ class CeresNet(pl.LightningModule):
     action_loss_weight,
     uncertainty_policy_weight,
     action_uncertainty_loss_weight,
-    q_ratio
-):
+    q_ratio):
     """
     CeresNet is a transformer architecture network module for chess built with PyTorch Lightning. 
     """
@@ -313,11 +312,38 @@ class CeresNet(pl.LightningModule):
 
 
   def compute_loss(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
-                   value2_out, q_deviation_lower_out, q_deviation_upper_out, uncertainty_policy_out,
-                   prior_value_out, prior_value2_out,
-                   action_target, action_out, action_uncertainty_out,
-                   multiplier_action_loss,
-                   num_pos, last_lr, log_stats):
+                    value2_out, q_deviation_lower_out, q_deviation_upper_out, uncertainty_policy_out,
+                    prior_value_out, prior_value2_out,
+                    action_target, action_out, action_uncertainty_out,
+                    multiplier_action_loss,
+                    num_pos, last_lr, log_stats):
+
+    # if we are logging statistics, make two passes, the first of which 
+    # calculates and logs individual gradient norms for each loss
+    LOG_PER_LOSS_GRADIENT_NORMS = False # N.B. this feature only works with non-compiled models run on a single GPU
+                                        #      and slows down training significantly, so only use for quick tests 
+    if LOG_PER_LOSS_GRADIENT_NORMS and log_stats and self.fabric.is_global_zero:
+      self.compute_loss_or_gradnorm(loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
+                                    value2_out, q_deviation_lower_out, q_deviation_upper_out, uncertainty_policy_out,
+                                    prior_value_out, prior_value2_out,
+                                    action_target, action_out, action_uncertainty_out,
+                                    multiplier_action_loss,
+                                    num_pos, last_lr, log_stats, gradient_norm_logging_mode = True)
+       
+    return self.compute_loss_or_gradnorm (loss_calc, batch, policy_out, value_out, moves_left_out, unc_out,
+                                          value2_out, q_deviation_lower_out, q_deviation_upper_out, uncertainty_policy_out,
+                                          prior_value_out, prior_value2_out,
+                                          action_target, action_out, action_uncertainty_out,
+                                          multiplier_action_loss,
+                                          num_pos, last_lr, log_stats, gradient_norm_logging_mode = False)
+
+
+  def compute_loss_or_gradnorm(self, loss_calc : LossCalculator, batch, policy_out, value_out, moves_left_out, unc_out,
+                               value2_out, q_deviation_lower_out, q_deviation_upper_out, uncertainty_policy_out,
+                               prior_value_out, prior_value2_out,
+                               action_target, action_out, action_uncertainty_out,
+                               multiplier_action_loss,
+                               num_pos, last_lr, log_stats, gradient_norm_logging_mode):
     policy_target = batch['policies']
     wdl_deblundered = batch['wdl_deblundered']
     wdl_q = batch['wdl_q']
@@ -332,70 +358,64 @@ class CeresNet(pl.LightningModule):
     #	from distributional shift and make the loss more interpretable 
     #	because it takes out the portion that is irreducible.
     SUBTRACT_ENTROPY = True
-    
-    
+
+   
+    # Note that the loss weights are passed into the loss calculation functions in loss_calc module.
+    # But they are only used for informational purposes and NOT applied to the losses applied by these functions.
+    # Instead, the loss weights are only applied in the weighted average calculation in the assignment to total_loss.
+    # Therefore the values logged (e.g. to Tensorboard) are the raw (unweighted) losses 
+    # which are invariant to the particular weights in use (to facilitate comparison across different training runs).
+
     # Possibly create a blended value target for Value2.
     # The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
     #wdl_blend = (wdl_nondeblundered * 0.70 + wdl_deblundered * 0.15 + wdl_q * 0.15)
-    wdl_blend = wdl_nondeblundered
-    
+    wdl_blend = wdl_nondeblundered  
     value_target = wdl_q * self.q_ratio + wdl_deblundered * (1 - self.q_ratio)
-    p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY)
-    v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out, SUBTRACT_ENTROPY)
-    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_blend, value2_out, SUBTRACT_ENTROPY)
-    ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out)
-    u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out)
-    q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out)
-    q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out)
+
+    p_loss = 0 if policy_out is None else loss_calc.policy_loss(policy_target, policy_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.policy_loss_weight)
+    v_loss = 0 if value_out is None else loss_calc.value_loss(value_target, value_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value_loss_weight)
+    v2_loss = 0 if value2_out is None else loss_calc.value2_loss(wdl_blend, value2_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value2_loss_weight)
+    ml_loss = 0 if moves_left_out is None else loss_calc.moves_left_loss(moves_left_target, moves_left_out, gradient_norm_logging_mode, self.moves_left_loss_weight)
+    u_loss = 0 if unc_out is None else loss_calc.unc_loss(unc_target, unc_out, gradient_norm_logging_mode, self.unc_loss_weight)
+    q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out, gradient_norm_logging_mode, self.q_deviation_loss_weight)
+    q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out, gradient_norm_logging_mode, self.q_deviation_loss_weight)
 
     # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
     # The value of this board is taken to be "more definitive" so it is the target (however this assumes policy was correct....)
-    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY)
-    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY)
+    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value_diff_loss_weight)
+    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value2_diff_loss_weight)
 
     if action_target is not None:
-      action_loss = 0 if self.action_loss_weight == 0 else multiplier_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY)
-      action_uncertainty_loss = 0 if self.action_uncertainty_loss_weight == 0 else self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out)
+      # TO DO: probably the multiplier_action_loss should somehow be propagated into the gradient norms when these are calculated
+      action_loss = 0 if self.action_loss_weight == 0 else multiplier_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.action_loss_weight)
+      action_uncertainty_loss = 0 if self.action_uncertainty_loss_weight == 0 else multiplier_action_loss * self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out, gradient_norm_logging_mode, self.action_uncertainty_loss_wieght)
     else:
       action_loss = 0
       action_uncertainty_loss = 0
       
-    uncertainty_policy_loss = 0 if self.uncertainty_policy_weight == 0 else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out)
+    uncertainty_policy_loss = 0 if self.uncertainty_policy_weight == 0 else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out, gradient_norm_logging_mode, self.action_uncertainty_loss_weight)
 
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
+        + self.value2_loss_weight * v2_loss
         + self.moves_left_loss_weight * ml_loss
         + self.unc_loss_weight * u_loss
-        + self.value2_loss_weight * v2_loss
         + self.q_deviation_loss_weight * q_deviation_lower_loss
         + self.q_deviation_loss_weight * q_deviation_upper_loss
         + self.value_diff_loss_weight * value_diff_loss
         + self.value2_diff_loss_weight * value2_diff_loss
         + self.action_loss_weight * action_loss
         + self.action_uncertainty_loss_weight * action_uncertainty_loss
-        + self.uncertainty_policy_weight * uncertainty_policy_loss
-        )
+        + self.uncertainty_policy_weight * uncertainty_policy_loss)
         
     if (log_stats):
+      if not gradient_norm_logging_mode:
+        stat_suffix = ""
         policy_accuracy = 0 if policy_out is None else loss_calc.calc_accuracy(policy_target, policy_out, True)
         value_accuracy = 0 if value_out is None else loss_calc.calc_accuracy(value_target, value_out, False)
         self.fabric.log("pos_mm", num_pos // 1000000., step=num_pos)
         self.fabric.log("LR", last_lr, step=num_pos)
         self.fabric.log("total_loss", total_loss, step=num_pos)
-        self.fabric.log("policy_loss", p_loss,  step=num_pos)
-        self.fabric.log("policy_acc",policy_accuracy,  step=num_pos)
-        self.fabric.log("value_acc",value_accuracy,  step=num_pos)
-        self.fabric.log("value_loss", v_loss,  step=num_pos)
-        self.fabric.log("value2_loss", v2_loss,  step=num_pos)
-        self.fabric.log("moves_left_loss", ml_loss, step=num_pos)
-        self.fabric.log("unc_loss", u_loss, step=num_pos)
-        self.fabric.log("unc_policy_loss", uncertainty_policy_loss, step=num_pos)
-        self.fabric.log("q_deviation_lower_loss", q_deviation_lower_loss, step=num_pos)
-        self.fabric.log("q_deviation_upper_loss", q_deviation_upper_loss, step=num_pos)
-        self.fabric.log("value_diff_loss", value_diff_loss, step=num_pos)
-        self.fabric.log("value2_diff_loss", value2_diff_loss, step=num_pos)
-        self.fabric.log("action_loss", action_loss, step=num_pos)
-        self.fabric.log("action_uncertainty_loss", action_uncertainty_loss, step=num_pos)
 
         # Log GPU (CUDA) statistics
         if torch.cuda.is_available():
@@ -414,6 +434,28 @@ class CeresNet(pl.LightningModule):
               #self.fabric.log("gpu_memory_used_"+str(gpu_num), torch.cuda.memory_usage(gpu_num), step=num_pos)
               #self.fabric.log("gpu_clock_rate_"+str(gpu_num), torch.cuda.clock_rate(gpu_num), step=num_pos)
             except:
-              pass # requires pynvml, may fail e.g. on Windows
-        
+              pass # requires pynvml, may fail e.g. on Windows    
+      else:
+        stat_suffix = "_gnorm"
+
+      if not gradient_norm_logging_mode:
+        self.fabric.log("policy_acc" + stat_suffix,policy_accuracy,  step=num_pos)
+        self.fabric.log("value_acc" + stat_suffix,value_accuracy,  step=num_pos)
+
+      self.fabric.log("policy_loss" + stat_suffix, p_loss,  step=num_pos)
+      self.fabric.log("value_loss" + stat_suffix, v_loss,  step=num_pos)
+      self.fabric.log("value2_loss" + stat_suffix, v2_loss,  step=num_pos)
+      self.fabric.log("moves_left_loss" + stat_suffix, ml_loss, step=num_pos)
+      self.fabric.log("unc_loss" + stat_suffix, u_loss, step=num_pos)
+      self.fabric.log("unc_policy_loss" + stat_suffix, uncertainty_policy_loss, step=num_pos)
+      self.fabric.log("q_deviation_lower_loss" + stat_suffix, q_deviation_lower_loss, step=num_pos)
+      self.fabric.log("q_deviation_upper_loss" + stat_suffix, q_deviation_upper_loss, step=num_pos)
+      self.fabric.log("value_diff_loss" + stat_suffix, value_diff_loss, step=num_pos)
+      self.fabric.log("value2_diff_loss" + stat_suffix, value2_diff_loss, step=num_pos)
+      self.fabric.log("action_loss" + stat_suffix, action_loss, step=num_pos)
+      self.fabric.log("action_uncertainty_loss" + stat_suffix, action_uncertainty_loss, step=num_pos)
+
     return total_loss
+
+
+
