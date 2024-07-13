@@ -384,9 +384,9 @@ namespace CeresTrain.Trainer
 
       //new ModelLinearCeres("model", device, NetConfig.INCLUDE_POLICY);
 
-      if (TrainingConfig.OptConfig.StartingCheckpointFN != null)
+      if (TrainingConfig.OptConfig.CheckpointResumeFromFileName != null)
       {
-        Model.load(TrainingConfig.OptConfig.StartingCheckpointFN);
+        Model.load(TrainingConfig.OptConfig.CheckpointResumeFromFileName);
       }
 
 
@@ -400,7 +400,7 @@ namespace CeresTrain.Trainer
       using (DataLoader dataLoader = new DataLoader(tpgDataset, 1, device: TrainingConfig.ExecConfig.Device))
       {
         TrainingLoop(TrainingConfig.ExecConfig.ID, Model,
-                     TrainingConfig.OptConfig.StartingCheckpointFN, 
+                     TrainingConfig.OptConfig.CheckpointResumeFromFileName, 
                      0, // unknown StartingCheckpointLastPosNum,
                      dataLoader, tpgDataset, trainingSessionDescription);
         // TODO: tpgDataset should be a  member of class, not passed explicitly

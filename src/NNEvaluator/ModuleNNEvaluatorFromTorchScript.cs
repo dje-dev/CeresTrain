@@ -170,7 +170,8 @@ namespace CeresTrain.NNEvaluators
             if (module != null)
             {
               Tensor[] rawRet = default;
-              if (UseState)
+              const bool ALWAYS_USE_STATE = true; // dummy value required even if not present in net
+              if (UseState || ALWAYS_USE_STATE)
               {
                 Tensor priorState;
                 if (input.priorState is not null)
