@@ -108,7 +108,7 @@ namespace CeresTrain.Examples
       NNEvaluatorInferenceEngineType engineType = NNEvaluatorInferenceEngineType.CSharpViaTorchscript;
 
       // Test accuracy of trained network on a set of random endgame positions.
-      NNEvaluatorTorchsharpOptions options = default; // TODO: fill this in
+      NNEvaluatorOptionsCeres options = default; // TODO: fill this in
       CeresNetEvaluation.TestAccuracyOnPositions(randPosGenerator, null, CeresNetEvaluation.GetNNEvaluator(engineType, configTransformerDef, 0, in configExec, result.NetFileName, true, options), null, result);
 
       // Run tournaments (value/policy) between the trained network and an LC0 reference network.

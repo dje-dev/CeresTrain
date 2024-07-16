@@ -326,7 +326,7 @@ namespace CeresTrain.TrainCommands
             throw new NotImplementedException();
           }
           string FN = sourceEPDOrPGNFileName;
-          NNEvaluatorTorchsharpOptions options = default; // TODO: fill in
+          NNEvaluatorOptionsCeres options = default; // TODO: fill in
           NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
           NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, "GPU:0");
           (float accuracyValue, float accuracyPolicy) = CeresNetEvaluation.TestAccuracyOnPositions(generator, FN, evaluator, compareLC0Evaluator, default, (int)numPos, verbose);

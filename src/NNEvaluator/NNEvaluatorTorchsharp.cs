@@ -75,9 +75,9 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Options for the evaluator.
     /// </summary>
-    public NNEvaluatorTorchsharpOptions OptionsTorchsharp
+    public NNEvaluatorOptionsCeres OptionsTorchsharp
     {
-      get => (NNEvaluatorTorchsharpOptions)Options;
+      get => (NNEvaluatorOptionsCeres)Options;
     }
 
 
@@ -105,7 +105,7 @@ namespace CeresTrain.NNEvaluators
                                  ConfigNetExecution configNetExec,
                                  Device device, ScalarType dataType,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorTorchsharpOptions options = default)
+                                 NNEvaluatorOptionsCeres options = default)
       : this(engineType, 
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
                                                  device, dataType, options.UsePriorState),
@@ -129,7 +129,7 @@ namespace CeresTrain.NNEvaluators
                                  IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorTorchsharpOptions options = default)
+                                 NNEvaluatorOptionsCeres options = default)
     {
       OID = DateTime.Now.Ticks.GetHashCode();
 

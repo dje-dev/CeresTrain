@@ -9,9 +9,9 @@ namespace CeresTrain.NNEvaluators
 {
 
   /// <summary>
-  /// Set of options for NNEvaluatorTorchsharp.
+  /// Subclass of NNEvaluatorOptions specialized for Ceres nets.
   /// </summary>
-  public record NNEvaluatorTorchsharpOptions : NNEvaluatorOptions
+  public record NNEvaluatorOptionsCeres : NNEvaluatorOptions
   {
     /// <summary>
     /// If the prior state information should be used.
@@ -26,18 +26,18 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Assumed magnitude (Q units) of adverse blunders that will follow in the game.
     /// </summary>
-    public float QNegativeBlunders { get; init; } = 0;
+    public float QNegativeBlunders { get; set; } = 0;
 
     /// <summary>
     /// Assumed magnitude (Q units) of favorable blunders that will follow in the game.
     /// </summary>
-    public float QPositiveBlunders { get; init; } = 0;
+    public float QPositiveBlunders { get; set; } = 0;
 
 
     /// <summary>
     /// Default constructor.
     /// </summary>
-    public NNEvaluatorTorchsharpOptions()
+    public NNEvaluatorOptionsCeres()
     {
     }
 
@@ -57,7 +57,7 @@ namespace CeresTrain.NNEvaluators
     /// <param name="useAction"></param>
     /// <param name="usePriorState"></param>
     /// <exception cref="ArgumentException"></exception>
-    public NNEvaluatorTorchsharpOptions(float qNegativeBlunders = 0, float qPositiveBlunders = 0, 
+    public NNEvaluatorOptionsCeres(float qNegativeBlunders = 0, float qPositiveBlunders = 0, 
                                         float fractionUndeblunderedValueHead = 0,
                                         bool monitorActivations = false,
                                         float valueHead1Temperature = 1,

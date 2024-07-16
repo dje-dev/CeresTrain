@@ -252,7 +252,7 @@ namespace CeresTrain.Examples
 
         SaveNetwork1FileName = netFN
       }, execConfig.Device, execConfig.DataType,
-                                            options: (NNEvaluatorTorchsharpOptions)options);
+                                            options: (NNEvaluatorOptionsCeres)options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
@@ -284,7 +284,7 @@ namespace CeresTrain.Examples
       if (netFN != null)
       {
         // Playing Ceres net versus LC0 net (with or without tablebases, as determined by opponentTablebasesEnabled).
-        NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
+        NNEvaluatorOptionsCeres options = default; // TO DO: fill this in
         InstallCustomEvaluator(1, engineType, "cuda", 0, TorchSharp.torch.ScalarType.BFloat16, netDef, execConfig, netFN, posGenerator, opponentNetID, ceresDeviceSpec, execConfig.UseHistory, options);
         player1 = GetPlayerDef("Ceres1", "CUSTOM1", ceresDeviceSpec, searchLimit, false);
         player2 = GetPlayerDef("Ceres2", opponentNetID, ceresDeviceSpec, searchLimit, opponentTablebasesEnabled);
@@ -541,7 +541,7 @@ namespace CeresTrain.Examples
                                   string netFN, string lc0NetToUseForUncoveredPositions,
                                   string ceresDeviceSpec, PositionGenerator posGenerator)
     {
-      NNEvaluatorTorchsharpOptions options = default; // TO DO: fill this in
+      NNEvaluatorOptionsCeres options = default; // TO DO: fill this in
 
       InstallCustomEvaluator(1, NNEvaluatorInferenceEngineType.CSharpViaTorchscript, "cuda", 0, TorchSharp.torch.ScalarType.BFloat16, netDef, execConfig, netFN, posGenerator,
                              lc0NetToUseForUncoveredPositions, ceresDeviceSpec, execConfig.UseHistory, options);
@@ -585,7 +585,7 @@ namespace CeresTrain.Examples
                                                string net1ReplacementNumStepsNetToUse = null,
                                                string net2ReplacementNumStepsNetToUse = null,
                                                bool monitorStats = false,
-                                               NNEvaluatorTorchsharpOptions options = default,
+                                               NNEvaluatorOptionsCeres options = default,
                                                string netFNOverride = null,
                                                string netFNOverride2 = null)
     {
@@ -708,7 +708,7 @@ namespace CeresTrain.Examples
                                               string lc0NetToUseForUncoveredPositions,
                                               string lc0DeviceToUseForUncoveredPositions,
                                               bool useHistory,
-                                              NNEvaluatorTorchsharpOptions evaluatorOptions)
+                                              NNEvaluatorOptionsCeres evaluatorOptions)
     {
       execConfig = execConfig with
       {
@@ -806,7 +806,7 @@ namespace CeresTrain.Examples
           string useONNXFN = (netID != null && netID.ToUpper().EndsWith(".ONNX"))
                               ? Path.Combine(CeresUserSettingsManager.Settings.DirCeresNetworks, netID)
                               : onnxFN;
-          NNEvaluatorTorchsharpOptions captureOptions = (NNEvaluatorTorchsharpOptions)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options
+          NNEvaluatorOptionsCeres captureOptions = (NNEvaluatorOptionsCeres)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options
                                                                                                                  : NNEvaluatorFactory.Custom2Options);
           return new NNEvaluatorEngineONNX(netID,
                                            useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
