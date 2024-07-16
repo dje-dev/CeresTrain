@@ -35,9 +35,7 @@ def save_checkpoint(NAME : str,
   state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : num_pos}
   fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
   fabric.barrier()
-  if fabric.is_global_zero:
-    print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
-  print ("end ckp")
+  print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
 
 
 def save_model(NAME : str, 
