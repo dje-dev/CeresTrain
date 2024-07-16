@@ -213,6 +213,11 @@ namespace CeresTrain.Trainer
     public readonly bool MonitorActivationStats { get; init; } = false;
 
     /// <summary>
+    /// If instead of performing training loop should export the model to output formats (such as Torchscript and ONNX).
+    /// </summary>
+    public readonly bool ExportOnly { get; init; } = false;
+
+    /// <summary>
     /// Reserved value for debugging/experimentation to turn on a possible ad hoc test/diagnostic feature.
     /// </summary>
     public readonly bool TestFlag { get; init; } = false;

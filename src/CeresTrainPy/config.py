@@ -78,6 +78,7 @@ class Configuration:
     self.Exec_SupplementaryStat = config_exec.get('SupplementaryStat', None)
     self.Exec_TrackFinalLayerIntrinsicDimensionality = config_exec.get('TrackFinalLayerIntrinsicDimensionality', False)
     self.Exec_MonitorActivationStats = config_exec.get('MonitorActivationStats', False)
+    self.Exec_ExportOnly = config_exec.get('ExportOnly', False)
     self.Exec_TestFlag = config_exec.get('TestFlag', False)
     self.Exec_TestValue = config_exec.get('TestValue', 0)
 
