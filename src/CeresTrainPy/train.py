@@ -64,31 +64,6 @@ os.makedirs(os.path.join(OUTPUTS_DIR, "tblogs"), exist_ok=True)
 config = Configuration('.', os.path.join(OUTPUTS_DIR, "configs", TRAINING_ID))
 TPG_TRAIN_DIR = config.Data_TrainingFilesDirectory 
 
-if len(sys.argv) > 3 and sys.argv[3].upper() == 'CONVERT':
-  if len(sys.argv) < 5:
-    raise ValueError("expected: train.py <config_name> <outputs_directory> CONVERT <path_ts_to_load>")
-  # example: CUDA_VISIBLE_DEVICES=2 python3 train.py C7_B4_2048_15_32_4_32bn_2024 /mnt/deve/cout CONVERT /mnt/deve/cout/nets/ckpt_HOP_C7_B4_2048_15_32_4_32bn_2024_214538240.ts
-
-  # If desired to do interactive debugging, may want/need to also:
-  #  - set TPG_TRAIN_DIR to dummy value (possibly)
-  #  - disable torch.compile
-  #os.chdir('/home/david/dev/CeresTrain/src/CeresTrainPy')
-  #sys.argv = ['train.py', '/mnt/deve/cout/configs/C5_B1_512_15_16_4_32bn_2024', '/mnt/deve/cout']
-  CONVERT_ONLY = True
-  config.Opt_PyTorchCompileMode = None
-  config.Exec_DeviceIDs = [0] # always build based on GPU at index 0
-  TPG_TRAIN_DIR = "." # path not actually used/needed
-  checkpoint_path_to_load = sys.argv[4]
-  config.Opt_StartingCheckpointFN = os.path.join(OUTPUTS_DIR, 'nets', checkpoint_path_to_load)
-else:
-  CONVERT_ONLY = False
-
-#  if CONVERT_ONLY:
-#    if len(sys.argv) < 5:
-#      raise("Missing required argument indicating step count of checkpoint file. Arguments expected: <config_id> <out_path> CONVERT <step>")
-#    net_step = sys.argv[4]
-#    save_model(NAME, OUTPUTS_DIR, save_model, fabric, model_nocompile, state, net_step, True)
-#    exit(0)
 
 #TODO: would be better to use asserts but they are not captured by the remote process executor
 if TPG_TRAIN_DIR is None:
@@ -294,30 +269,16 @@ def Train():
   state = {"model": model, "optimizer": optimizer, "num_pos" : num_pos}
 
 
+  # Sample code if needed to load from a torchscript model
   if False:
     torchscript_model = torch.jit.load("/mnt/deve/cout/nets/ckpt_DGX_C_256_12_8_6_4bn_B1_2024_vl01_sf_final.ts")
     with torch.no_grad():
-      for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
+      for pytorch_param, torchscript_param in zip(model_nocompile.parameters(), torchscript_model.parameters()):
          pytorch_param.data.copy_(torchscript_param.data)
+      # save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "postconvert", True)
     del torchscript_model
 
-  
-  # Sample code to load from a saved TorchScript model (and possibly save back)
-  if CONVERT_ONLY:
-    if config.Opt_StartingCheckpointFN is None:   
-      raise ValueError("No starting checkpoint specified for conversion")
-    else:
-      print("loading ", config.Opt_StartingCheckpointFN)
-      torchscript_model = torch.jit.load(config.Opt_StartingCheckpointFN)
-      with torch.no_grad():
-        for pytorch_param, torchscript_param in zip(model.parameters(), torchscript_model.parameters()):
-            pytorch_param.data.copy_(torchscript_param.data)
-      del torchscript_model
-    
-      print("converting....")
-      save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "postconvert", True)
-      exit(3)
-      
+       
   fabric.launch()
   model, optimizer = fabric.setup(model, optimizer)
 
@@ -391,7 +352,7 @@ def Train():
 
   # Train Network
   for batch_idx, (batch) in enumerate(dataloader):
-    if (num_pos >= MAX_POSITIONS):
+    if (num_pos >= MAX_POSITIONS and not config.Exec_ExportOnly):
         break
 
     fraction_complete = num_pos / MAX_POSITIONS
@@ -403,6 +364,13 @@ def Train():
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
       this_lr = -optimizer.last_alpha if config.Opt_Optimizer == 'AdamWScheduleFree' else scheduler.get_last_lr()[0]
+
+      if config.Exec_ExportOnly and fabric.is_global_zero:
+        assert config.Opt_CheckpointResumeFromFileName is not None, "ExportOnly specified but no checkpoint file specified"
+        print("Exporting to files with postexport suffix....")
+        save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "postexport", True)
+        print("INFO: EXIT_STATUS", "SUCCESS")
+        exit(3)
 
       if COMPUTE_FLOPS and not FLOPS_CALCULATED and torch.cuda.is_available() and fabric.is_global_zero:
         calc_flops(model_nocompile.to(torch.float), batch[0], loss_calc, optimizer, num_pos, config.Opt_BatchSizeForwardPass, calc_backward=False)
@@ -600,7 +568,8 @@ def Train():
       time_last_status_update = datetime.datetime.now()
 
   # final save and convert to Torchscript
-  save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "final")
+  save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos))
+  save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
 
   # Emit special phrase to indicate end of training.
   print("INFO: EXIT_STATUS", "SUCCESS")
