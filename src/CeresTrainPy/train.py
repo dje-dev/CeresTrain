@@ -572,6 +572,7 @@ def Train():
   save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
 
   # Emit special phrase to indicate end of training.
+  fabric.barrier()
   print("INFO: EXIT_STATUS", "SUCCESS")
 
 Train()
