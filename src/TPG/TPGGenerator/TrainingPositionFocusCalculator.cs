@@ -86,11 +86,11 @@ namespace CeresTrain.TPG.TPGGenerator
         string blunderStr = "   ";
         if (ShouldRejectImbalance)
         {
-          return "blun imb ";
+          return "blun imb                      ";
         }
         else if (ShouldRejectSingleBlunder)
         {
-          return "blun one ";
+          return "blun one                       ";
         }
 
         return $" {100 * RandomDraw,2:N0} | " +
