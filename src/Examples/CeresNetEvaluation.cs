@@ -733,12 +733,6 @@ namespace CeresTrain.Examples
         || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
         )
       {
-        EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
-        NNEvaluatorEngineONNX.ConverterToFlatFromTPG = (o, f1)
-          => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, f1);
-        NNEvaluatorEngineONNX.ConverterToFlat = (o, history, squares, legalMoveIndices)
-          => TPGConvertersToFlat.ConvertToFlatTPG(o, evaluatorOptions.QNegativeBlunders, evaluatorOptions.QPositiveBlunders, history, squares, legalMoveIndices);
-
         NNEvaluatorPrecision PRECISION = engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
                                       || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT
                                       ? NNEvaluatorPrecision.FP16 : NNEvaluatorPrecision.FP32;
@@ -808,12 +802,19 @@ namespace CeresTrain.Examples
                               : onnxFN;
           NNEvaluatorOptionsCeres captureOptions = (NNEvaluatorOptionsCeres)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options
                                                                                                                  : NNEvaluatorFactory.Custom2Options);
-          return new NNEvaluatorEngineONNX(netID,
-                                           useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
-                                           ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
-                                           PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
-                                           false, ENABLE_PROFILING, false, useHistory, captureOptions,
-                                           true, USE_STATE);
+          NNEvaluatorEngineONNX onnxEngine = new (netID, useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
+                                                  ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
+                                                   PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
+                                                  false, ENABLE_PROFILING, false, useHistory, captureOptions,
+                                                  true, USE_STATE);
+
+          EncodedPositionBatchFlat.RETAIN_POSITION_INTERNALS = true; // ** TODO: remove/rework
+          onnxEngine.ConverterToFlatFromTPG = (options, o, f1)
+            => TPGConvertersToFlat.ConvertToFlatTPGFromTPG(options, o, f1);
+          onnxEngine.ConverterToFlat = (options, o, history, squares, legalMoveIndices)
+            => TPGConvertersToFlat.ConvertToFlatTPG(options, o, history, squares, legalMoveIndices);
+
+          return onnxEngine;
         };
       }
       else
@@ -905,15 +906,17 @@ namespace CeresTrain.Examples
     /// <param name="flatValues"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public static int ConvertToFlatTPGFromTPG(object records, float qNegativeBlunders, float qPositiveBlunders, byte[] flatValues)
+    public static int ConvertToFlatTPGFromTPG(NNEvaluatorOptions options, object records, byte[] flatValues)
     {
+      NNEvaluatorOptionsCeres optionsCeres = (NNEvaluatorOptionsCeres)options;
+
       // TODO: Requiring the converter to take a materialized array could be inefficient, can we use Memory instead?
       TPGRecord[] tpgRecords = records as TPGRecord[];
       if (tpgRecords == null)
       {
         throw new NotImplementedException("Expected input to be TPGRecord[]");
       }
-
+      
       byte[] squareBytesAll = new byte[tpgRecords.Length * Marshal.SizeOf<TPGSquareRecord>() * 64];
 
       for (int i = 0; i < tpgRecords.Length; i++)
@@ -1101,16 +1104,17 @@ namespace CeresTrain.Examples
       return vector8 | vector14;
     }
 
+
     /// <summary>
     /// Converts a IEncodedPositionBatchFlat of encoded positions into TPG flat square values.
     /// </summary>
+    /// <param name="options"></param>
     /// <param name="batch"></param>
     /// <param name="includeHistory"></param>
     /// <param name="squareValues"></param>
-    /// <param name="flatValuesSecondary"></param>
     /// <exception cref="NotImplementedException"></exception>
-    public static void ConvertToFlatTPG(IEncodedPositionBatchFlat batch,
-                                        float qNegativeBlunders, float qPositiveBlunders,
+    public static void ConvertToFlatTPG(NNEvaluatorOptions options, 
+                                        IEncodedPositionBatchFlat batch,
                                         bool includeHistory, Half[] squareValues, short[] legalMoveIndices)
     {
       if (TPGRecord.EMIT_PLY_SINCE_LAST_MOVE_PER_SQUARE)
@@ -1132,9 +1136,11 @@ namespace CeresTrain.Examples
 
       byte[] squareBytesAll;
       byte[] moveBytesAll;
+
+      NNEvaluatorOptionsCeres optionsCeres = options as NNEvaluatorOptionsCeres;
       // TODO: consider pushing the CopyAndDivide below into this next method
       TPGRecordConverter.ConvertPositionsToRawSquareBytes(batch, includeHistory, batch.Moves, EMIT_PLY_SINCE,
-                                                          qNegativeBlunders, qPositiveBlunders,
+                                                          optionsCeres.QNegativeBlunders, optionsCeres.QPositiveBlunders,
                                                           out _, out squareBytesAll, legalMoveIndices);
 
       // TODO: push this division onto the GPU
