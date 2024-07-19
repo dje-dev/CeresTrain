@@ -20,13 +20,17 @@ using Ceres.Chess;
 using Ceres.Chess.MoveGen;
 using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.Positions;
+using Ceres.Chess.Textual.PgnFileTools;
+using Move = Ceres.Chess.Move;
+using Position = Ceres.Chess.Position;
 
 #endregion
 
 namespace CeresTrain.Utils
 {
   /// <summary>
-  /// 
+  /// Enumerators games/positions appearing in a PGN file.
+  /// TODO: move this into Ceres project.
   /// </summary>
   public class PGNFileEnumerator
   {
@@ -102,6 +106,7 @@ namespace CeresTrain.Utils
       }
     }
 
+
     /// <summary>
     /// Enumerates sequence of all positions (with their full history within the game)
     /// optionally filtered by acceptFunc.
@@ -110,9 +115,26 @@ namespace CeresTrain.Utils
     /// <returns></returns>
     public IEnumerable<PositionWithHistory> EnumeratePositionWithHistory(Predicate<PositionWithHistory> acceptFunc = null)
     {
-      Ceres.Chess.Textual.PgnFileTools.PgnStreamReader pgnReader = new();
+      foreach (var (game, positionIndex, curPositionAndMoves) in EnumeratePositionWithDetail(acceptFunc))
+      {
+        yield return curPositionAndMoves;
+      }
+    }
+
+
+    /// <summary>
+    /// Enumerates sequence of all positions (with their full history within the game)
+    /// optionally filtered by acceptFunc. 
+    /// Associated information (game info and position index) is also returned.
+    /// </summary>
+    /// <param name="acceptFunc"></param>
+    /// <returns></returns>
+    public IEnumerable<(GameInfo, int, PositionWithHistory)> EnumeratePositionWithDetail(Predicate<PositionWithHistory> acceptFunc = null)
+    {
+      PgnStreamReader pgnReader = new();
       foreach (Ceres.Chess.Textual.PgnFileTools.GameInfo game in pgnReader.Read(PGNFileName))
       {
+        int positionIndex = 0;
         game.Headers.TryGetValue("FEN", out string startFEN);
         MGPosition startPos = startFEN == null ? MGPosition.FromPosition(Position.StartPosition) : MGPosition.FromFEN(startFEN);
         MGPosition curPos = startPos;
@@ -120,7 +142,7 @@ namespace CeresTrain.Utils
 
         if (acceptFunc == null || acceptFunc(curPositionAndMoves))
         {
-          yield return curPositionAndMoves;
+          yield return (game, positionIndex++, curPositionAndMoves);
         }
 
         foreach (Ceres.Chess.Textual.PgnFileTools.Move move in game.Moves)
@@ -145,7 +167,7 @@ namespace CeresTrain.Utils
 
           if (acceptFunc == null || acceptFunc(curPositionAndMoves))
           {
-            yield return curPositionAndMoves;
+            yield return (game, positionIndex++, curPositionAndMoves);
           }
         }
       }
