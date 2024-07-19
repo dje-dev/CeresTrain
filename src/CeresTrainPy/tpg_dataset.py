@@ -46,6 +46,7 @@ class TPGDataset(Dataset):
       world_size (int): Total number of processes in distributed training.
       num_workers (int): Number of worker processes for data loading.
       boards_per_batch (int): Number of boards per batch.
+      num_files_to_skip: Optional number of TPG files to be skipped by this worker (to avoids reprocessing files already processed)
       test (bool): If the Exec test flag is enabled.
   """
   def __init__(self, root_dir, 
@@ -55,6 +56,7 @@ class TPGDataset(Dataset):
                world_size : int, 
                num_workers : int, 
                boards_per_batch : int, 
+               num_files_to_skip : int = 0,
                test : bool = False):
 
     self.root_dir = root_dir
@@ -71,11 +73,12 @@ class TPGDataset(Dataset):
 
     # Divide files as evenly as possible among workers
     files_per_worker = len(all_files) // world_size
+    assert files_per_worker > num_files_to_skip, "Trying to skip more files than available"
     start_index = rank * files_per_worker
     end_index = start_index + files_per_worker
 
      # Assign files to this worker
-    self.files = all_files[start_index:end_index]
+    self.files = all_files[num_files_to_skip + start_index:end_index]
 
     self.worker_id = None
 

@@ -310,9 +310,9 @@ def Train():
  
   world_size = len(devices)
   rank = 0 if world_size == 1 else dist.get_rank()
-  dataset = TPGDataset(TPG_TRAIN_DIR, batch_size_forward // len(devices), config.Data_WDLLabelSmoothing, 
+  dataset = TPGDataset(TPG_TRAIN_DIR, batch_size_forward // world_size, config.Data_WDLLabelSmoothing, 
                        rank, world_size, NUM_DATASET_WORKERS, 
-                       BOARDS_PER_BATCH, config.Exec_TestFlag)
+                       BOARDS_PER_BATCH, config.Data_NumTPGFilesToSkip // world_size, config.Exec_TestFlag)
 
   dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)

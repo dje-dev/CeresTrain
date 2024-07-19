@@ -81,6 +81,13 @@ namespace CeresTrain.Trainer
     public readonly string TrainingFilesDirectory { get; init; }
 
     /// <summary>
+    /// Number of TPG files that will be skipped when generating training data from TPG files.
+    /// This can be set to a nonzero value when restarting training for a checkpoint
+    /// to avoid reusing the same training data.
+    /// </summary>
+    public readonly int NumTPGFilesToSkip { get; init; } = 0;
+
+    /// <summary>
     /// Number of positions to skip between selected training positions 
     /// when generating TPG data from TAR files.
     /// Note that consecutively selected positions are typically spread 
