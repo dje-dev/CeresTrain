@@ -321,10 +321,10 @@ namespace CeresTrain.TrainingDataGenerator
     static EncodedTrainingPositionCompressed[] compressedPositions;
 
 
-    private static string WriteToTAR(int compressionLevel,
-                                     ref long posBytesWritten,
-                                     TarWriter tarWriter, string entryName, MemoryStream decompressedData,
-                                     bool isGZ, Span<EncodedTrainingPosition> encodedTrainingPositions)
+    internal static string WriteToTAR(int compressionLevel,
+                                      ref long posBytesWritten,
+                                      TarWriter tarWriter, string entryName, MemoryStream decompressedData,
+                                      bool isGZ, Span<EncodedTrainingPosition> encodedTrainingPositions)
     {
       string tempFN = Path.GetTempFileName();
 
@@ -375,10 +375,10 @@ namespace CeresTrain.TrainingDataGenerator
     [ThreadStatic]
     static byte[] bufferData;
 
-    private static int ExtractEncodedTrainingPositions(MemoryStream decompressedData,
-                                                       Predicate<Memory<EncodedTrainingPosition>> acceptGamePredicate,
-                                                       Memory<EncodedTrainingPosition> targetPositions,
-                                                       bool writeSentinelAtFirstMoveOfGames)
+    internal static int ExtractEncodedTrainingPositions(MemoryStream decompressedData,
+                                                        Predicate<Memory<EncodedTrainingPosition>> acceptGamePredicate,
+                                                        Memory<EncodedTrainingPosition> targetPositions,
+                                                        bool writeSentinelAtFirstMoveOfGames)
     {
       if (bufferData == null)
       {

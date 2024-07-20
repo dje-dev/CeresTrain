@@ -21,12 +21,8 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators;
 using Ceres.Chess.MoveGen;
 using Ceres.Chess.Positions;
-using Ceres.Chess.NetEvaluation.Batch;
-using Ceres.APIExamples;
 using Ceres.Chess.Data.Nets;
-using Ceres.Chess.EncodedPositions.Basic;
-using static Pblczero.NetworkFormat;
-using Ceres.Chess.MoveGen.Converters;
+using Ceres.Chess.NetEvaluation.Batch;
 
 #endregion
 
@@ -50,6 +46,13 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
+    /// <summary>
+    /// Generates the EncodedTrainingPosition corresponding to the specified position 
+    /// 
+    /// </summary>
+    /// <param name="position"></param>
+    /// <param name="verbose"></param>
+    /// <returns></returns>    
     public EncodedTrainingPosition GenerateTrainingPosition(in EncodedTrainingPosition position, bool verbose)
     {
       return GenerateTrainingPositionFromNNEval(Evaluator, position.Version, position.InputFormat, position.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
@@ -64,8 +67,10 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="position"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public EncodedTrainingPosition GenerateNextTrainingPosition(in EncodedTrainingPosition startPos, MGMove moveToPlay, 
-                                                                bool overrideResultToBeWin = false, bool verbose = false)
+    public EncodedTrainingPosition GenerateTrainingPositionAfterMove(in EncodedTrainingPosition startPos, 
+                                                                     MGMove moveToPlay, 
+                                                                     bool overrideResultToBeWin = false, 
+                                                                     bool verbose = false)
     {
       // Get current position with history and the played move.
       PositionWithHistory currentPos = startPos.ToPositionWithHistory(8);
@@ -82,8 +87,22 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
-    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, int version, int inputFormat, byte invarianceInfo, 
-                                                                             PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
+    /// <summary>
+    /// Returns a new EncodedTrainingPosition based on the evaluation of the given position
+    /// using a given neural evaluator (policy and value are extracted from the evaluation result).
+    /// </summary>
+    /// <param name="evaluator"></param>
+    /// <param name="version"></param>
+    /// <param name="inputFormat"></param>
+    /// <param name="invarianceInfo"></param>
+    /// <param name="searchPosition"></param>
+    /// <param name="overrideResultToBeWin"></param>
+    /// <param name="verbose"></param>
+    /// <returns></returns>
+    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, 
+                                                                             int version, int inputFormat, byte invarianceInfo, 
+                                                                             PositionWithHistory searchPosition, 
+                                                                             bool overrideResultToBeWin, bool verbose)
     {
       // Run neural net evaluation of this position (locking for concurrency control).
       NNEvaluatorResult evalResult;
@@ -96,7 +115,7 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
-    #region Helper methods (serious blunder dtection)
+    #region Helper methods (serious blunder detection)
 
 
     /// <summary>
@@ -219,7 +238,7 @@ namespace CeresTrain.TrainingDataGenerator
             const bool GEN_NEXT = false;
 
             EncodedTrainingPosition generatedNextPos = GEN_NEXT ?
-                generator.GenerateNextTrainingPosition(in game.Span[POS_INDEX_TO_TEST], game.Span[POS_INDEX_TO_TEST].PositionWithBoards.PlayedMove, FORCE_WON, false)
+                generator.GenerateTrainingPositionAfterMove(in game.Span[POS_INDEX_TO_TEST], game.Span[POS_INDEX_TO_TEST].PositionWithBoards.PlayedMove, FORCE_WON, false)
               : generator.GenerateTrainingPosition(in game.Span[0], false);
 
             if (i == game.Length - 1)
