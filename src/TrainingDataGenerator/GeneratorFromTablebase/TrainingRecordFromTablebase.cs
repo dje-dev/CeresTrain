@@ -141,7 +141,7 @@ namespace CeresTrain.TrainingDataGenerator
         originalQ: q, originalD: d, originalM: m,
         numVisits: 1,
         playedIndex: (short)bestMoveIndex, bestIndex: (short)bestMoveIndex,
-        unused1: default, unused2: default);
+        kldPolicy: default, unused2: default);
 
       EncodedTrainingPositionMiscInfo miscInfoAll = new(newPosHistory.MiscInfo.InfoPosition, trainingMiscInfo);
       newPosHistory.SetMiscInfo(miscInfoAll);

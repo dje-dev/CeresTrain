@@ -71,6 +71,7 @@ namespace CeresTrain.TrainingDataGenerator
       // TODO: Set best and root values below separately
       int bestMoveIndex = epv.BestMove.IndexNeuralNet;
       float q = targets.w - targets.l;
+      float kldPolicyTarget = 0.50f; // TODO: try to fill in some meaningful value
       EncodedPositionEvalMiscInfoV6 trainingMiscInfo = new
         (
         invarianceInfo: invarianceInfo, depResult: default,
@@ -81,7 +82,7 @@ namespace CeresTrain.TrainingDataGenerator
         originalQ: q, originalD: targets.d, originalM: targets.m,
         numVisits: node.N,
         playedIndex: (short)bestMoveIndex, bestIndex: (short)bestMoveIndex,
-        unused1: default, unused2: default);
+        kldPolicy: kldPolicyTarget, unused2: default);
 
       EncodedTrainingPositionMiscInfo miscInfoAll = new(newPosHistory.MiscInfo.InfoPosition, trainingMiscInfo);
       newPosHistory.SetMiscInfo(miscInfoAll);
@@ -90,7 +91,6 @@ namespace CeresTrain.TrainingDataGenerator
 
       return ret;
     }
-
 
 
     /// <summary>
@@ -104,7 +104,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, int version, int inputFormat, byte invarianceInfo, 
+    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, NNEvaluatorResult? evaluatorResultKLD,
+                                                                  int version, int inputFormat, byte invarianceInfo, 
                                                                   PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
     {
       EncodedPositionWithHistory newPosHistory = default;
@@ -136,6 +137,19 @@ namespace CeresTrain.TrainingDataGenerator
       float q = w - l;
       float m = overrideResultToBeWin ? PLIES_LEFT_IF_LOST : targets.m;
 
+      float kldPolicy = 0.50f; // default if no value specified
+      if (evaluatorResultKLD != null)
+      {
+        // Use average of forward and backward KLDs between the policies for the two evaluators.
+        float kldPolicy1  = evaluatorResult.Policy.KLDWith(evaluatorResultKLD.Value.Policy);
+        float kldPolicy2 = evaluatorResultKLD.Value.Policy.KLDWith(in evaluatorResult.Policy);
+        kldPolicy = (kldPolicy1 * 0.5f) + (kldPolicy2 * 0.5f);
+
+//        Console.WriteLine("KLDAN " + kldPolicy1 + " " + kldPolicy2 + " " + kldPolicy);
+//        Console.WriteLine("KLDAN " + evaluatorResult.Policy);
+//        Console.WriteLine("KLDAN " + evaluatorResultKLD.Value.Policy);
+      }
+
       EncodedPositionEvalMiscInfoV6 trainingMiscInfo = new
         (
         invarianceInfo: invarianceInfo, depResult: default,
@@ -146,11 +160,10 @@ namespace CeresTrain.TrainingDataGenerator
         originalQ: q, originalD: d, originalM: m,
         numVisits: 1,
         playedIndex: (short)bestMoveIndex, bestIndex: (short)bestMoveIndex,
-        unused1: default, unused2: default);
+        kldPolicy: kldPolicy, unused2: default);
 
       EncodedTrainingPositionMiscInfo miscInfoAll = new(newPosHistory.MiscInfo.InfoPosition, trainingMiscInfo);
       newPosHistory.SetMiscInfo(miscInfoAll);
-      
       EncodedTrainingPosition ret = new EncodedTrainingPosition(version, inputFormat, newPosHistory, epv);
 
       return ret;

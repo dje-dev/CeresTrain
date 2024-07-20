@@ -14,6 +14,7 @@
 #region Using directives
 
 using System;
+using System.Collections.Generic;
 
 using Ceres.Base.Math;
 using Ceres.Base.Misc;
@@ -21,8 +22,8 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators;
 using Ceres.Chess.MoveGen;
 using Ceres.Chess.Positions;
-using Ceres.Chess.Data.Nets;
 using Ceres.Chess.NetEvaluation.Batch;
+
 
 #endregion
 
@@ -35,14 +36,17 @@ namespace CeresTrain.TrainingDataGenerator
     // const int UNUSED2_VALUE_MARKER = 255;
 
     public readonly NNEvaluator Evaluator;
+    public readonly NNEvaluator EvaluatorSecondary;
 
     /// <summary>
     /// Constructor.
     /// </summary>
     /// <param name="nnEvaluator"></param>
-    public LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator nnEvaluator)
+    /// <param name="nnEvaluatorSeconeary"></param>
+    public LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator nnEvaluator, NNEvaluator nnEvaluatorSecondary)
     {
       Evaluator = nnEvaluator;
+      EvaluatorSecondary = nnEvaluatorSecondary;
     }
 
 
@@ -55,7 +59,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// <returns></returns>    
     public EncodedTrainingPosition GenerateTrainingPosition(in EncodedTrainingPosition position, bool verbose)
     {
-      return GenerateTrainingPositionFromNNEval(Evaluator, position.Version, position.InputFormat, position.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
+      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary, position.Version, position.InputFormat, 
+                                                position.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
                                                 position.ToPositionWithHistory(8), false, verbose);
     }
 
@@ -82,7 +87,9 @@ namespace CeresTrain.TrainingDataGenerator
       PositionWithHistory nextPosition = new PositionWithHistory(currentPos);
       nextPosition.AppendPosition(nextPos, moveToPlay);
       
-      return GenerateTrainingPositionFromNNEval(Evaluator, startPos.Version, startPos.InputFormat, startPos.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
+      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary,
+                                                startPos.Version, startPos.InputFormat, 
+                                                startPos.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
                                                 nextPosition, overrideResultToBeWin, verbose);
     }
 
@@ -99,19 +106,21 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, 
+    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, NNEvaluator evaluatorForKLD,
                                                                              int version, int inputFormat, byte invarianceInfo, 
                                                                              PositionWithHistory searchPosition, 
                                                                              bool overrideResultToBeWin, bool verbose)
     {
       // Run neural net evaluation of this position (locking for concurrency control).
       NNEvaluatorResult evalResult;
+      NNEvaluatorResult evalResultKLD;
       lock (evaluator)
       {
         evalResult = evaluator.Evaluate(searchPosition);
+        evalResultKLD = evaluatorForKLD == null ? default : evaluatorForKLD.Evaluate(searchPosition);
       }
 
-      return EncodedTrainingPositionExtractor.ExtractFromNNEvalResult(evalResult, version, inputFormat, invarianceInfo, searchPosition, overrideResultToBeWin, verbose);
+      return EncodedTrainingPositionExtractor.ExtractFromNNEvalResult(evalResult, evalResultKLD, version, inputFormat, invarianceInfo, searchPosition, overrideResultToBeWin, verbose);
     }
 
 
@@ -190,7 +199,7 @@ namespace CeresTrain.TrainingDataGenerator
 
     public static void CountTerminalBlundersUnexplored(string sourceTARFileName)
     {
-      LC0TrainingPosGeneratorFromSingleNNEval generator = new LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator.FromSpecification(RegisteredNets.Aliased["T80"].NetSpecificationString, "GPU:0"));
+      LC0TrainingPosGeneratorFromSingleNNEval generator = new LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator.FromSpecification("~T80", "GPU:0"), null);
 
       int countPosSeen = 0;
       int countTerminalBlunders = 0;
@@ -216,9 +225,11 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
-    public static void TestRegenerateAllPositions(string sourceTARFileName)
+    public static void TestRegenerateAllPositions(string sourceTARFileName, string networkIDPrimary, string networkForKLD = null)
     {
-      LC0TrainingPosGeneratorFromSingleNNEval generator = new LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator.FromSpecification(RegisteredNets.Aliased["T80"].NetSpecificationString, "GPU:0"));
+      NNEvaluator nnEvaluator = NNEvaluator.FromSpecification(networkIDPrimary, "GPU:0");
+      NNEvaluator nnEvaluatorForKLD = networkForKLD != null ? NNEvaluator.FromSpecification(networkForKLD, "GPU:0") : null;
+      LC0TrainingPosGeneratorFromSingleNNEval generator = new LC0TrainingPosGeneratorFromSingleNNEval(nnEvaluator, nnEvaluatorForKLD);
 
       foreach (Memory<EncodedTrainingPosition> game in new EncodedTrainingPositionReaderTAR(sourceTARFileName).EnumerateGames())
       {
@@ -227,55 +238,73 @@ namespace CeresTrain.TrainingDataGenerator
         {
           for (int i = 0; i < game.Length; i++)
           {
-            int POS_INDEX_TO_TEST = i;
             bool FORCE_WON = i == game.Length - 1 && TrainingPosWasForcedMovePossiblySeriousBlunder(in game.Span[i].PositionWithBoards);
+            const bool GEN_NEXT = false;
 
-            if (FORCE_WON)
+            if (FORCE_WON && GEN_NEXT)
             {
               Console.WriteLine("FORCING WON");
             }
 
-            const bool GEN_NEXT = false;
-
             EncodedTrainingPosition generatedNextPos = GEN_NEXT ?
-                generator.GenerateTrainingPositionAfterMove(in game.Span[POS_INDEX_TO_TEST], game.Span[POS_INDEX_TO_TEST].PositionWithBoards.PlayedMove, FORCE_WON, false)
-              : generator.GenerateTrainingPosition(in game.Span[0], false);
+                generator.GenerateTrainingPositionAfterMove(in game.Span[i], game.Span[i].PositionWithBoards.PlayedMove, FORCE_WON, false)
+              : generator.GenerateTrainingPosition(in game.Span[i], false);
 
             if (i == game.Length - 1)
             {
               // Special case, we don't have a correctNextPos in the training data. Just dump generated value compared against itself.
-              ObjUtils.CompareAndPrintObjectFields(generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining,
-                                                   generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining);
+              ObjUtils.CompareAndPrintObjectFields(in generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining,
+                                                   in generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining);
             }
             else
             {
-              EncodedTrainingPosition tarPos = game.Span[GEN_NEXT ? POS_INDEX_TO_TEST + 1 : POS_INDEX_TO_TEST];
+              EncodedTrainingPosition tarPos = game.Span[GEN_NEXT ? i + 1 : i];
 
-              float maxProbAbsDiff = MathUtils.MaxAbsoluteDifference(generatedNextPos.Policies.ProbabilitiesSpan.ToArray(), tarPos.Policies.ProbabilitiesSpan.ToArray());
+              float maxProbAbsDiff = MathUtils.MaxAbsoluteDifference(generatedNextPos.Policies.ProbabilitiesWithNegativeOneZeroed, 
+                                                                     tarPos.Policies.ProbabilitiesWithNegativeOneZeroed);
               float vDiff = MathF.Abs(generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining.BestQ - tarPos.PositionWithBoards.MiscInfo.InfoTraining.BestQ);
 
+              kld1.Add(tarPos.PositionWithBoards.MiscInfo.InfoTraining.KLDPolicy);
+              kld2.Add(generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining.KLDPolicy);
+              float corr = (float)StatUtils.Correlation(kld1.ToArray(), kld2.ToArray());
 
-              if (maxProbAbsDiff < 0.40f && vDiff < 0.15f)
+              Console.WriteLine();
+              if ((generatedNextPos.Policies.BestMove == tarPos.Policies.BestMove 
+                || maxProbAbsDiff < 0.40f
+                || tarPos.PositionWithBoards.MiscInfo.InfoTraining.QSuboptimality > 0.15  // large deliberate blunder move, don't expect match
+                  ) && vDiff < 0.15f)
               {
                 // Just dump one line if everything looked similar between the training data and regenerated data.
-                Console.WriteLine(i + " Policy/value within 0.4, 0.15 same value, omit detail dump.");
+                Console.WriteLine(i + " Policy/value in close agreements, omit detail dump.");
               }
               else
               {
                 // Dump extensive detail if the training data and regenerated data looked very different.
+                Console.WriteLine($"Value difference              : {vDiff, 6:F2}");
                 Console.WriteLine($"Max absolute policy difference: {maxProbAbsDiff}");
                 Console.WriteLine("ours: " + generatedNextPos.Policies.BestMove + " TAR: " + tarPos.Policies.BestMove);
 
-                Console.WriteLine(game.Span[POS_INDEX_TO_TEST].PositionWithBoards.FinalPosition);
+                Console.WriteLine(game.Span[i].PositionWithBoards.FinalPosition);
                 generatedNextPos.Policies.DumpProb();
                 Console.WriteLine();
                 tarPos.Policies.DumpProb();
 
-                ObjUtils.CompareAndPrintObjectFields(generatedNextPos.PositionWithBoards.MiscInfo.InfoPosition,
-                                                     tarPos.PositionWithBoards.MiscInfo.InfoPosition);
+                Console.WriteLine("CORR KLD" + corr);  
+
+                // Dump the policies
+                CompressedPolicyVector cpvTAR = default;
+                CompressedPolicyVector.Initialize(ref cpvTAR, tarPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
+                CompressedPolicyVector cpv = default;
+                CompressedPolicyVector.Initialize(ref cpv, generatedNextPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
+                Console.WriteLine(cpv);
+                Console.WriteLine(cpvTAR);
+                Console.WriteLine(cpv.KLDWith(in cpvTAR) + " " + cpvTAR.KLDWith(in cpv));
                 Console.WriteLine();
-                ObjUtils.CompareAndPrintObjectFields(generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining,
-                                                     tarPos.PositionWithBoards.MiscInfo.InfoTraining);
+                ObjUtils.CompareAndPrintObjectFields(in generatedNextPos.PositionWithBoards.MiscInfo.InfoPosition,
+                                                     in tarPos.PositionWithBoards.MiscInfo.InfoPosition);
+                Console.WriteLine();
+                ObjUtils.CompareAndPrintObjectFields(in generatedNextPos.PositionWithBoards.MiscInfo.InfoTraining,
+                                                     in tarPos.PositionWithBoards.MiscInfo.InfoTraining);
               }
             }
           }
@@ -283,6 +312,9 @@ namespace CeresTrain.TrainingDataGenerator
         }
       }
     }
+    static List<float> kld1 = new List<float>();
+    static List<float> kld2 = new List<float>();
+
 
     #endregion
 
