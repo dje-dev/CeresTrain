@@ -398,11 +398,10 @@ def Train():
         # for every 1 which more evenly distributed over possible moves (of all quality).
         # To compensate for this non-representative training data distribution,
         # we give less weight to the over-sampled best continuation moves.
+        # Note the logic below references Value and not Value2 as the target for the action head
+        # It was found that Value2 is too noisy to make a good target, using it yields approx -50Elo       
         LOSS_WEIGHT_ACTION_BEST_CONTINUATION = 0.15
         LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION = 1.0
-        
-        # Note the logic below is hardcoded to use value, not value2.
-        ACTION_HEAD_USES_PRIMARY_VALUE = True
         
         num_processing_now = batch[0]['squares'].shape[0] * BOARDS_PER_BATCH
         
@@ -433,7 +432,7 @@ def Train():
                                    value2_out2, q_deviation_lower2, q_deviation_upper2, uncertainty_policy_out2, 
 
                                    value_out1[:, wdl_reverse], value2_out1[:, wdl_reverse], # prior value outputs for value differencing
-                                   value2_out2.detach(), extracted_action1_out,  # action target/output from previous board
+                                   value_out2.detach(), extracted_action1_out,  # action target/output from previous board
                                    action_uncertainty_out2,
                                    
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
@@ -453,7 +452,7 @@ def Train():
                                    value2_out3, q_deviation_lower3, q_deviation_upper3, uncertainty_policy_out3,
 
                                    value_out2[:, wdl_reverse], value2_out2[:, wdl_reverse], # prior value outputs for value differencing
-                                   value2_out3.detach(), extracted_action2_out, # action target/output from previous board
+                                   value_out3.detach(), extracted_action2_out, # action target/output from previous board
                                    action_uncertainty_out3,
 
                                    LOSS_WEIGHT_ACTION_BEST_CONTINUATION, num_pos, this_lr, show_losses)
@@ -472,7 +471,7 @@ def Train():
                                      None, None, None, None,
 
                                      None, None,
-                                     value2_out4.detach(), extracted_action1_other_out, # action target/output from previous board
+                                     value_out4.detach(), extracted_action1_other_out, # action target/output from previous board
                                      action_uncertainty_out4,
                                      
                                      LOSS_WEIGHT_ACTION_RANDOM_CONTINUATION, num_pos, this_lr, show_losses)
