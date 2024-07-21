@@ -160,7 +160,7 @@ class CeresNet(pl.LightningModule):
       self.action_uncertainty_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858)
 
     self.value_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)
-    self.value2_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)     
+    self.value2_head = Head(self.Activation, 2 + self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)     
     self.unc_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
 
     if self.uncertainty_policy_weight > 0:
@@ -248,10 +248,14 @@ class CeresNet(pl.LightningModule):
       squares = squares[0]
       
     flow = squares
+    qblunders_negative_positive = squares[:, 0, 119:121].clone().view(-1, 2)
 
-
+    # non-inplace version of the next two lines 
+    # required to avoid problems with ONNX execution
+    flow = torch.cat((flow[:, :, :119], torch.zeros_like(flow[:, :, 119:121]), flow[:, :, 121:]), dim=2)
 #    flow[:, :, 119] = 0 # QNegativeBlunders
 #    flow[:, :, 120] = 0 # QPositiveBlunders
+
 #    condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
 #    flow[:, :, 107] = condition.bfloat16()
 #    flow[:, :, 108] = 1 - flow[:, :, 107]
@@ -293,7 +297,7 @@ class CeresNet(pl.LightningModule):
     
     policy_out = self.policy_head(flattenedSquares)
     value_out = self.value_head(flattenedSquares)
-    value2_out = self.value2_head(flattenedSquares)
+    value2_out = self.value2_head(torch.cat((flattenedSquares, qblunders_negative_positive), -1))
     unc_out = self.unc_head(flattenedSquares)
     unc_policy_out = self.unc_policy(flattenedSquares) if self.uncertainty_policy_weight > 0 else unc_out # unc_out is just a dummy so not None
 
@@ -388,12 +392,12 @@ class CeresNet(pl.LightningModule):
     if action_target is not None:
       # TO DO: probably the multiplier_action_loss should somehow be propagated into the gradient norms when these are calculated
       action_loss = 0 if self.action_loss_weight == 0 else multiplier_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.action_loss_weight)
-      action_uncertainty_loss = 0 if self.action_uncertainty_loss_weight == 0 else multiplier_action_loss * self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out, gradient_norm_logging_mode, self.action_uncertainty_loss_wieght)
+      action_uncertainty_loss = 0 if self.action_uncertainty_loss_weight == 0 else multiplier_action_loss * self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out, gradient_norm_logging_mode, self.action_uncertainty_loss_weight)
     else:
       action_loss = 0
       action_uncertainty_loss = 0
       
-    uncertainty_policy_loss = 0 if self.uncertainty_policy_weight == 0 else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out, gradient_norm_logging_mode, self.action_uncertainty_loss_weight)
+    uncertainty_policy_loss = 0 if uncertainty_policy_out is None else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out, gradient_norm_logging_mode, self.uncertainty_policy_weight)
 
     total_loss = (self.policy_loss_weight * p_loss
         + self.value_loss_weight * v_loss
