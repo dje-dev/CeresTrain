@@ -240,7 +240,12 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Dimension of the vector (per square) passed between consecutive positions.
     /// </summary>
-    public readonly int PriorStateDim { get; init; } = 0; 
+    public readonly int PriorStateDim { get; init; } = 0;
+
+    /// <summary>
+    /// If the KQV matrices used in attention should computed with some nonlinearity/MLP.
+    /// </summary>
+    public readonly bool NonlinearAttention { get; init; } = false;
 
     /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
