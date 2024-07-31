@@ -57,11 +57,16 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="position"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>    
-    public EncodedTrainingPosition GenerateTrainingPosition(in EncodedTrainingPosition position, bool verbose)
+    public EncodedTrainingPosition GenerateTrainingPosition(in EncodedTrainingPosition position, bool verbose = false)
     {
-      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary, position.Version, position.InputFormat, 
+      // Extract the position (with history) to be used as the basis for the reconstruction.
+      PositionWithHistory thisPos = position.ToPositionWithHistory(8);
+
+      // Regenerate 
+      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary, 
+                                                position.Version, position.InputFormat, 
                                                 position.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
-                                                position.ToPositionWithHistory(8), false, verbose);
+                                                thisPos, false, verbose);
     }
 
 
@@ -225,11 +230,18 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="sourceTARFileName"></param>
+    /// <param name="networkIDPrimary"></param>
+    /// <param name="networkForKLD"></param>
     public static void TestRegenerateAllPositions(string sourceTARFileName, string networkIDPrimary, string networkForKLD = null)
     {
       NNEvaluator nnEvaluator = NNEvaluator.FromSpecification(networkIDPrimary, "GPU:0");
       NNEvaluator nnEvaluatorForKLD = networkForKLD != null ? NNEvaluator.FromSpecification(networkForKLD, "GPU:0") : null;
-      LC0TrainingPosGeneratorFromSingleNNEval generator = new LC0TrainingPosGeneratorFromSingleNNEval(nnEvaluator, nnEvaluatorForKLD);
+
+      LC0TrainingPosGeneratorFromSingleNNEval generator = new (nnEvaluator, nnEvaluatorForKLD);
 
       foreach (Memory<EncodedTrainingPosition> game in new EncodedTrainingPositionReaderTAR(sourceTARFileName).EnumerateGames())
       {
@@ -258,7 +270,7 @@ namespace CeresTrain.TrainingDataGenerator
             }
             else
             {
-              EncodedTrainingPosition tarPos = game.Span[GEN_NEXT ? i + 1 : i];
+              ref readonly EncodedTrainingPosition tarPos = ref game.Span[GEN_NEXT ? i + 1 : i];
 
               float maxProbAbsDiff = MathUtils.MaxAbsoluteDifference(generatedNextPos.Policies.ProbabilitiesWithNegativeOneZeroed, 
                                                                      tarPos.Policies.ProbabilitiesWithNegativeOneZeroed);
