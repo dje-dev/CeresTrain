@@ -120,6 +120,31 @@ namespace CeresTrain.TPG.TPGGenerator
       float forwardMaxSingleNegativeBlunder = rescorer.forwardMaxSingleNegativeBlunder[indexPlyThisGame];
       float forwardMaxSinglePositiveBlunder = rescorer.forwardMaxSinglePositiveBlunder[indexPlyThisGame];
 
+      ShouldRejectImbalance = (MathF.Abs(forwardSumPositiveBlunders - forwardSumNegativeBlunders) > THERSHOLD_REJECT_BLUNDER_IMBALANCE);
+      ShouldRejectSingleBlunder = forwardMaxSingleNegativeBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE
+                               || forwardMaxSinglePositiveBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE;
+
+      if (ShouldRejectImbalance || ShouldRejectSingleBlunder)
+      {
+        return false;
+      }
+
+#if NOT
+      // Benefit unclear, not yet properly tested.
+      bool isObviouslyWinning = thisInfoTraining.BestQ > 0.95 && trainingPosition.BoardsHistory.History_0.RelativePointsUs > 2;
+      bool isObviouslyLosing = thisInfoTraining.BestQ < -0.95 && trainingPosition.BoardsHistory.History_0.RelativePointsUs < -2;
+      if (isObviouslyWinning || isObviouslyLosing && Random.Shared.NextDouble() < 0.5f)
+      {
+        return false;
+      }
+#endif
+
+      return true;
+
+      // NOTE: The more elaborate focus logic attempt below is commented out.
+      // Although not known to have bugs, preliminary tests tests were not encouraging.
+
+#if NOT
       if (indexPlyThisGame > 0)
       {
         ref readonly EncodedPositionWithHistory thisPos = ref rescorer.PositionRef(indexPlyThisGame);
@@ -132,15 +157,6 @@ namespace CeresTrain.TPG.TPGGenerator
           // when the prior move was a blunder.
           ProbabilityContribFromPriorMoveBlunder = BONUS_PRIOR_MOVE_WAS_BLUNDER;
         }
-      }
-
-      ShouldRejectImbalance = (MathF.Abs(forwardSumPositiveBlunders - forwardSumNegativeBlunders) > THERSHOLD_REJECT_BLUNDER_IMBALANCE);
-      ShouldRejectSingleBlunder = forwardMaxSingleNegativeBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE
-                               || forwardMaxSinglePositiveBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE;
-
-      if (ShouldRejectImbalance || ShouldRejectSingleBlunder)
-      {
-        return false;
       }
 
       bool acceptProbabalistically = true;
@@ -186,6 +202,7 @@ namespace CeresTrain.TPG.TPGGenerator
       }
 
       return acceptProbabalistically;
+#endif
     }
   }
 

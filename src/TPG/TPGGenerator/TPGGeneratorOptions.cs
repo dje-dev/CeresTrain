@@ -39,10 +39,12 @@ namespace CeresTrain.TPG.TPGGenerator
       None,
 
       /// <summary>
-      /// The Q of the best move at the position is substituted.
+      /// The Q of the best move at the position is substituted if the
+      /// move made was suboptimal beyond the threshold.
       /// </summary>
       PositionQ,
     };
+
 
     public enum OutputRecordFormat
     {
@@ -52,9 +54,7 @@ namespace CeresTrain.TPG.TPGGenerator
       EncodedTrainingPos,
 
       /// <summary>
-      /// Specialized format for attention networks, 
-      /// by squares with positional encoding
-      /// and with explicit legal move arrays (not zero prior knowledge!).
+      /// Ceres TPGRecord format.
       /// </summary>
       TPGRecord
     }
@@ -164,16 +164,21 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <summary>
     /// Type of deblundering in use (if any).
     /// </summary>
-    public DeblunderType Deblunder { init; get; } = DeblunderType.None;
+    public DeblunderType Deblunder { init; get; } = DeblunderType.PositionQ;
 
 
     /// <summary>
-    /// If position focus should be enabled, which alters distribution of selected positions:
-    ///   - rejects if the blunder magnitude or imbaalance between sides is extremely large (target too noisy)
+    /// If position focus should be enabled, which filters out some positions from being converted.
+    /// This feature probably improves training results considerably.
+    /// 
+    /// Currently the method uses this method:
+    ///   - rejects if any single blunder  or collective imbalance between sides is extremely large
+    ///     indicating the game result target is extremely noisy and likely to be unhelpful/harmful
+    ///  Code also exists (but is not enabled because it is suspected to be not helpful) which:
     ///   - upsamples the "harder" positions, i.e. those where value head and search results were different
-    /// NOTE: extensive tests in June 2024 showed that this feature was clearly unhelpful (circa -15 Elo).
+    ///     or where the policy head had high uncertainty
     /// </summary>
-    public bool EnablePositionFocus { init; get; } = false;
+    public bool EnablePositionFocus { init; get; } = true;
 
 
     // Minimum probability for a legal move.
@@ -197,7 +202,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// for a move to be considered a blunder 
     /// (in cases where move made was other than best, i.e. deliberately injected noise).
     /// </summary>
-    public float DeblunderThreshold { init; get; } = 0.05f;
+    public float DeblunderThreshold { init; get; } = 0.06f;
 
 
     /// If Deblunder enabled, sets the minimum difference in Q required

@@ -149,9 +149,11 @@ namespace CeresTrain.TPG.TPGGenerator
     void Init()
     {
       string targetFNBase = Options.TargetFileNameBase == null ? null : Options.TargetFileNameBase + ".tpg";
-      writer = new TrainingPositionWriter(targetFNBase, Options.NumConcurrentSets,
+      writer = new TrainingPositionWriter(targetFNBase, 
+                                          Options.NumConcurrentSets,
                                           Options.OutputFormat,
-                                          Options.UseZstandard, Options.TargetCompression,                                         
+                                          Options.UseZstandard, 
+                                          Options.TargetCompression,                                         
                                           Options.NumPositionsTotal,
                                           Options.AnnotationNNEvaluator,
                                           Options.AnnotationPostprocessor,
@@ -281,7 +283,8 @@ namespace CeresTrain.TPG.TPGGenerator
 
     int exceptionCount = 0;
 
-    bool PositionAtIndexShouldBeProcessed(int i, EncodedTrainingPositionGame game, 
+    bool PositionAtIndexShouldBeProcessed(int i, 
+                                          in EncodedTrainingPositionGame game, 
                                           bool includeCheckForPositionMaxFraction,
                                           bool includeGameAnalyzerCheck,
                                           Dictionary<ulong, int> positionUsedCountsByHash, 
@@ -431,7 +434,7 @@ namespace CeresTrain.TPG.TPGGenerator
             }
 
             // Verify this position acceptable to process.
-            bool okToProcess = PositionAtIndexShouldBeProcessed(i, game, true, true, positionUsedCountsByHash, numWrittenThisFile);
+            bool okToProcess = PositionAtIndexShouldBeProcessed(i, in game, true, true, positionUsedCountsByHash, numWrittenThisFile);
             if (!okToProcess)
             {
               // We know we've already skipped ahead far enough to ensure position diversity.
@@ -448,42 +451,8 @@ namespace CeresTrain.TPG.TPGGenerator
             // there are additional restrictions on which positions are suitable to emit.
             if (Options.NumRelatedPositionsPerBlock > 1)
             {
-              if (Options.NumRelatedPositionsPerBlock != 4)
+              if (!IsAcceptableFirstPositionOfMultiboard(numWrittenThisFile, positionUsedCountsByHash, game, i))
               {
-                throw new NotImplementedException("Only 4 related positions per block supported.");
-              }
-
-              // We assume 3 consecutive position in first 3 boards (and 4th board taken from after first board)
-              // So need at least 3 remaining boards to do the full sequence.
-              if (i > game.NumPositions - (Options.NumRelatedPositionsPerBlock - 1))
-              {
-                continue;
-              }
-
-              // Check the next 2 moves and abort unless the are both:
-              //   -- acceptable on a standalone bases, and
-              //   -- (possibly, if this feature enabled) not too far off the optimal play line
-              double PlayedMoveSuboptimalityAtIndex(int i) => game.PositionAtIndex(i).MiscInfo.InfoTraining.QSuboptimality;
-
-              // Note: it was found necessary to filter out suboptimal moves (set this to true)
-              //       otherwise the net will not learn to borrow information from prior state 
-              //       presumably because it is too noisy.
-              const bool FILTER_OUT_SUBOPTIMAL_MOVES = true;
-              const float MOVE_SUBOPTIMALITY_THRESHOLD = FILTER_OUT_SUBOPTIMAL_MOVES ? 0.02f : 999;
-
-              if (!PositionAtIndexShouldBeProcessed(i + 1, game, false, false, positionUsedCountsByHash, numWrittenThisFile)
-                || PlayedMoveSuboptimalityAtIndex(i) > MOVE_SUBOPTIMALITY_THRESHOLD)
-              {
-                // Continue since we want to also use the single-next position but it is not acceptable.
-                continue;
-              }
-              if (!PositionAtIndexShouldBeProcessed(i + 2, game, false, false, positionUsedCountsByHash, numWrittenThisFile)
-                || PlayedMoveSuboptimalityAtIndex(i + 1) > MOVE_SUBOPTIMALITY_THRESHOLD)
-
-              {
-                // Continue since we want to also use the double-next position
-                // but it is either not acceptable standalone or too far off the optimal play line
-                // (suboptimal move choice by prior position).
                 continue;
               }
             }
@@ -497,19 +466,40 @@ namespace CeresTrain.TPG.TPGGenerator
             int setNum = (int)(numBlocksWrittenThisFile % Options.NumConcurrentSets);
 
             const bool EMIT_MOVES = true;
+            const bool VALIDATE_BEFORE_WRITE = true;
 
             if (Options.NumRelatedPositionsPerBlock == 1)
             {
               // Simple case of just a single board.
-              var pendingItem = PreparePosition(setNum, fn, game, i);
-              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, (pendingItem, true));
+              var pendingItem = PreparePosition(fn, in game, i);
+              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, (pendingItem, VALIDATE_BEFORE_WRITE));
+#if NOT
+              throw new NotImplementedException("WIP");
+              TrainingPositionWriterNonPolicyTargetInfo pos2TargetInfo = default;
+              EncodedTrainingPosition pos2Pos = default;
+
+              // Construct tuple of information to be passed to the Write method.
+              (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares) pos2Tuple = default;
+              pos2Tuple.targetInfo = pos2TargetInfo;
+              pos2Tuple.record = pos2Pos;
+              pos2Tuple.indexMoveInGame = pendingItem.indexMoveInGame + 1;
+              if (Options.EmitPlySinceLastMovePerSquare)
+              {
+                throw new NotImplementedException();
+              }
+              else
+              {
+                pos2Tuple.indexLastMoveBySquares = null;
+              }
+              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, (pos2Tuple, VALIDATE_BEFORE_WRITE));
+#endif
             }
             else
             {
               // First 3 slots are easy, just use the next 3 positions.
-              var item1 = PreparePosition(setNum, fn, game, i);
-              var item2 = PreparePosition(setNum, fn, game, i + 1);
-              var item3 = PreparePosition(setNum, fn, game, i + 2);
+              var item1 = PreparePosition(fn, in game, i);
+              var item2 = PreparePosition(fn, in game, i + 1);
+              var item3 = PreparePosition(fn, in game, i + 2);
 
               // Now pick the 4th position randomly as one of the possible continuations
               // from the root position (but not the one actually chosen).
@@ -610,8 +600,53 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
+    private bool IsAcceptableFirstPositionOfMultiboard(int numWrittenThisFile, Dictionary<ulong, int> positionUsedCountsByHash, EncodedTrainingPositionGame game, int i)
+    {
+      if (Options.NumRelatedPositionsPerBlock != 4)
+      {
+        throw new NotImplementedException("Only 4 related positions per block supported.");
+      }
+
+      // We assume 3 consecutive position in first 3 boards (and 4th board taken from after first board)
+      // So need at least 3 remaining boards to do the full sequence.
+      if (i > game.NumPositions - (Options.NumRelatedPositionsPerBlock - 1))
+      {
+        return false;
+      }
+
+      // Check the next 2 moves and abort unless the are both:
+      //   -- acceptable on a standalone bases, and
+      //   -- (possibly, if this feature enabled) not too far off the optimal play line
+      double PlayedMoveSuboptimalityAtIndex(int i) => game.PositionAtIndex(i).MiscInfo.InfoTraining.QSuboptimality;
+
+      // Note: it was found necessary to filter out suboptimal moves (set this to true)
+      //       otherwise the net will not learn to borrow information from prior state 
+      //       presumably because it is too noisy.
+      const bool FILTER_OUT_SUBOPTIMAL_MOVES = true;
+      const float MOVE_SUBOPTIMALITY_THRESHOLD = FILTER_OUT_SUBOPTIMAL_MOVES ? 0.02f : 999;
+
+      if (!PositionAtIndexShouldBeProcessed(i + 1, in game, false, false, positionUsedCountsByHash, numWrittenThisFile)
+        || PlayedMoveSuboptimalityAtIndex(i) > MOVE_SUBOPTIMALITY_THRESHOLD)
+      {
+        // Continue since we want to also use the single-next position but it is not acceptable.
+        return false;
+      }
+      if (!PositionAtIndexShouldBeProcessed(i + 2, in game, false, false, positionUsedCountsByHash, numWrittenThisFile)
+        || PlayedMoveSuboptimalityAtIndex(i + 1) > MOVE_SUBOPTIMALITY_THRESHOLD)
+
+      {
+        // Continue since we want to also use the double-next position
+        // but it is either not acceptable standalone or too far off the optimal play line
+        // (suboptimal move choice by prior position).
+        return false;
+      }
+
+      return true;
+    }
+
+
     private (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares)
-      PreparePosition(int setNum, string fn, EncodedTrainingPositionGame game, int i)
+      PreparePosition(string fn, in EncodedTrainingPositionGame game, int i)
     {
       // Extract the position from the raw data.
       ref readonly EncodedPositionWithHistory thisGamePos = ref gameAnalyzer.PositionRef(i);
