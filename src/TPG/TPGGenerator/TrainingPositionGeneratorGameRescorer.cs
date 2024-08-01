@@ -196,7 +196,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
         // Check for value differential focus choosing to reject this position.
         REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = false;
-        if (positionFocusEnabled && new TrainingPositionFocusCalculator().CalcAcceptPosition(this, i))
+        if (positionFocusEnabled && !(new TrainingPositionFocusCalculator().CalcAcceptPosition(this, i)))
         {
           REJECT_POSITION_DUE_TO_POSITION_FOCUS[i] = true;
         }
