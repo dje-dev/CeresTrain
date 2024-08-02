@@ -225,17 +225,17 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Factor by which the FFN inner hidden layer is larger than the model dimension.
     /// </summary>
-    public readonly int FFNMultiplier { get; init; } = 2;
+    public readonly int FFNMultiplier { get; init; } = 4;
 
     /// <summary>
     /// Type of activation function used between layers of the FFN.
     /// </summary>
-    public readonly ActivationType FFNActivationType { get; init; } = ActivationType.ReLUSquared;
+    public readonly ActivationType FFNActivationType { get; init; } = ActivationType.Mish;
 
     /// <summary>
     /// Activation function to use in network heads.
     /// </summary>
-    public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.Swish;
+    public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.Mish;
 
     /// <summary>
     /// Dimension of the vector (per square) passed between consecutive positions.
@@ -245,7 +245,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// If the KQV matrices used in attention should computed with some nonlinearity/MLP.
     /// </summary>
-    public readonly bool NonlinearAttention { get; init; } = false;
+    public readonly bool NonLinearAttention { get; init; } = false;
 
     /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
@@ -257,7 +257,7 @@ namespace CeresTrain.Networks.Transformer
     /// If true, the DenseFormer architecture is used. See:
     ///   "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
     /// </summary>
-    public readonly bool DenseFormer { get; init; } = true;
+    public readonly bool DenseFormer { get; init; } = false;
 
     /// <summary>
     /// Number of per square dimensions used for Smolgen (or 0 if Smolgen not used).
@@ -278,11 +278,12 @@ namespace CeresTrain.Networks.Transformer
 
     /// <summary>
     /// Type of activation to use for Smolgen layers.
+    /// Lc0 nets my have used swish, but simple linear (no activation) seemingly also found good.
     /// </summary>
     public readonly ActivationType SmolgenActivationType { get; init; } = ActivationType.None;
 
     /// <summary>
-    /// If relative positional encoding should be used (for Q and K but not V).
+    /// If relative positional encoding should be used (for Q, K and V).
     /// </summary>
     public readonly bool UseRPE { get; init; } = true;
 
