@@ -44,8 +44,8 @@ namespace CeresTrain.TPG.TPGGenerator
   {
 
     // Two coefficients relating to rejecting excessively noisy training data points.
-    public const float THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE = 0.30f; // Reject position if any single forward blunder exceeds this value
-    public const float THERSHOLD_REJECT_BLUNDER_IMBALANCE = 0.60f; // Reject position if forward blunder imbalance exceeds this value
+    public const float THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE = 0.20f; // Reject position if any single forward blunder exceeds this value
+    public const float THERSHOLD_REJECT_BLUNDER_IMBALANCE = 0.40f; // Reject position if forward blunder imbalance exceeds this value
 
     // Two coefficients relating to favoring positions based on value difference.
     public const float VALUE_DIFF_SLOPE = 1.0f; // slope of probability of accepting position based on value difference
@@ -129,8 +129,9 @@ namespace CeresTrain.TPG.TPGGenerator
         return false;
       }
 
+
 #if NOT
-      // Benefit unclear, not yet properly tested.
+      // In a quick test this idea seemed slightly worse.
       bool isObviouslyWinning = thisInfoTraining.BestQ > 0.95 && trainingPosition.BoardsHistory.History_0.RelativePointsUs > 2;
       bool isObviouslyLosing = thisInfoTraining.BestQ < -0.95 && trainingPosition.BoardsHistory.History_0.RelativePointsUs < -2;
       if (isObviouslyWinning || isObviouslyLosing && Random.Shared.NextDouble() < 0.5f)
