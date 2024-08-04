@@ -33,6 +33,8 @@ using Ceres.Chess.UserSettings;
 using Ceres.Base.Math.Random;
 using System.Diagnostics;
 using Ceres.Base.Math;
+using CeresTrain.TrainingDataGenerator;
+using Ceres.Chess.NNEvaluators;
 
 
 #endregion
@@ -159,7 +161,9 @@ namespace CeresTrain.TPG.TPGGenerator
                                           Options.AnnotationPostprocessor,
                                           Options.BufferPostprocessorDelegate,
                                           Options.BatchSize,
-                                          Options.EmitPlySinceLastMovePerSquare);
+                                          Options.EmitPlySinceLastMovePerSquare,
+                                          Options.FillInHistoryPlanes,
+                                          VALIDATE_BEFORE_WRITE);
 
       if (Options.CeresJSONFileName == null)
       {
@@ -329,6 +333,11 @@ namespace CeresTrain.TPG.TPGGenerator
       return true;
     }
 
+    static NNEvaluator evaluatorPrimary;
+    NNEvaluator evaluatorUncertainty;
+
+
+    const bool VALIDATE_BEFORE_WRITE = true;
 
     void Read(string fn)
     {
@@ -465,34 +474,123 @@ namespace CeresTrain.TPG.TPGGenerator
             // Rotate written positions thru all sets to enhance diversity of positions within any single file.
             int setNum = (int)(numBlocksWrittenThisFile % Options.NumConcurrentSets);
 
-            const bool EMIT_MOVES = true;
-            const bool VALIDATE_BEFORE_WRITE = true;
 
             if (Options.NumRelatedPositionsPerBlock == 1)
             {
               // Simple case of just a single board.
               var pendingItem = PreparePosition(fn, in game, i);
-              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, (pendingItem, VALIDATE_BEFORE_WRITE));
-#if NOT
-              throw new NotImplementedException("WIP");
-              TrainingPositionWriterNonPolicyTargetInfo pos2TargetInfo = default;
-              EncodedTrainingPosition pos2Pos = default;
+              writer.Write(setNum, Options.MinProbabilityForLegalMove, pendingItem);
 
-              // Construct tuple of information to be passed to the Write method.
-              (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares) pos2Tuple = default;
-              pos2Tuple.targetInfo = pos2TargetInfo;
-              pos2Tuple.record = pos2Pos;
-              pos2Tuple.indexMoveInGame = pendingItem.indexMoveInGame + 1;
-              if (Options.EmitPlySinceLastMovePerSquare)
+const bool TEST = false;
+              if (i > 0 && TEST)
               {
-                throw new NotImplementedException();
+                ////////////////////
+                //                throw new NotImplementedException("WIP");
+                if (evaluatorPrimary == null)
+                {
+                  evaluatorPrimary = NNEvaluator.FromSpecification("~T81", "GPU:0");
+                  evaluatorUncertainty = NNEvaluator.FromSpecification("~T75", "GPU:0");
+                } 
+                LC0TrainingPosGeneratorFromSingleNNEval posFromEvalGenerator = new(evaluatorPrimary, evaluatorUncertainty);
+
+                // Get the parent position information handy, and extract its policy into spans.
+                EncodedTrainingPosition priorTrainingPos = game.TrainingPositionAtIndex(i - 1);
+                Position priorPos = priorTrainingPos.PositionWithBoards.FinalPosition;
+                ref readonly EncodedPolicyVector pos1PolicyRef = ref priorTrainingPos.Policies;
+                int priorPolicyLen = pos1PolicyRef.ExtractIntoSpans(policyMoves, policyProbs);
+
+                if (priorPolicyLen > 1) // only if there is another possible move that could have been taken
+                {
+                  // Randomly draw a next move from the policy (with some uniform noise added).
+                  const float FRACTION_UNIFORM = 0.05f;
+                  BlendInUniform(policyProbs, priorPolicyLen, FRACTION_UNIFORM);
+                  int randomMoveDrawIndex = ThompsonSampling.Draw(policyProbs, priorPolicyLen);
+
+                  // Convert move to MGMove.
+                  EncodedMove randomMove = policyMoves[randomMoveDrawIndex];
+                  MGMove randomMoveMG = ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(randomMove, priorPos.ToMGPosition);
+
+                  EncodedMove alreadyPlayedMove = priorTrainingPos.PositionWithBoards.MiscInfo.InfoTraining.PlayedMove;
+//                if (alreadyPlayedMove != continuationMove)
+                  {
+                    // Generate a second position after the move.
+                    // (Note that we are not using the move actually played in the game, but a randomly drawn move from the policy.
+                    const bool VERBOSE_GEN_SECOND_POS = true;
+                    EncodedTrainingPosition randomPos = posFromEvalGenerator.GenTrainingPositionAfterMove(in priorTrainingPos, randomMoveMG, verbose: VERBOSE_GEN_SECOND_POS);
+
+
+                    TrainingPositionWriterNonPolicyTargetInfo randomTargetInfo = new();
+                    EncodedPositionEvalMiscInfoV6 randomInfoTraining = randomPos.PositionWithBoards.MiscInfo.InfoTraining;
+                    randomTargetInfo.ResultNonDeblunderedWDL = randomInfoTraining.ResultWDL; // ???
+                    randomTargetInfo.ResultDeblunderedWDL = default; // ??? gameAnalyzer.newResultWDL[i];
+                    randomTargetInfo.BestWDL = randomInfoTraining.BestWDL;
+                    randomTargetInfo.IntermediateWDL = default; // ??? gameAnalyzer.intermediateBestWDL[i];
+                    randomTargetInfo.MLH = TPGRecordEncoding.MLHEncoded(randomInfoTraining.PliesLeft);
+                    randomTargetInfo.DeltaQVersusV = randomInfoTraining.Uncertainty;
+                    randomTargetInfo.KLDPolicy = randomInfoTraining.KLDPolicy;
+                    randomTargetInfo.PlayedMoveQSuboptimality = 0; // ??? fill in? i == 0 ? 0 : gameAnalyzer.PositionRef(i - 1).MiscInfo.InfoTraining.QSuboptimality;
+
+                    if (Options.EmitPriorMoveWinLoss)
+                    {
+                      throw new NotImplementedException();
+                    }
+
+                    randomTargetInfo.PolicyIndexInParent = (short)policyMoves[randomMoveDrawIndex].IndexNeuralNet;
+
+                    randomTargetInfo.DeltaQForwardAbs = 0;
+                    randomTargetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+
+                    randomTargetInfo.ForwardSumPositiveBlunders = 0;
+                    randomTargetInfo.ForwardSumNegativeBlunders = 0;
+
+                    // TODO: currently we borrow the blunder statistics from the first board.
+                    //       But this move may have changed the situation drastically.
+                    // TODO: If the taken move was highly suboptimal,
+                    //       instead look at the new W/D/L to determine plausible replacement values here instead.
+                    float trainingPos2Q = randomInfoTraining.BestQ;
+                    float moveSuboptimality = trainingPos2Q - pendingItem.record.PositionWithBoards.MiscInfo.InfoTraining.BestQ;
+                    if (Math.Abs(moveSuboptimality) < 0.20)
+                    {
+                      // The two moves seem reasonably close in quality.
+                      // Just assume the deviations will be the same as if we made the primary move.
+                      randomTargetInfo.ForwardMinQDeviation = gameAnalyzer.forwardMinQDeviation[i];
+                      randomTargetInfo.ForwardMaxQDeviation = gameAnalyzer.forwardMaxQDeviation[i];
+                    }
+                    else
+                    {
+                      // Major change in position compared to primary move. 
+                      // Recompute guess of min/max QDeviation based on uncertainty.
+                      float trainingPos2Uncertainty = randomInfoTraining.Uncertainty;
+                      const float UNCERTAINTY_MULTIPLIER = 2;
+                      randomTargetInfo.ForwardMinQDeviation = trainingPos2Uncertainty * UNCERTAINTY_MULTIPLIER;
+                      randomTargetInfo.ForwardMaxQDeviation = trainingPos2Uncertainty * UNCERTAINTY_MULTIPLIER;
+                    }
+
+                    // Make sure the forward deviations are within legal ranges
+                    if (trainingPos2Q + randomTargetInfo.ForwardMaxQDeviation > 1)
+                    {
+                      randomTargetInfo.ForwardMaxQDeviation = 1 - trainingPos2Q;
+                    }
+                    else if (trainingPos2Q - randomTargetInfo.ForwardMinQDeviation < -1)
+                    {
+                      randomTargetInfo.ForwardMinQDeviation = Math.Abs(trainingPos2Q + 1);
+                    } 
+
+                    // Construct tuple of information to be passed to the Write method.
+                    (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares) pos2Tuple = default;
+                    pos2Tuple.targetInfo = randomTargetInfo;
+                    pos2Tuple.record = randomPos;
+                    pos2Tuple.indexMoveInGame = pendingItem.indexMoveInGame;
+                    if (Options.EmitPlySinceLastMovePerSquare)
+                    {
+                      throw new NotImplementedException();
+                    }
+
+                    // Finally, write this new position.
+                    writer.Write(setNum, Options.MinProbabilityForLegalMove, pos2Tuple);
+                  }
+                }
               }
-              else
-              {
-                pos2Tuple.indexLastMoveBySquares = null;
-              }
-              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, (pos2Tuple, VALIDATE_BEFORE_WRITE));
-#endif
             }
             else
             {
@@ -523,7 +621,7 @@ namespace CeresTrain.TPG.TPGGenerator
                 target3.ForwardSumPositiveBlunders = item1.targetInfo.ForwardSumPositiveBlunders;
                 target3.ForwardSumNegativeBlunders = item1.targetInfo.ForwardSumNegativeBlunders;
 
-                EncodedTrainingPosition pos3 = TrainingPositionAfterMove(game.TrainingPosition(i), move3);
+                EncodedTrainingPosition pos3 = TrainingPositionAfterMove(game.TrainingPositionAtIndex(i), move3);
                 return (pos3, target3, -1, null);
               }
 
@@ -564,21 +662,13 @@ namespace CeresTrain.TPG.TPGGenerator
                 //
                 // Doubtless the net will nevertheless have an optimistic bias in the action outputs,
                 // but this may not be so bad since search needs some optimism bias to not totally squelch exploration.
-                float uniformWeight = 1.0f / policyLen;
-                for (int ip=0;ip<policyLen;ip++)
-                {
-                  policyProbs[ip] = 0.5f * policyProbs[ip] 
-                                  + 0.5f * uniformWeight;
-                } 
+                BlendInUniform(policyProbs, policyLen, 0.5f);
 
                 int tryDrawIndex = ThompsonSampling.Draw(policyProbs, policyLen);
                 item4 = MakeForDrawIndex(policyMoves[tryDrawIndex]);
               }
-            
-              
-              writer.Write(setNum, Options.MinProbabilityForLegalMove, EMIT_MOVES, 
-                           (item1, true), (item2, true), (item3, true), (item4, false));
 
+              writer.Write(setNum, Options.MinProbabilityForLegalMove, item1, item2, item3, item4);
             }
           }
         }
@@ -866,6 +956,27 @@ namespace CeresTrain.TPG.TPGGenerator
       return new EncodedTrainingPosition(startPos.Version, startPos.InputFormat, newPosHistory, epv);
     }
 
+    #region Helpers
+
+    /// <summary>
+    /// Blend in a uniform distribution to the probabilities.
+    /// </summary>
+    /// <param name="probabilities"></param>
+    /// <param name="probsLength"></param>
+    /// <param name="fractionUniform"></param>
+    public static void BlendInUniform(Span<float> probabilities, int probsLength, float fractionUniform)
+    {
+      float uniformWeight = 1.0f / probsLength;
+      float blendFactor = 1.0f - fractionUniform;
+
+      for (int ip = 0; ip < probsLength; ip++)
+      {
+        probabilities[ip] = blendFactor * probabilities[ip] 
+                          + fractionUniform * uniformWeight;
+      }
+    }
+
+    #endregion
 
   }
 }

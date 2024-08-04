@@ -15,6 +15,8 @@
 
 using System;
 
+using Ceres.Base.Math.Random;
+
 using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NetEvaluation.Batch;
 using Ceres.Chess.EncodedPositions.Basic;
@@ -97,6 +99,7 @@ namespace CeresTrain.TrainingDataGenerator
     /// Extract training position from specified NNEvaluatorResult.
     /// </summary>
     /// <param name="evaluatorResult"></param>
+    /// <param name="evaluatorResultForUncertainty"></param>
     /// <param name="version"></param>
     /// <param name="inputFormat"></param>
     /// <param name="invarianceInfo"></param>
@@ -104,7 +107,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, NNEvaluatorResult? evaluatorResultKLD,
+    public static EncodedTrainingPosition ExtractFromNNEvalResult(NNEvaluatorResult evaluatorResult, 
+                                                                  NNEvaluatorResult? evaluatorResultForUncertainty,
                                                                   int version, int inputFormat, byte invarianceInfo, 
                                                                   PositionWithHistory searchPosition, bool overrideResultToBeWin, bool verbose)
     {
@@ -135,32 +139,99 @@ namespace CeresTrain.TrainingDataGenerator
       float d = overrideResultToBeWin ? 0 : targets.d;
       float l = overrideResultToBeWin ? 0 : targets.l;
       float q = w - l;
-      float m = overrideResultToBeWin ? PLIES_LEFT_IF_LOST : targets.m;
 
-      float kldPolicy = 0.50f; // default if no value specified
-      if (evaluatorResultKLD != null)
+
+      float uncertaintyV = evaluatorResult.UncertaintyV switch
       {
-        // Use average of forward and backward KLDs between the policies for the two evaluators.
-        float kldPolicy1  = evaluatorResult.Policy.KLDWith(evaluatorResultKLD.Value.Policy);
-        float kldPolicy2 = evaluatorResultKLD.Value.Policy.KLDWith(in evaluatorResult.Policy);
-        kldPolicy = (kldPolicy1 * 0.5f) + (kldPolicy2 * 0.5f);
+        float value when !float.IsNaN(value) => value,
+        _ when evaluatorResultForUncertainty is not null
+            && !float.IsNaN(evaluatorResultForUncertainty.Value.UncertaintyV) => evaluatorResultForUncertainty.Value.UncertaintyV,
+        _ when evaluatorResultForUncertainty is not null => MathF.Abs(evaluatorResult.V - evaluatorResultForUncertainty.Value.V),
+        _ => MathF.Abs(evaluatorResult.V) > 0.80 ? 0.02f : 0.10f // best guess fill in, less uncerainty if seemingly decisive
+      };
 
-//        Console.WriteLine("KLDAN " + kldPolicy1 + " " + kldPolicy2 + " " + kldPolicy);
-//        Console.WriteLine("KLDAN " + evaluatorResult.Policy);
-//        Console.WriteLine("KLDAN " + evaluatorResultKLD.Value.Policy);
+
+      float CalculateKLDPolicy()
+      {
+        float kldPolicy1 = evaluatorResult.Policy.KLDWith(evaluatorResultForUncertainty.Value.Policy);
+        float kldPolicy2 = evaluatorResultForUncertainty.Value.Policy.KLDWith(in evaluatorResult.Policy);
+
+        //        Console.WriteLine("KLDAN " + kldPolicy1 + " " + kldPolicy2 + " " + kldPolicy);
+        //        Console.WriteLine("KLDAN " + evaluatorResult.Policy);
+        //        Console.WriteLine("KLDAN " + evaluatorResultKLD.Value.Policy);
+
+        // Use average of forward and backward KLDs between the policies for the two evaluators.
+        return (kldPolicy1 * 0.5f) + (kldPolicy2 * 0.5f);
       }
 
+      float kldPolicy = evaluatorResult.UncertaintyP switch
+      {
+        float value when !float.IsNaN(value) => value,
+        _ when evaluatorResultForUncertainty is not null
+            && !float.IsNaN(evaluatorResultForUncertainty.Value.UncertaintyP) => evaluatorResultForUncertainty.Value.UncertaintyP,
+        _ when evaluatorResultForUncertainty is not null => CalculateKLDPolicy(),
+        _ => 0.50f // best guess fill in, a typical/median value
+      };
+
+      float mlh = evaluatorResult.M switch
+      {
+        _ when overrideResultToBeWin => PLIES_LEFT_IF_LOST,
+        float value when !float.IsNaN(value) => value,
+        _ when evaluatorResultForUncertainty is not null 
+            && !float.IsNaN(evaluatorResultForUncertainty.Value.M) => evaluatorResultForUncertainty.Value.M,
+        _ => (40 + searchPosition.FinalPosition.PieceCount * 4) // best guess fill in, a typical/median value
+      };
+
+      // UncertaintyV is defined as abs(BestQ - OriginalQ)
+      // Need to come up with an OriginalQ such that this value equals our uncertaintyV
+      // To avoid Q going outside [-1, 1] range perturb away from the closes bound
+      float deltaOriginalQ = q > 0 ? -uncertaintyV : uncertaintyV;
+      float originalQ = q + deltaOriginalQ;
+
+      // The originalD is probably not used/needed downstream.
+      // So we just try to keep it the same, if this would yield a valid WDL combination.
+      // But if this would make the W or L fall outside the legal range of [-1, 1],
+      // then we do make an adjustmet to originalD to avoid this.
+      float originalD = d;
+      float originalW = 0.5f * (1.0f - originalD + originalQ);
+      float originalL = 0.5f * (1.0f - originalD - originalQ);
+      if (originalW > 1)
+      {
+        originalD -= originalW - 1;
+      }
+      else if (originalL > 1)
+      {
+        originalD -= originalL - 1;
+      }
+
+      // Initially set the result WDL to same as the search WDL.
+      Span<float> resultWDL = 
+        [
+          0.5f * (1.0f - d + q),
+          d,
+          0.5f * (1.0f - d - q)
+        ];
+
+      // But the result WDL should actually be a hard game result where just one of WDL is 1.
+      // Choose a sampled (randomized) hard outcome based on the WDL probabilties.
+      int sampledWDLIndex = ThompsonSampling.Draw(resultWDL, 3);
+      float resultW = sampledWDLIndex == 0 ? 1 : 0;
+      float resultD = sampledWDLIndex == 1 ? 1 : 0;
+      float resultL = sampledWDLIndex == 2 ? 1 : 0;
+      float resultQ = resultW - resultL;
+
       EncodedPositionEvalMiscInfoV6 trainingMiscInfo = new
-        (
-        invarianceInfo: invarianceInfo, depResult: default,
-        rootQ: q, bestQ: q, rootD: d, bestD: d,
-        rootM: m, bestM: m, pliesLeft: m,
-        resultQ: q, resultD: d,
-        playedQ: q, playedD: d, playedM: m,
-        originalQ: q, originalD: d, originalM: m,
-        numVisits: 1,
-        playedIndex: (short)bestMoveIndex, bestIndex: (short)bestMoveIndex,
-        kldPolicy: kldPolicy, unused2: default);
+        (invarianceInfo: invarianceInfo, depResult: default,
+         rootQ: q, bestQ: q,
+         rootD: d, bestD: d,
+         rootM: mlh, bestM: mlh,
+         pliesLeft: mlh,
+         resultQ: resultQ, resultD: resultD,
+         playedQ: q, playedD: d, playedM: mlh,
+         originalQ: originalQ, originalD: originalD, originalM: mlh,
+         numVisits: 1,
+         playedIndex: (short)bestMoveIndex, bestIndex: (short)bestMoveIndex,
+         kldPolicy: kldPolicy, unused2: default);
 
       EncodedTrainingPositionMiscInfo miscInfoAll = new(newPosHistory.MiscInfo.InfoPosition, trainingMiscInfo);
       newPosHistory.SetMiscInfo(miscInfoAll);
