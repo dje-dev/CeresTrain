@@ -282,7 +282,7 @@ namespace CeresTrain.TrainingDataGenerator
 
         if (generated)
         {
-          writer.Write(in etp, targetInfo, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, indexInSet, false, true);
+          writer.Write(in etp, targetInfo, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, indexInSet, true);
           numWritten++;
         }
 

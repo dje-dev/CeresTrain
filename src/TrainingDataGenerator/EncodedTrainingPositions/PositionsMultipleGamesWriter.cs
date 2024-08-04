@@ -119,7 +119,7 @@ namespace CeresTrain.TrainingDataGenerator
 
         if (lastPositionWouldHaveBeenBlunder)
         {
-          newTrainingPosition = extraTrainingPosGenerator.GenerateTrainingPositionAfterMove(in lastPos, lastPos.PositionWithBoards.PlayedMove, true, false);
+          newTrainingPosition = extraTrainingPosGenerator.GenTrainingPositionAfterMove(in lastPos, lastPos.PositionWithBoards.PlayedMove, true, false);
           extraTrainingPosWasGenerated = true;
         }
         else
@@ -144,7 +144,7 @@ namespace CeresTrain.TrainingDataGenerator
               randomMove = moves.MovesArray[Random.Shared.Next(moves.NumMovesUsed)];
             } while (randomMove == parentPos.PositionWithBoards.PlayedMove);
 
-            newTrainingPosition = extraTrainingPosGenerator.GenerateTrainingPositionAfterMove(in parentPos, randomMove, false, false);
+            newTrainingPosition = extraTrainingPosGenerator.GenTrainingPositionAfterMove(in parentPos, randomMove, false, false);
 
             const bool VERBOSE = false;
             if (VERBOSE)

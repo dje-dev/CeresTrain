@@ -397,7 +397,6 @@ namespace CeresTrain.TPG
                                                  ref TPGRecord tpgRecord,
                                                  Span<byte> pliesSinceLastPieceMoveBySquare,
                                                  bool emitPlySinceLastMovePerSquare,
-                                                 bool emitMoves,
                                                  float qNegativeBlunders, float qPositiveBlunders,
                                                  float priorPosWinP, float priorPosDrawP, float priorPosLossP,
                                                  bool validate)

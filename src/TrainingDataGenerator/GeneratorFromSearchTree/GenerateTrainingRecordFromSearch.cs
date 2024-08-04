@@ -99,7 +99,7 @@ namespace CeresTrain.TrainingDataGenerator
           target.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
 
           const int TPG_SET_INDEX = 0;
-          writer.Write(in etp, in target, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, TPG_SET_INDEX, false, true);
+          writer.Write(in etp, in target, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, TPG_SET_INDEX, true);
           writer.Shutdown();
 
           search.Manager.Dispose(); // TODO: push Dispose into MCTSearch?

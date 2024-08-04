@@ -183,7 +183,7 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
-    public void Write(int targetSetIndex, float minLegalMoveProbability, bool emitMoves, 
+    public void Write(int targetSetIndex, float minLegalMoveProbability, 
                       params ((EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, 
                       int indexMoveInGame, short[] indexLastMoveBySquares), bool validate)[] items)
     {
@@ -193,7 +193,7 @@ namespace CeresTrain.TPG.TPGGenerator
       {
         foreach (var item in items)
         {
-          Write(item.Item1.record, item.Item1.targetInfo, item.Item1.indexMoveInGame, item.Item1.indexLastMoveBySquares, minLegalMoveProbability, targetSetIndex, emitMoves, item.validate);
+          Write(item.Item1.record, item.Item1.targetInfo, item.Item1.indexMoveInGame, item.Item1.indexLastMoveBySquares, minLegalMoveProbability, targetSetIndex, item.validate);
         }
       }
     }
@@ -211,7 +211,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="emitMoves"></param>
     public void Write(in EncodedTrainingPosition record, in TrainingPositionWriterNonPolicyTargetInfo targetInfo,
                       int indexMoveInGame, short[] indexLastMoveBySquares, float minLegalMoveProbability,
-                      int targetSetIndex, bool emitMoves, bool validate)
+                      int targetSetIndex, bool validate)
     {
       if (shutdown)
       {
@@ -250,7 +250,7 @@ namespace CeresTrain.TPG.TPGGenerator
           {
             // No NN evaluation needed, we can synchronously do the batch writing.
             ProcessWrite(buffers[targetSetIndex], buffersTargets[targetSetIndex], buffersOverridePolicies[targetSetIndex],
-                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves, validate);
+                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, validate);
           }
           else
           {
@@ -263,7 +263,7 @@ namespace CeresTrain.TPG.TPGGenerator
             buffers[targetSetIndex] = new EncodedTrainingPosition[BUFFER_SIZE];
 
             ProcessWrite(positions, buffersTargets[targetSetIndex], buffersOverridePolicies[targetSetIndex],
-                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, emitMoves, validate);
+                         minLegalMoveProbability, bufferPliesSinceLastPieceMoveBySquare[targetSetIndex], targetSetIndex, validate);
 
 #if NOT
 Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks grows without bound.
@@ -410,7 +410,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
                                            CompressedPolicyVector?[] targetPolicyOverrides,
                                            float minLegalMoveProbability,
                                            byte[][] pliesSinceLastPieceMoveBySquare,
-                                           bool emitMoves, bool validate)
+                                           bool validate)
     {
       if (tpgRecordsBuffer == null)
       {
@@ -426,7 +426,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
         // Convert into TPG record format.
         TPGRecordConverter.ConvertToTPGRecord(in positions[i], includeHistory, in targetInfos[i], targetPolicyOverrides?[i],
                                               minLegalMoveProbability, ref bufferForParallelThreads[i],
-                                              pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare, emitMoves,
+                                              pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare,
                                               targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders,
                                               targetInfos[i].PriorPositionWinP,
                                               targetInfos[i].PriorPositionDrawP,
@@ -450,14 +450,13 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     /// <param name="minLegalMoveProbability"></param>
     /// <param name="pliesSinceLastPieceMoveBySquare"></param>
     /// <param name="targetSetIndex"></param>
-    /// <param name="emitMoves"></param>
     /// <exception cref="NotImplementedException"></exception>
     private unsafe void ProcessWrite(EncodedTrainingPosition[] positions,
                                      TrainingPositionWriterNonPolicyTargetInfo[] positionsTargets,
                                      CompressedPolicyVector?[] targetPolicyOverrides,
                                      float minLegalMoveProbability,
                                      byte[][] pliesSinceLastPieceMoveBySquare, int targetSetIndex, 
-                                     bool emitMoves, bool validate)
+                                     bool validate)
     {
       // Take a lock so that we insure we can't have two concurrent
       // postprocesses/writes to the same target set.
@@ -513,7 +512,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
         {
           // Convert to TPG.
           TPGRecord[] convertedToTPG = ConvertedTPGRecords(positions, EmitHistory, positionsTargets, targetPolicyOverrides, minLegalMoveProbability,
-                                                           pliesSinceLastPieceMoveBySquare, emitMoves, validate);
+                                                           pliesSinceLastPieceMoveBySquare, validate);
 
           if (BatchPostprocessorDelegate != null)
           {
