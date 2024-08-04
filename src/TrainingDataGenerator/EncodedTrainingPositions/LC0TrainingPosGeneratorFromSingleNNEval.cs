@@ -24,7 +24,6 @@ using Ceres.Chess.MoveGen;
 using Ceres.Chess.Positions;
 using Ceres.Chess.NetEvaluation.Batch;
 
-
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
@@ -36,17 +35,17 @@ namespace CeresTrain.TrainingDataGenerator
     // const int UNUSED2_VALUE_MARKER = 255;
 
     public readonly NNEvaluator Evaluator;
-    public readonly NNEvaluator EvaluatorSecondary;
+    public readonly NNEvaluator EvaluatorForUncertainty;
 
     /// <summary>
     /// Constructor.
     /// </summary>
     /// <param name="nnEvaluator"></param>
     /// <param name="nnEvaluatorSeconeary"></param>
-    public LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator nnEvaluator, NNEvaluator nnEvaluatorSecondary)
+    public LC0TrainingPosGeneratorFromSingleNNEval(NNEvaluator nnEvaluator, NNEvaluator nnEvaluatorForUncertinty)
     {
       Evaluator = nnEvaluator;
-      EvaluatorSecondary = nnEvaluatorSecondary;
+      EvaluatorForUncertainty = nnEvaluatorForUncertinty;
     }
 
 
@@ -57,13 +56,13 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="position"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>    
-    public EncodedTrainingPosition GenerateTrainingPosition(in EncodedTrainingPosition position, bool verbose = false)
+    public EncodedTrainingPosition GenTrainingPosition(in EncodedTrainingPosition position, bool verbose = false)
     {
       // Extract the position (with history) to be used as the basis for the reconstruction.
       PositionWithHistory thisPos = position.ToPositionWithHistory(8);
 
       // Regenerate 
-      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary, 
+      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorForUncertainty, 
                                                 position.Version, position.InputFormat, 
                                                 position.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
                                                 thisPos, false, verbose);
@@ -74,13 +73,15 @@ namespace CeresTrain.TrainingDataGenerator
     /// Generates the EncodedTrainingPosition corresponding to the position 
     /// after the given move is played from a starting EncodedTrainingPosition. 
     /// </summary>
-    /// <param name="position"></param>
+    /// <param name="startPos"></param>
+    /// <param name="moveToPlay"></param>
+    /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public EncodedTrainingPosition GenerateTrainingPositionAfterMove(in EncodedTrainingPosition startPos, 
-                                                                     MGMove moveToPlay, 
-                                                                     bool overrideResultToBeWin = false, 
-                                                                     bool verbose = false)
+    public EncodedTrainingPosition GenTrainingPositionAfterMove(in EncodedTrainingPosition startPos, 
+                                                                MGMove moveToPlay, 
+                                                                bool overrideResultToBeWin = false, 
+                                                                bool verbose = false)
     {
       // Get current position with history and the played move.
       PositionWithHistory currentPos = startPos.ToPositionWithHistory(8);
@@ -92,7 +93,7 @@ namespace CeresTrain.TrainingDataGenerator
       PositionWithHistory nextPosition = new PositionWithHistory(currentPos);
       nextPosition.AppendPosition(nextPos, moveToPlay);
       
-      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorSecondary,
+      return GenerateTrainingPositionFromNNEval(Evaluator, EvaluatorForUncertainty,
                                                 startPos.Version, startPos.InputFormat, 
                                                 startPos.PositionWithBoards.MiscInfo.InfoTraining.InvarianceInfo,
                                                 nextPosition, overrideResultToBeWin, verbose);
@@ -111,21 +112,22 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="overrideResultToBeWin"></param>
     /// <param name="verbose"></param>
     /// <returns></returns>
-    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, NNEvaluator evaluatorForKLD,
+    public static EncodedTrainingPosition GenerateTrainingPositionFromNNEval(NNEvaluator evaluator, 
+                                                                             NNEvaluator evaluatorForUncertainty,
                                                                              int version, int inputFormat, byte invarianceInfo, 
                                                                              PositionWithHistory searchPosition, 
                                                                              bool overrideResultToBeWin, bool verbose)
     {
       // Run neural net evaluation of this position (locking for concurrency control).
       NNEvaluatorResult evalResult;
-      NNEvaluatorResult evalResultKLD;
+      NNEvaluatorResult evalResultUncertainty;
       lock (evaluator)
       {
         evalResult = evaluator.Evaluate(searchPosition);
-        evalResultKLD = evaluatorForKLD == null ? default : evaluatorForKLD.Evaluate(searchPosition);
+        evalResultUncertainty = evaluatorForUncertainty == null ? default : evaluatorForUncertainty.Evaluate(searchPosition);
       }
 
-      return EncodedTrainingPositionExtractor.ExtractFromNNEvalResult(evalResult, evalResultKLD, version, inputFormat, invarianceInfo, searchPosition, overrideResultToBeWin, verbose);
+      return EncodedTrainingPositionExtractor.ExtractFromNNEvalResult(evalResult, evalResultUncertainty, version, inputFormat, invarianceInfo, searchPosition, overrideResultToBeWin, verbose);
     }
 
 
@@ -235,13 +237,13 @@ namespace CeresTrain.TrainingDataGenerator
     /// </summary>
     /// <param name="sourceTARFileName"></param>
     /// <param name="networkIDPrimary"></param>
-    /// <param name="networkForKLD"></param>
-    public static void TestRegenerateAllPositions(string sourceTARFileName, string networkIDPrimary, string networkForKLD = null)
+    /// <param name="networkForUncertainty"></param>
+    public static void TestRegenerateAllPositions(string sourceTARFileName, string networkIDPrimary, string networkForUncertainty = null)
     {
       NNEvaluator nnEvaluator = NNEvaluator.FromSpecification(networkIDPrimary, "GPU:0");
-      NNEvaluator nnEvaluatorForKLD = networkForKLD != null ? NNEvaluator.FromSpecification(networkForKLD, "GPU:0") : null;
+      NNEvaluator nnEvaluatorForUncertainty = networkForUncertainty != null ? NNEvaluator.FromSpecification(networkForUncertainty, "GPU:0") : null;
 
-      LC0TrainingPosGeneratorFromSingleNNEval generator = new (nnEvaluator, nnEvaluatorForKLD);
+      LC0TrainingPosGeneratorFromSingleNNEval generator = new (nnEvaluator, nnEvaluatorForUncertainty);
 
       foreach (Memory<EncodedTrainingPosition> game in new EncodedTrainingPositionReaderTAR(sourceTARFileName).EnumerateGames())
       {
@@ -259,8 +261,8 @@ namespace CeresTrain.TrainingDataGenerator
             }
 
             EncodedTrainingPosition generatedNextPos = GEN_NEXT ?
-                generator.GenerateTrainingPositionAfterMove(in game.Span[i], game.Span[i].PositionWithBoards.PlayedMove, FORCE_WON, false)
-              : generator.GenerateTrainingPosition(in game.Span[i], false);
+                generator.GenTrainingPositionAfterMove(in game.Span[i], game.Span[i].PositionWithBoards.PlayedMove, FORCE_WON, false)
+              : generator.GenTrainingPosition(in game.Span[i], false);
 
             if (i == game.Length - 1)
             {

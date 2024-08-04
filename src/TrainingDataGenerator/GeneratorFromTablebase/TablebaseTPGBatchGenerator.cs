@@ -204,7 +204,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       writer = new TrainingPositionWriter(outFileName, NumWorkerThreads, TPGGeneratorOptions.OutputRecordFormat.TPGRecord,
                                           true, System.IO.Compression.CompressionLevel.Optimal, TARGET_NUM_TPG(),
-                                          null, null, PostProcessor, BatchSize, false, EMIT_HISTORY);
+                                          null, null, PostProcessor, BatchSize, false, EMIT_HISTORY, true);
 
       ISyzygyEvaluatorEngine tbEvaluator = ISyzygyEvaluatorEngine.DefaultEngine;
       List<Task> tasksList = new List<Task>();
@@ -282,7 +282,7 @@ namespace CeresTrain.TrainingDataGenerator
 
         if (generated)
         {
-          writer.Write(in etp, targetInfo, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, indexInSet, true);
+          writer.Write(in etp, targetInfo, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, indexInSet);
           numWritten++;
         }
 

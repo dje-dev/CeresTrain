@@ -68,7 +68,7 @@ namespace CeresTrain.TrainingDataGenerator
       NNEvaluatorSet evaluators = new NNEvaluatorSet(def, false);
       NNEvaluator evaluator = evaluators.Evaluator1;
 
-      TrainingPositionWriter writer = new TrainingPositionWriter("test.tpg", 1, TPGGeneratorOptions.OutputRecordFormat.TPGRecord, true, System.IO.Compression.CompressionLevel.Optimal, TARGET_NUM_TPG, null, null, null, BATCH_SIZE, false);
+      TrainingPositionWriter writer = new TrainingPositionWriter("test.tpg", 1, TPGGeneratorOptions.OutputRecordFormat.TPGRecord, true, System.IO.Compression.CompressionLevel.Optimal, TARGET_NUM_TPG, null, null, null, BATCH_SIZE, false, true, true);
 
       const int NODES_PER_MOVE = 1_000;
       while (true)
@@ -99,7 +99,7 @@ namespace CeresTrain.TrainingDataGenerator
           target.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
 
           const int TPG_SET_INDEX = 0;
-          writer.Write(in etp, in target, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, TPG_SET_INDEX, true);
+          writer.Write(in etp, in target, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, TPG_SET_INDEX);
           writer.Shutdown();
 
           search.Manager.Dispose(); // TODO: push Dispose into MCTSearch?
