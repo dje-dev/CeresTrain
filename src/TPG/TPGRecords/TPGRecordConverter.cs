@@ -208,12 +208,16 @@ namespace CeresTrain.TPG
     /// Converts input positions defined as IEncodedPositionFlat 
     /// into raw square and move bytes used by the TPGRecord.
     /// </summary>
-    /// <param name="positions"></param>
+    /// <param name="positions">underlying batch of positions</param>
+    /// <param name="includeHistory">if history planes should be filled in if necessary</param>
+    /// <param name="moves">list of legal moves for each position</param>
     /// <param name="lastMovePliesEnabled"></param>
-    /// <param name="emitMoves"></param>
-    /// <param name="mgPos"></param>
-    /// <param name="squareBytesAll"></param>
-    /// <param name="moveBytesAll"></param>
+    /// <param name="qNegativeBlunders">value for expected forward downside blunder to inject</param>
+    /// <param name="qPositiveBlunders">value for expected forward upside blunder to inject</param>
+    /// <param name="mgPos">current position</param>
+    /// <param name="squareBytesAll">byte array to receive converted encoded positions in TPGSquareRecord format</param>
+    /// <param name="legalMoveIndices">optional array to recieve indices of legal moves in position</param>
+    /// <exception cref="Exception"></exception>
     public static void ConvertPositionsToRawSquareBytes(IEncodedPositionBatchFlat positions,
                                                         bool includeHistory,
                                                         Memory<MGMoveList> moves,
@@ -236,8 +240,11 @@ namespace CeresTrain.TPG
       }
 #endif
 
-      // Reset legalMoveIndices back to 0.
-      Array.Clear(legalMoveIndices, 0, positions.NumPos * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
+      if (legalMoveIndices != null)
+      {
+        // Reset legalMoveIndices back to 0.
+        Array.Clear(legalMoveIndices, 0, positions.NumPos * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST);
+      }
 
       // Get all positions from input batch.
       // TODO: Improve efficiency, these array materializations are expensive.
@@ -332,7 +339,7 @@ namespace CeresTrain.TPG
       });
 
 #if DEBUG
-      if (verifyMoveIndices)
+      if (verifyMoveIndices && legalMoveIndices != null)
       {
         DebugVerifyCorrectLegalMoveIndices(positions, legalMoveIndices, legalMoveIndicesAlternate);
       }
