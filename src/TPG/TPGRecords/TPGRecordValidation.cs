@@ -168,14 +168,14 @@ namespace CeresTrain.TPG
         MGMove mgMove = ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(em, pos.ToMGPosition);
         if (!legalMoves.MoveExists(mgMove))
         {
+#if NOT
           if (errorCount++ < 3) // avoid opening too many browser windows
           {
             tpgRecord.DumpPositionWithHistoryInBrowser();
           }
           else
-          {
-            tpgRecord.Dump();
-          }
+#endif
+          tpgRecord.Dump();
           Console.WriteLine("Illegal move found in converted training data " + pos.FEN + " " + em + " " + mgMove + " " + desc);
         }
       }

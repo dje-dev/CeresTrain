@@ -19,17 +19,16 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
-using Ceres.Base.DataTypes;
 using Ceres.Base.Math;
-using Ceres.Base.Misc;
+using Ceres.Base.DataTypes;
 using Ceres.Base.DataType;
+
 using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.MoveGen;
 using Ceres.Chess.Positions;
-using Ceres.Features.Visualization.AnalysisGraph;
 using Ceres.Chess.LC0.Boards;
 
 #endregion
@@ -302,6 +301,8 @@ namespace CeresTrain.TPG
       }
     }
 
+#if NOT
+    This is functional but has a dependency not currently satisfied (GraphvizUtils).
 
     /// <summary>
     /// Dumps information about TPGRecord (including history and moves between boards)
@@ -331,7 +332,7 @@ namespace CeresTrain.TPG
                                                         );
       StringUtils.LaunchBrowserWithURL(fn);
     }
-
+#endif
 
     /// <summary>
     /// Returns the current Position corresponding to to this TPGRecord.
