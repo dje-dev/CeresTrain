@@ -64,7 +64,7 @@ namespace CeresTrain.TrainingDataGenerator
 
 
       // TODO: make search easier to do !
-      NNEvaluatorDef def = new NNEvaluatorDef(NNEvaluatorType.LC0Library, RegisteredNets.Aliased["T75"].NetSpecificationString, deviceIndex: 0);
+      NNEvaluatorDef def = new NNEvaluatorDef(NNEvaluatorType.LC0, RegisteredNets.Aliased["T75"].NetSpecificationString, deviceIndex: 0);
       NNEvaluatorSet evaluators = new NNEvaluatorSet(def, false);
       NNEvaluator evaluator = evaluators.Evaluator1;
 
