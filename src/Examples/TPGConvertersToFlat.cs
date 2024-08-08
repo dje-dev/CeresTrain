@@ -25,6 +25,7 @@ using Ceres.Chess.LC0.Batches;
 
 using CeresTrain.TPG;
 using CeresTrain.NNEvaluators;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion 
 

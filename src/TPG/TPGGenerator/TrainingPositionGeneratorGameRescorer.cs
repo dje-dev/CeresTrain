@@ -18,23 +18,22 @@ using System.Diagnostics;
 
 using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators.LC0DLL;
-
 using CeresTrain.TrainingDataGenerator;
-using Microsoft.Extensions.Options;
 
 #endregion
 
 namespace CeresTrain.TPG.TPGGenerator
 {
-  /// <summary>
-  /// Implements logic to rescore a complete training game, including:
-  ///   - rewrite positions with tablebase exact values
-  ///   - fixup deliberate (noise) blunders injected in games so do not contaminate prior move evaluations
-  ///   - fixup unintended major blunders in play so do not contaminate prior move evaluations
-  ///   - calculate certain extra optional training targets (such as measures of uncertainty).
-  /// </summary>
-  public class TrainingPositionGeneratorGameRescorer
+    /// <summary>
+    /// Implements logic to rescore a complete training game, including:
+    ///   - rewrite positions with tablebase exact values
+    ///   - fixup deliberate (noise) blunders injected in games so do not contaminate prior move evaluations
+    ///   - fixup unintended major blunders in play so do not contaminate prior move evaluations
+    ///   - calculate certain extra optional training targets (such as measures of uncertainty).
+    /// </summary>
+    public class TrainingPositionGeneratorGameRescorer
   {
     // Blunders due to injected noise can be definitively identified.
     // Ignore noise blunders only if very small in magnitude.
@@ -55,7 +54,7 @@ namespace CeresTrain.TPG.TPGGenerator
     int numPosThisGame;
 
     public (float w, float d, float l)[] newResultWDL = new (float, float, float)[MAX_PLY];
-    public TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo[] targetSourceInfo = new TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo[MAX_PLY];
+    public TPGTrainingTargetNonPolicyInfo.TargetSourceInfo[] targetSourceInfo = new TPGTrainingTargetNonPolicyInfo.TargetSourceInfo[MAX_PLY];
     public bool[] REJECT_POSITION_DUE_TO_POSITION_FOCUS = new bool[MAX_PLY];
     public float[] suboptimalityNoiseBlunder = new float[MAX_PLY];
     public float[] suboptimalityUnintended = new float[MAX_PLY];
@@ -187,7 +186,7 @@ namespace CeresTrain.TPG.TPGGenerator
       int i = numPosThisGame - 1;
       do
       {
-        targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+        targetSourceInfo[i] = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Training;
 
         ref readonly EncodedPositionWithHistory thisTrainingPos = ref positionsSpan[i];
         EncodedPositionEvalMiscInfoV6 thisInfoTraining = thisGame.PositionTrainingInfoAtIndex(i);
@@ -227,7 +226,7 @@ namespace CeresTrain.TPG.TPGGenerator
             throw new NotImplementedException("Unexpected tablebase value");
           }
 
-          targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Tablebase;
+          targetSourceInfo[i] = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Tablebase;
         }
 
         // If this was a blunder (either due to noise or unintentional very bad mistake move)
@@ -245,13 +244,13 @@ namespace CeresTrain.TPG.TPGGenerator
           {
             numNoiseBlunders++;
             currentTrainWDL = thisInfoTraining.BestWDL;
-            targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.NoiseDeblunder;
+            targetSourceInfo[i] = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.NoiseDeblunder;
           }
           else if (suboptimalityUnintended[i] > SUBOPTIMAL_UNINTENDED_BLUNDER_THRESHOLD)
           {
             numUnintendedBlunders++;
             currentTrainWDL = thisInfoTraining.BestWDL;
-            targetSourceInfo[i] = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.UnintendedDeblunder;
+            targetSourceInfo[i] = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.UnintendedDeblunder;
             // SHOULD_REJECT_POSITION[i] = true;
           }
         }
@@ -268,8 +267,8 @@ namespace CeresTrain.TPG.TPGGenerator
         while (numForward < NUM_PLY_LOOKFORWARD
            && i + numForward < numPosThisGame - 1
            // stop searching if saw blunder
-           && targetSourceInfo[i + numForward] != TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.UnintendedDeblunder
-           && targetSourceInfo[i + numForward] != TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.NoiseDeblunder)
+           && targetSourceInfo[i + numForward] != TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.UnintendedDeblunder
+           && targetSourceInfo[i + numForward] != TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.NoiseDeblunder)
         {
           numForward++;
         }

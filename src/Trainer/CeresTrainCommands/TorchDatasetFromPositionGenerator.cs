@@ -27,6 +27,7 @@ using CeresTrain.PositionGenerators;
 using CeresTrain.TPG;
 using CeresTrain.TPGDatasets;
 using CeresTrain.TrainingDataGenerator;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 

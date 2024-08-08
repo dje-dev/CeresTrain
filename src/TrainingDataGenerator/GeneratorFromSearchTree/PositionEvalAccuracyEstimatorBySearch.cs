@@ -35,6 +35,7 @@ using Ceres.MCTS.MTCSNodes;
 using CeresTrain.TPG;
 using Ceres.Features.GameEngines;
 using Ceres.Chess.MoveGen.Converters;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 

@@ -14,7 +14,7 @@
 #region Using directives
 
 using System.Collections.Concurrent;
-
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using CeresTrain.TPG;
 
 #endregion

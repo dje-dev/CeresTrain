@@ -30,6 +30,7 @@ using Ceres.Chess;
 using Ceres.Chess.Positions;
 using Ceres.Chess.EncodedPositions;
 using CeresTrain.TPG;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 

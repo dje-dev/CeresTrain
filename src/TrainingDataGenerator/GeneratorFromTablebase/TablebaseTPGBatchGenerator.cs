@@ -25,27 +25,27 @@ using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators.LC0DLL;
 
-using CeresTrain.TPG;
 using CeresTrain.TPG.TPGGenerator;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
 {
-  /// <summary>
-  /// An ITPGBatchGenerator which produces batches of TPG records
-  /// where the Positions are derived a specified generator, and the
-  /// training targets (value, policy, etc.) are taken from tablebases.
-  /// 
-  /// Tablebase server for lichess.org, based on shakmaty-syzygy
-  /// (including CURL interface and including mainline calculations).
-  ///   https://github.com/lichess-org/lila-tablebase 
-  ///   https://github.com/lichess-org/lila-tablebase/blob/develop/src/main.rs#L465 [mainline]
-  ///   curl http://tablebase.lichess.ovh/standard/mainline?fen=8/5P2/K7/1p6/6P1/p7/8/2k5_w_-_-_0_0
-  /// Online interactive lookup position in TB:
-  ///   https://syzygy-tables.info/?fen=8/3P4/4P2p/8/5K2/7p/3k4/8_w_-_-_0_1
-  /// </summary>
-  public class TablebaseTPGBatchGenerator : ITPGBatchGenerator
+    /// <summary>
+    /// An ITPGBatchGenerator which produces batches of TPG records
+    /// where the Positions are derived a specified generator, and the
+    /// training targets (value, policy, etc.) are taken from tablebases.
+    /// 
+    /// Tablebase server for lichess.org, based on shakmaty-syzygy
+    /// (including CURL interface and including mainline calculations).
+    ///   https://github.com/lichess-org/lila-tablebase 
+    ///   https://github.com/lichess-org/lila-tablebase/blob/develop/src/main.rs#L465 [mainline]
+    ///   curl http://tablebase.lichess.ovh/standard/mainline?fen=8/5P2/K7/1p6/6P1/p7/8/2k5_w_-_-_0_0
+    /// Online interactive lookup position in TB:
+    ///   https://syzygy-tables.info/?fen=8/3P4/4P2p/8/5K2/7p/3k4/8_w_-_-_0_1
+    /// </summary>
+    public class TablebaseTPGBatchGenerator : ITPGBatchGenerator
   {
     /// <summary>
     /// Description of type of positions generated.
@@ -278,7 +278,7 @@ namespace CeresTrain.TrainingDataGenerator
 
         bool generated = TrainingRecordFromTablebase.GenerateTrainingRecordFromTablebase(in pos, tbEvaluator, succeedIfIncompleteDTZData,
                                                                                          out EncodedTrainingPosition etp,
-                                                                                         out TrainingPositionWriterNonPolicyTargetInfo targetInfo);
+                                                                                         out TPGTrainingTargetNonPolicyInfo targetInfo);
 
         if (generated)
         {

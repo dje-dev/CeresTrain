@@ -32,20 +32,21 @@ using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.NetEvaluation.Batch;
 using Ceres.Chess.NNEvaluators;
 using System.Threading.Tasks;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
 namespace CeresTrain.TPG.TPGGenerator
 {
-  /// <summary>
-  /// Manages writing of training positions to files,
-  /// supporting concurrent writers and splitting across multiple files in a set
-  /// (to enhance speed and shuffling of data).
-  /// 
-  /// Two output formats are supported, either LC0 v6 training positions
-  /// or TPGRecords (Ceres format containing position in a format directly consumed by Ceres neural networks).
-  /// </summary>
-  internal class TrainingPositionWriter
+    /// <summary>
+    /// Manages writing of training positions to files,
+    /// supporting concurrent writers and splitting across multiple files in a set
+    /// (to enhance speed and shuffling of data).
+    /// 
+    /// Two output formats are supported, either LC0 v6 training positions
+    /// or TPGRecords (Ceres format containing position in a format directly consumed by Ceres neural networks).
+    /// </summary>
+    internal class TrainingPositionWriter
   {
     /// <summary>
     /// The size of the batches which are assembled before
@@ -80,7 +81,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     byte[][][] bufferPliesSinceLastPieceMoveBySquare;
 
-    public TrainingPositionWriterNonPolicyTargetInfo[][] buffersTargets;
+    public TPGTrainingTargetNonPolicyInfo[][] buffersTargets;
     CompressedPolicyVector?[][] buffersOverridePolicies;
 
     Stream[] outStreams;
@@ -146,7 +147,7 @@ namespace CeresTrain.TPG.TPGGenerator
       ValidateBeforeWrite = validateBeforeWrite;
       outStreams = outputFileNameBase == null ? null : new Stream[numSets];
       buffers = new EncodedTrainingPosition[numSets][];
-      buffersTargets = new TrainingPositionWriterNonPolicyTargetInfo[numSets][];
+      buffersTargets = new TPGTrainingTargetNonPolicyInfo[numSets][];
       buffersOverridePolicies = new CompressedPolicyVector?[numSets][];
       numRecordsWritten = new int[numSets];
       bufferPliesSinceLastPieceMoveBySquare = new byte[numSets][][];
@@ -158,7 +159,7 @@ namespace CeresTrain.TPG.TPGGenerator
         // Allocate buffers for this set.
         writingBuffersLocks[i] = new object();
         buffers[i] = new EncodedTrainingPosition[BUFFER_SIZE];
-        buffersTargets[i] = new TrainingPositionWriterNonPolicyTargetInfo[BUFFER_SIZE];
+        buffersTargets[i] = new TPGTrainingTargetNonPolicyInfo[BUFFER_SIZE];
         buffersOverridePolicies[i] = new CompressedPolicyVector?[BUFFER_SIZE];
 
         if (emitPlySinceLastMovePerSquare)
@@ -187,7 +188,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
 
     public void Write(int targetSetIndex, float minLegalMoveProbability, 
-                      params (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, 
+                      params (EncodedTrainingPosition record, TPGTrainingTargetNonPolicyInfo targetInfo, 
                       int indexMoveInGame, short[] indexLastMoveBySquares)[] items)
     {
       // Take the lock on the buffer associated with this target set
@@ -212,7 +213,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// <param name="minLegalMoveProbability"></param>
     /// <param name="targetSetIndex"></param>
     /// <param name="emitMoves"></param>
-    public void Write(in EncodedTrainingPosition record, in TrainingPositionWriterNonPolicyTargetInfo targetInfo,
+    public void Write(in EncodedTrainingPosition record, in TPGTrainingTargetNonPolicyInfo targetInfo,
                       int indexMoveInGame, short[] indexLastMoveBySquares, float minLegalMoveProbability,
                       int targetSetIndex)
     {
@@ -294,7 +295,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     void Postprocessor(EncodedTrainingPosition[] positions,
                       int startIndexNonNNResult,
                       Memory<NNEvaluatorResult> results,
-                      TrainingPositionWriterNonPolicyTargetInfo[] nonPolicyTarget,
+                      TPGTrainingTargetNonPolicyInfo[] nonPolicyTarget,
                       CompressedPolicyVector?[] overridePolicyTarget,
                       HashSet<int> indicesPositionsToOmit)
     {
@@ -409,7 +410,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     /// <returns></returns>
     unsafe TPGRecord[] ConvertedTPGRecords(EncodedTrainingPosition[] positions,
                                            bool includeHistory,
-                                           TrainingPositionWriterNonPolicyTargetInfo[] targetInfos,
+                                           TPGTrainingTargetNonPolicyInfo[] targetInfos,
                                            CompressedPolicyVector?[] targetPolicyOverrides,
                                            float minLegalMoveProbability,
                                            byte[][] pliesSinceLastPieceMoveBySquare,
@@ -455,7 +456,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
     /// <param name="targetSetIndex"></param>
     /// <exception cref="NotImplementedException"></exception>
     private unsafe void ProcessWrite(EncodedTrainingPosition[] positions,
-                                     TrainingPositionWriterNonPolicyTargetInfo[] positionsTargets,
+                                     TPGTrainingTargetNonPolicyInfo[] positionsTargets,
                                      CompressedPolicyVector?[] targetPolicyOverrides,
                                      float minLegalMoveProbability,
                                      byte[][] pliesSinceLastPieceMoveBySquare, int targetSetIndex)

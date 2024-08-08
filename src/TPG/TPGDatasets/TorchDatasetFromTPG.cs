@@ -13,6 +13,7 @@
 
 #region Using directives
 
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using CeresTrain.TPG;
 using System.Collections.Generic;
 

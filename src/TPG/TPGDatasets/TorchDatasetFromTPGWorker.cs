@@ -25,6 +25,7 @@ using static TorchSharp.torch.utils.data;
 using CeresTrain.TPG;
 using System.Threading;
 using System.Diagnostics;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion

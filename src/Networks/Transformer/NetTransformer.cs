@@ -34,6 +34,7 @@ using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.TPG;
 using CeresTrain.Trainer;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion

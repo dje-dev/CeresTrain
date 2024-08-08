@@ -28,17 +28,18 @@ using CeresTrain.TPG;
 using CeresTrain.TPG.TPGGenerator;
 using Ceres.Chess.Data.Nets;
 using System;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
 {
 
-  /// <summary>
-  /// Extracts training position from training data file,
-  /// conducts search, and writes out resulting root position as training data record.
-  /// </summary>
-  public class GenerateTrainingRecordFromSearch
+    /// <summary>
+    /// Extracts training position from training data file,
+    /// conducts search, and writes out resulting root position as training data record.
+    /// </summary>
+    public class GenerateTrainingRecordFromSearch
   {
     const int VERSION = 6;
     const int INPUT_FORMAT = 1;
@@ -84,7 +85,7 @@ namespace CeresTrain.TrainingDataGenerator
             search.Manager.Context.Tree, search.SearchRootNode, VERSION, INPUT_FORMAT, INVARIANCE_INFO);
           EncodedPositionEvalMiscInfoV6 infoTraining = etp.PositionWithBoards.MiscInfo.InfoTraining;
 
-          TrainingPositionWriterNonPolicyTargetInfo target = new();
+          TPGTrainingTargetNonPolicyInfo target = new();
           target.ResultDeblunderedWDL = infoTraining.ResultWDL;
           target.ResultNonDeblunderedWDL = infoTraining.ResultWDL;
           target.BestWDL = infoTraining.BestWDL;
@@ -96,7 +97,7 @@ namespace CeresTrain.TrainingDataGenerator
 
           target.DeltaQVersusV = infoTraining.Uncertainty;
           target.DeltaQForwardAbs = default;
-          target.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+          target.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Training;
 
           const int TPG_SET_INDEX = 0;
           writer.Write(in etp, in target, 0, null, CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE, TPG_SET_INDEX);

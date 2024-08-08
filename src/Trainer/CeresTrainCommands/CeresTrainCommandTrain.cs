@@ -47,6 +47,7 @@ using CeresTrain.Networks.SoftMoE;
 using System.Threading;
 using BenchmarkDotNet.Configs;
 using CeresTrain.TrainCommands;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 

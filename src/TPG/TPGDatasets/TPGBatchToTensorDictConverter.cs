@@ -28,6 +28,7 @@ using CeresTrain.Utils;
 using System.Linq;
 using Ceres.Chess.EncodedPositions;
 using Ceres.Base.Math;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion

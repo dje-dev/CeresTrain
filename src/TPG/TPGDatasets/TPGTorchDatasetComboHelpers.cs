@@ -30,6 +30,7 @@ using CeresTrain.TPG;
 using CeresTrain.Trainer;
 using CeresTrain.TPG.TPGGenerator;
 using CeresTrain.UserSettings;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion

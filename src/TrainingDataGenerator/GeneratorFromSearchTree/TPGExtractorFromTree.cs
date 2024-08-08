@@ -19,18 +19,16 @@ using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
 using Ceres.MCTS.MTCSNodes;
 using Ceres.MCTS.LeafExpansion;
-
-using CeresTrain.TPG;
-using CeresTrain.TPG.TPGGenerator;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
 {
-  /// <summary>
-  /// Helper methods which extract training data from a training search tree.
-  /// </summary>
-  public static class TPGExtractorFromTree
+    /// <summary>
+    /// Helper methods which extract training data from a training search tree.
+    /// </summary>
+    public static class TPGExtractorFromTree
   {
     /// <summary>
     /// Extracts a TPGRecord (suitable as a training target) from specified node in specified search tree.
@@ -50,7 +48,7 @@ namespace CeresTrain.TrainingDataGenerator
       (float w, float d, float l, float m, float unc, CompressedPolicyVector policy) targets;
       targets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(tree, node);
 
-      TrainingPositionWriterNonPolicyTargetInfo targetInfo = default;
+      TPGTrainingTargetNonPolicyInfo targetInfo = default;
       (float w, float d, float l) wdl = (targets.w, targets.d, targets.l);
       targetInfo.ResultDeblunderedWDL = wdl;
       targetInfo.ResultNonDeblunderedWDL = wdl;
@@ -64,7 +62,7 @@ namespace CeresTrain.TrainingDataGenerator
       targetInfo.ForwardMinQDeviation = 0;
 
       targetInfo.DeltaQForwardAbs = float.NaN;// gameAnalyzer.deltaQIntermediateBestWDL[i];
-      targetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+      targetInfo.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Training;
 
       // Construct TPG record from the above
       TPGRecord tpgRecord = default;

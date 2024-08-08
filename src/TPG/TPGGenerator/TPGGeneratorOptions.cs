@@ -19,6 +19,7 @@ using System.IO;
 using System.IO.Compression;
 using Ceres.Chess;
 using Ceres.Chess.EncodedPositions;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators;
 
 #endregion

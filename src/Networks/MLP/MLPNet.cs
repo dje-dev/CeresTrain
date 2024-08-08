@@ -22,6 +22,7 @@ using static TorchSharp.torch.nn;
 using CeresTrain.Trainer;
 using Ceres.Base.DataTypes;
 using CeresTrain.TPG;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 

@@ -35,19 +35,20 @@ using System.Diagnostics;
 using Ceres.Base.Math;
 using CeresTrain.TrainingDataGenerator;
 using Ceres.Chess.NNEvaluators;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion
 
 namespace CeresTrain.TPG.TPGGenerator
 {
-  /// <summary>
-  /// Generates TPG files containing postprocessed training positions
-  /// (which have been deblundered, rescored, shuffled, converted to TPG, etc.)
-  /// 
-  /// NOTE: For deblunder, see https://github.com/LeelaChessZero/lc0/issues/1308.
-  /// </summary>
-  public class TrainingPositionGenerator
+    /// <summary>
+    /// Generates TPG files containing postprocessed training positions
+    /// (which have been deblundered, rescored, shuffled, converted to TPG, etc.)
+    /// 
+    /// NOTE: For deblunder, see https://github.com/LeelaChessZero/lc0/issues/1308.
+    /// </summary>
+    public class TrainingPositionGenerator
   {
     /// <summary>
     /// Optionally a postprocesssor delegate can be specified
@@ -62,7 +63,7 @@ namespace CeresTrain.TPG.TPGGenerator
     public delegate bool PositionPostprocessor(in Position position,
                                                NNEvaluatorResult nnEvalResult,
                                            ref EncodedTrainingPosition trainingPosition,
-                                           ref TrainingPositionWriterNonPolicyTargetInfo nonPolicyTarget,
+                                           ref TPGTrainingTargetNonPolicyInfo nonPolicyTarget,
                                            ref CompressedPolicyVector? overridePolicyTarget);
 
 
@@ -519,7 +520,7 @@ const bool TEST = false;
                     EncodedTrainingPosition randomPos = posFromEvalGenerator.GenTrainingPositionAfterMove(in priorTrainingPos, randomMoveMG, verbose: VERBOSE_GEN_SECOND_POS);
 
 
-                    TrainingPositionWriterNonPolicyTargetInfo randomTargetInfo = new();
+                    TPGTrainingTargetNonPolicyInfo randomTargetInfo = new();
                     EncodedPositionEvalMiscInfoV6 randomInfoTraining = randomPos.PositionWithBoards.MiscInfo.InfoTraining;
                     randomTargetInfo.ResultNonDeblunderedWDL = randomInfoTraining.ResultWDL; // ???
                     randomTargetInfo.ResultDeblunderedWDL = default; // ??? gameAnalyzer.newResultWDL[i];
@@ -538,7 +539,7 @@ const bool TEST = false;
                     randomTargetInfo.PolicyIndexInParent = (short)policyMoves[randomMoveDrawIndex].IndexNeuralNet;
 
                     randomTargetInfo.DeltaQForwardAbs = 0;
-                    randomTargetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Training;
+                    randomTargetInfo.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Training;
 
                     randomTargetInfo.ForwardSumPositiveBlunders = 0;
                     randomTargetInfo.ForwardSumNegativeBlunders = 0;
@@ -577,7 +578,7 @@ const bool TEST = false;
                     } 
 
                     // Construct tuple of information to be passed to the Write method.
-                    (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares) pos2Tuple = default;
+                    (EncodedTrainingPosition record, TPGTrainingTargetNonPolicyInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares) pos2Tuple = default;
                     pos2Tuple.targetInfo = randomTargetInfo;
                     pos2Tuple.record = randomPos;
                     pos2Tuple.indexMoveInGame = pendingItem.indexMoveInGame;
@@ -609,12 +610,12 @@ const bool TEST = false;
               MGPosition startMGPos = game.PositionAtIndex(i).FinalPosition.ToMGPosition;
 
               // Helper method which creates new training data for position after specified move.
-              (EncodedTrainingPosition, TrainingPositionWriterNonPolicyTargetInfo, int, short[])
+              (EncodedTrainingPosition, TPGTrainingTargetNonPolicyInfo, int, short[])
                 MakeForDrawIndex(EncodedMove encodedMove)
               {
                 //                short moveIndex = policyMoves[drawIndex].IndexNeuralNet;
                 MGMove move3 = ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(encodedMove, in startMGPos);
-                TrainingPositionWriterNonPolicyTargetInfo target3 = default;
+                TPGTrainingTargetNonPolicyInfo target3 = default;
                 target3.PolicyIndexInParent = (short)ConverterMGMoveEncodedMove.MGChessMoveToEncodedMove(move3).IndexNeuralNet;
 
                 // When evaluating this board, use the same blunder statistics as the first board saw (not zeros!).
@@ -625,7 +626,7 @@ const bool TEST = false;
                 return (pos3, target3, -1, null);
               }
 
-              (EncodedTrainingPosition, TrainingPositionWriterNonPolicyTargetInfo, int, short[]) item4;
+              (EncodedTrainingPosition, TPGTrainingTargetNonPolicyInfo, int, short[]) item4;
               if (policyLen == 1)
               {
                 // Only one move choice, must use this a second time.
@@ -735,7 +736,7 @@ const bool TEST = false;
     }
 
 
-    private (EncodedTrainingPosition record, TrainingPositionWriterNonPolicyTargetInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares)
+    private (EncodedTrainingPosition record, TPGTrainingTargetNonPolicyInfo targetInfo, int indexMoveInGame, short[] indexLastMoveBySquares)
       PreparePosition(string fn, in EncodedTrainingPositionGame game, int i)
     {
       // Extract the position from the raw data.
@@ -765,7 +766,7 @@ const bool TEST = false;
             }
 #endif
 
-      TrainingPositionWriterNonPolicyTargetInfo target = new();
+      TPGTrainingTargetNonPolicyInfo target = new();
       EncodedPositionEvalMiscInfoV6 infoTraining = game.PositionTrainingInfoAtIndex(i);
       target.ResultNonDeblunderedWDL = infoTraining.ResultWDL;
       target.ResultDeblunderedWDL = gameAnalyzer.newResultWDL[i];
@@ -803,7 +804,7 @@ const bool TEST = false;
       target.ForwardMinQDeviation = gameAnalyzer.forwardMinQDeviation[i];
       target.ForwardMaxQDeviation = gameAnalyzer.forwardMaxQDeviation[i];
 
-      TrainingPositionWriterNonPolicyTargetInfo targetInfo = target;
+      TPGTrainingTargetNonPolicyInfo targetInfo = target;
 
       // TODO: avoid calling PositionAdIndex here
       EncodedTrainingPosition saveTrainingPos = new EncodedTrainingPosition(game.Version, game.InputFormat,

@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 
 using Zstandard.Net;
 using Ceres.Base.DataType;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
 #endregion

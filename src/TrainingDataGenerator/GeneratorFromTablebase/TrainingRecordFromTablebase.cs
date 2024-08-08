@@ -25,19 +25,18 @@ using Ceres.Chess.MoveGen;
 using Ceres.Chess.NNEvaluators.LC0DLL;
 using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.MoveGen.Converters;
-
-using CeresTrain.TPG.TPGGenerator;
 using Ceres.Base.Math;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
 {
-  /// <summary>
-  /// Converts a Position (which can be scored by tablebases) into a training record,
-  /// filling in value and policy with reasonable training targets.
-  /// </summary>
-  public static class TrainingRecordFromTablebase
+    /// <summary>
+    /// Converts a Position (which can be scored by tablebases) into a training record,
+    /// filling in value and policy with reasonable training targets.
+    /// </summary>
+    public static class TrainingRecordFromTablebase
   {
     const int LC0_DATA_VERSION = 6;
     const int LC0_INPUT_FORMAT = 1;
@@ -56,7 +55,7 @@ namespace CeresTrain.TrainingDataGenerator
                                                            ISyzygyEvaluatorEngine tbEvaluator,
                                                            bool succeedIfIncompleteDTZ,
                                                            out EncodedTrainingPosition etp,
-                                                           out TrainingPositionWriterNonPolicyTargetInfo targetInfo)
+                                                           out TPGTrainingTargetNonPolicyInfo targetInfo)
     {
       tbEvaluator.ProbeWDL(in pos, out SyzygyWDLScore score, out SyzygyProbeState tbResult);
       if (tbResult == SyzygyProbeState.Fail)
@@ -86,7 +85,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       targetInfo = default;
       targetInfo.BestWDL = (q == 1 ? 1 : 0, q == 0 ? 1 : 0, q == -1 ? 1 : 0);
-      targetInfo.Source = TrainingPositionWriterNonPolicyTargetInfo.TargetSourceInfo.Tablebase;
+      targetInfo.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Tablebase;
       targetInfo.ResultDeblunderedWDL = targetInfo.BestWDL;
       targetInfo.ResultNonDeblunderedWDL = targetInfo.BestWDL;
       return true;
