@@ -52,6 +52,7 @@ using CeresTrain.UserSettings;
 using Ceres.Chess.UserSettings;
 using System.Numerics.Tensors;
 using System.Runtime.Intrinsics.Arm;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion 
 
@@ -798,8 +799,8 @@ namespace CeresTrain.Examples
                               : onnxFN;
           NNEvaluatorOptionsCeres captureOptions = (NNEvaluatorOptionsCeres)(customEvaluatorIndex == 1 ? NNEvaluatorFactory.Custom1Options
                                                                                                                  : NNEvaluatorFactory.Custom2Options);
-          NNEvaluatorEngineONNX onnxEngine = new (netID, useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
-                                                  ONNXRuntimeExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
+          NNEvaluatorONNX onnxEngine = new (netID, useONNXFN, null, NNDeviceType.GPU, gpuID, USE_TRT,
+                                                  ONNXNetExecutor.NetTypeEnum.TPG, NNEvaluatorTorchsharp.MAX_BATCH_SIZE,
                                                    PRECISION, true, true, HAS_UNCERTAINTY_V, HAS_UNCERTAINTY_P, HAS_ACTION, "policy", "value", "mlh", "unc", true,
                                                    ENABLE_PROFILING, false, useHistory, captureOptions,
                                                   true, USE_STATE);
