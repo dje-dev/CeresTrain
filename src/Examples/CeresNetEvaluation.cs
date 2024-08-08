@@ -53,6 +53,7 @@ using Ceres.Chess.UserSettings;
 using System.Numerics.Tensors;
 using System.Runtime.Intrinsics.Arm;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using Ceres.Chess.NNEvaluators.Ceres;
 
 #endregion 
 

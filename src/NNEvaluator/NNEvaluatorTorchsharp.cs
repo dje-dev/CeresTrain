@@ -33,6 +33,7 @@ using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
 using Ceres.Base.Misc;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using Ceres.Chess.NNEvaluators.Ceres;
 
 #endregion
 

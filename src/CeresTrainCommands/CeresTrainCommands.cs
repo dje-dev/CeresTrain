@@ -30,6 +30,7 @@ using CeresTrain.Trainer;
 using CeresTrain.Examples;
 using CeresTrain.UserSettings;
 using CeresTrain.NNEvaluators;
+using Ceres.Chess.NNEvaluators.Ceres;
 
 #endregion
 

@@ -24,6 +24,7 @@ using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.UserSettings;
 using CeresTrain.NNEvaluators;
+using Ceres.Chess.NNEvaluators.Ceres;
 
 #endregion 
 
