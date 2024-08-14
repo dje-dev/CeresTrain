@@ -22,7 +22,7 @@ namespace CeresTrain.TPG.TPGGenerator
 {
   /// <summary>
   /// Struct which encapsulates the logic for determining if a given training position
-  /// will be accepted into a TPG data file, based on various critieria.
+  /// will be accepted into a TPG data file, based on various criteria.
   /// The objectives include:
   ///   - filtering out some of the noisiest positions (where subsequent blunders were extremely large or imbalanced)
   ///   - reducing frequency of positions which are obviously won or drawn in endgame
@@ -32,7 +32,7 @@ namespace CeresTrain.TPG.TPGGenerator
   /// more informative positions on average, care is taken to limit the magnitude of the changes.
   /// 
   /// The concern is that modifying the distribution could induce biases in evaluations, and that some of these
-  /// seeingly uninformative positions are actually informative.
+  /// seemingly uninformative positions are actually informative.
   /// 
   /// For example, some endgames might have been recognized by the value head and policy heads of 
   /// the fully trained large network used to generate the training data, but are not obvious early in training.
@@ -42,27 +42,17 @@ namespace CeresTrain.TPG.TPGGenerator
   /// </summary>
   public struct TrainingPositionFocusCalculator
   {
-
     // Two coefficients relating to rejecting excessively noisy training data points.
     public const float THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE = 0.20f; // Reject position if any single forward blunder exceeds this value
     public const float THERSHOLD_REJECT_BLUNDER_IMBALANCE = 0.40f; // Reject position if forward blunder imbalance exceeds this value
 
     // Two coefficients relating to favoring positions based on value difference.
     public const float VALUE_DIFF_SLOPE = 1.0f; // slope of probability of accepting position based on value difference
-                                                // (e.g. 0.2 head vs. search difference -> 0.6 extra probability likelyhood)
+                                                // (e.g. 0.2 head vs. search difference -> 0.6 extra probability likelihood)
+
+    const float PROBABILITY_ACCEPT_BASE = 0.30f; // starting minimum probability of accepting any position
 
     const int THRESHOLD_EARLY_GAME_PLY = 40;
-    const float EARLY_GAME_BONUS = 0.10f;
-
-    const float THRESHOLD_BONUS_PRIOR_MOVE_WAS_BLUNDER = 0.20f;
-    const float BONUS_PRIOR_MOVE_WAS_BLUNDER = 0.30f;
-
-    const float PROBABILITY_ACCEPT_BASE = 0.30f; // starting minimum proability of accepting any position
-    const float INDECISIVE_BONUS = 0.35f;
-    const float VALUE_FOCUS_BONUS_MAX = 0.25f;
-    const float POLICY_FOCUS_MAX = 0.25f;
-
-    const float POLICY_FOCUS_SLOPE = 0.4f;
 
     public bool ShouldRejectImbalance;
     public bool ShouldRejectSingleBlunder;
@@ -146,6 +136,16 @@ namespace CeresTrain.TPG.TPGGenerator
       // Although not known to have bugs, preliminary tests tests were not encouraging.
 
 #if NOT
+    const float EARLY_GAME_BONUS = 0.10f;
+
+    const float THRESHOLD_BONUS_PRIOR_MOVE_WAS_BLUNDER = 0.20f;
+    const float BONUS_PRIOR_MOVE_WAS_BLUNDER = 0.30f;
+
+    const float INDECISIVE_BONUS = 0.35f;
+    const float VALUE_FOCUS_BONUS_MAX = 0.25f;
+    const float POLICY_FOCUS_MAX = 0.25f;
+    const float POLICY_FOCUS_SLOPE = 0.4f;
+
       if (indexPlyThisGame > 0)
       {
         ref readonly EncodedPositionWithHistory thisPos = ref rescorer.PositionRef(indexPlyThisGame);
