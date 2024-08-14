@@ -244,12 +244,16 @@ namespace CeresTrain.Networks.Transformer
 
     /// <summary>
     /// If the KQV matrices used in attention should computed with some nonlinearity/MLP.
+    /// This idea was applied by Muhan Zhang to language models in 2023, see:
+    /// "Neural Attention: Enhancing QKV Calculation in Self-Attention Mechanism with Neural Networks"
+    /// https://arxiv.org/pdf/2310.11398.
     /// </summary>
     public readonly bool NonLinearAttention { get; init; } = false;
 
     /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
     /// NOTE: the deepnorm implementation may be incomplete (weight initialization possibly missing).
+    /// See: "DeepNet: Scaling Transformers to 1,000 Layers" (2022) by Wang et. al. (https://arxiv.org/abs/2203.00555).
     /// </summary>
     public readonly bool DeepNorm { get; init; } = false;
 
