@@ -44,7 +44,6 @@ using Ceres.Base.DataType;
 using Ceres.Chess.EncodedPositions;
 using CeresTrain.CeresTrainDefaults;
 using Ceres.Base.Math;
-using Ceres.Chess.LC0NetInference;
 using Chess.Ceres.NNEvaluators;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.TrainCommands;
@@ -54,15 +53,16 @@ using System.Numerics.Tensors;
 using System.Runtime.Intrinsics.Arm;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators.Ceres;
+using Ceres.Chess.NNBackends.ONNXRuntime;
 
 #endregion 
 
 namespace CeresTrain.Examples
 {
-  /// <summary>
-  /// Set of static methods to facilitate running various tests of Ceres neural networks.
-  /// </summary>
-  public static class CeresNetEvaluation
+    /// <summary>
+    /// Set of static methods to facilitate running various tests of Ceres neural networks.
+    /// </summary>
+    public static class CeresNetEvaluation
   {
     /// <summary>
     /// Generates a set of TPG files from LC0 training games stored in TAR or ZST training data files.
