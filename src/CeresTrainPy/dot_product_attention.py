@@ -95,6 +95,11 @@ class DotProductAttention(torch.nn.Module):
     self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
 
+    if self.use_nonlinear_attention:
+      self.qkvLN = torch.nn.LayerNorm(self.d_model) if norm_type == 'LayerNorm' else RMSNorm(self.d_model)
+      self.q2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
+      self.k2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
+      self.v2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
 
     if self.use_rpe or self.use_rel_bias:
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
