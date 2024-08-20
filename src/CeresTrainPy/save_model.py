@@ -31,11 +31,11 @@ def save_checkpoint(NAME : str,
 
   # Save PyTorch checkpoint.
   # N.B. This should be called independent of fabric.is_global_zero (https://github.com/Lightning-AI/pytorch-lightning/issues/19780)    
-  CKPT_NAME = "ckpt_" + NAME + "_" + num_pos
+  SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', "ckpt_" + NAME + "_" + num_pos)
   state_no_compile = {"model": model_nocompile, "optimizer": state['optimizer'], "num_pos" : num_pos}
-  fabric.save(os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME), state_no_compile)
+  fabric.save(SAVE_FULL_NAME, state_no_compile)
   fabric.barrier()
-  print ('INFO: CHECKPOINT_FILENAME', CKPT_NAME)
+  print ('INFO: CHECKPOINT_FILENAME', SAVE_FULL_NAME)
 
 
 def save_model(NAME : str, 
@@ -46,7 +46,6 @@ def save_model(NAME : str,
                state : Dict[str, Any], 
                num_pos : str, 
                save_all_formats : str):
-  CKPT_NAME = NAME + "_" + num_pos
 
   with torch.no_grad():
     convert_type = model_nocompile.dtype
@@ -99,19 +98,20 @@ def save_model(NAME : str,
 
     if False and fabric.is_global_zero: # equivalent to below (this is just the raw PyTorch way rather than Lightning way above)
       try:
-        SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + "_jit.ts")
+        SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_" + num_pos + "_jit.ts")
         m_save = torch.jit.trace(model_nocompile, sample_inputs)        
         #m_save = torch.jit.script(m) # NOTE: fails for some common Pytorch operations such as einops
-        m_save.save(SAVE_TS_PATH)
-        print('INFO: TS_JIT_FILENAME', SAVE_TS_PATH)
+        m_save.save(SAVE_FULL_NAME)
+        print('INFO: TS_JIT_FILENAME', SAVE_FULL_NAME)
       except Exception as e:
         print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
-    SAVE_TS_PATH = os.path.join(OUTPUTS_DIR, 'nets', CKPT_NAME + ".ts")
+    SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + ".ts_" + num_pos)
     if fabric.is_global_zero:
       try:
-        model_nocompile.to_torchscript(file_path=SAVE_TS_PATH, method='trace', example_inputs=sample_inputs)
-        print('INFO: TS_FILENAME', SAVE_TS_PATH )
+        SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_" + num_pos + ".ts")
+        model_nocompile.to_torchscript(file_path=SAVE_FULL_NAME, method='trace', example_inputs=sample_inputs)
+        print('INFO: TS_FILENAME', SAVE_FULL_NAME )
         #model.to_onnx(SAVE_PATH + ".onnx", test_inputs_pytorch) #, export_params=True)
       except Exception as e:
         print(f"Warning: to_torchscript save failed, skipping. Exception details: {e}")
@@ -120,23 +120,19 @@ def save_model(NAME : str,
       # Still in beta testing as of PyTorch 2.3, not yet functional: torch.onnx.dynamo_export
       # TorchDynamo based export. Encountered warning/error on export.
       if False and fabric.is_global_zero:
-        ONNX_SAVE_PATH = SAVE_TS_PATH + ".dynamo.onnx"
-        ONNX16_SAVE_PATH = SAVE_TS_PATH + "dynamo.fp16.onnx"
-
         try:
+          SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_" + num_pos + "_dynamo.onnx")
           export_options = torch.onnx.ExportOptions(dynamic_shapes=True)
           onnx_model = torch.onnx.dynamo_export(model_nocompile, sample_inputs[0], sample_inputs[1], export_options=export_options)
-          onnx_model.save(ONNX_SAVE_PATH)
-          print('INFO: ONNX_DYNAMO_FILENAME', ONNX_SAVE_PATH)
+          onnx_model.save(SAVE_FULL_NAME)
+          print('INFO: ONNX_DYNAMO_FILENAME', SAVE_FULL_NAME)
         except Exception as e:
           print(f"Warning: torch.onnx.dynamo_export save failed, skipping. Exception details: {e}")
 
       # Legacy ONNX export.
       if True and fabric.is_global_zero:
-        ONNX_SAVE_PATH = SAVE_TS_PATH + ".onnx"
-        ONNX16_SAVE_PATH = SAVE_TS_PATH + ".fp16.onnx"
-
         try:
+          SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_" + num_pos + ".onnx")
           head_output_names = ['policy', 'value', 'mlh', 'unc', 'value2', 
                                'q_deviation_lower', 'q_deviation_upper',
                                'uncertainty_policy', 'action', 'prior_state', 
@@ -158,23 +154,24 @@ def save_model(NAME : str,
                             torch.rand(256, 64, config.NetDef_PriorStateDim).to(convert_type).to(model_nocompile.device))
           torch.onnx.export(model_nocompile,
                             (sample_inputs[0], sample_inputs[1]),
-                            ONNX_SAVE_PATH,
+                            SAVE_FULL_NAME,
                             do_constant_folding=True,
                             export_params=True,
                             opset_version=17, # Pytorch 2.3 maximum supported opset version 17
                             input_names = ['squares', 'prior_state'], # if config.NetDef_PriorStateDim > 0 else ['squares'],
                             output_names = head_output_names, 
                             dynamic_axes=output_axes)
-          print('INFO: ONNX_FILENAME', ONNX_SAVE_PATH)
+          print('INFO: ONNX_FILENAME', SAVE_FULL_NAME)
 
           if True:
+            SAVE_FULL_NAME_16 = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_fp16_" + num_pos + ".onnx")
             # Make a 16 bit version
             from onnxmltools.utils.float16_converter import convert_float_to_float16
             from onnxmltools.utils import load_model, save_model
-            onnx_model = load_model(ONNX_SAVE_PATH)
+            onnx_model = load_model(SAVE_FULL_NAME)
             onnx_model_16 = convert_float_to_float16(onnx_model)
-            save_model(onnx_model_16, ONNX16_SAVE_PATH)
-            print ('INFO: ONNX16_FILENAME', ONNX16_SAVE_PATH)
+            save_model(onnx_model_16, SAVE_FULL_NAME_16)
+            print ('INFO: ONNX16_FILENAME', SAVE_FULL_NAME_16)
 
         except Exception as e:
           print(f"Warning: torch.onnx.export save failed, skipping. Exception details: {e}")       

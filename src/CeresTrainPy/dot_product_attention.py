@@ -52,6 +52,7 @@ class DotProductAttention(torch.nn.Module):
                smolgen_activation_type : str = 'None', 
                use_rpe : bool = False,
                use_rel_bias: bool = False,
+               use_nonlinear_attention: bool = False,
                test : bool = False) -> None:
     super().__init__()
 
@@ -68,6 +69,7 @@ class DotProductAttention(torch.nn.Module):
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
     self.use_rel_bias = use_rel_bias
+    self.use_nonlinear_attention = use_nonlinear_attention  
 
     assert self.use_smolgen + self.use_rpe + self.use_rel_bias <= 1, "only one of smolgen, rpe, and rel bias can be enabled"
     
@@ -92,7 +94,7 @@ class DotProductAttention(torch.nn.Module):
     # Fused Q, K, and V linear projection for improved efficiency.
     self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
-    
+
 
     if self.use_rpe or self.use_rel_bias:
       self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
@@ -100,7 +102,6 @@ class DotProductAttention(torch.nn.Module):
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
     if self.use_rpe:
-
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -170,7 +171,7 @@ class DotProductAttention(torch.nn.Module):
     return H, A
   
 
-  def forward(self, x:torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
+  def forward(self, x:torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
     batch_size = query.size(0)
 
     qkv_x = query    
@@ -178,11 +179,24 @@ class DotProductAttention(torch.nn.Module):
     # Linear projections (Q, K, V jointly).
     qkv = self.qkv(qkv_x)
 
-    # Split apart Q, K, V (with heads on the left)
-    qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
-    qkv = qkv.permute(0, 2, 1, 3)
-    Q, K, V = qkv.chunk(3, dim=-1)
-    
+    if not self.use_nonlinear_attention:
+      # Split apart Q, K, V (with heads on the left)
+      qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
+      qkv = qkv.permute(0, 2, 1, 3)
+      Q, K, V = qkv.chunk(3, dim=-1)    
+    else:
+      # Idea of introducing nonlinearity in the QKV was proposed in:
+      #   "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanmism with Neural Networks"
+      #   Muhan Zhang, 2023
+      qkv = qkv.reshape(batch_size, -1, 3, self.d_model)
+      qkv = self.qkvLN(qkv)
+      qkv = torch.nn.functional.mish(qkv)
+      q, k, v = torch.unbind(qkv, dim=-2)
+
+      Q = self.q2(q).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
+      K = self.k2(k).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
+      V = self.v2(v).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)  
+
     if self.use_smolgen:
       smolgen = self.sm1(x)
       smolgen = smolgen.reshape(- 1, self.num_tokens_q * self.smolgen_per_square_dim)

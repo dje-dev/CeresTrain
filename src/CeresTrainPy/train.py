@@ -44,6 +44,7 @@ from save_model import save_model, save_checkpoint
 
 from lightning.fabric import Fabric
 from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
+from lightning.pytorch.utilities import grad_norm
 
 from schedulefree_ceres import AdamWScheduleFree
 
@@ -90,10 +91,10 @@ def print_model_trainable_details(model):
   print("INFO: NUM_PARAMETERS", str(num_params))
 
 
-NAME = socket.gethostname() + "_" + TRAINING_ID
+NAME = socket.gethostname() + "_" + os.path.basename(TRAINING_ID)
 
 accelerator = config.Exec_DeviceType.lower()
-devices = config.Exec_DeviceIDs
+devices = config.Exec_DeviceIDs if not config.Exec_ExportOnly else config.Exec_DeviceIDs[0]
 
 BATCH_SIZE = config.Opt_BatchSizeBackwardPass
 
@@ -117,6 +118,16 @@ time_last_save = datetime.datetime.now()
 time_start = datetime.datetime.now()
 time_last_save_permanent = datetime.datetime.now()
 time_last_save_transient = datetime.datetime.now()
+
+def on_before_optimizer_step(fabric, model, optimizer, pos_num):      
+    norms = grad_norm(model, norm_type=2)
+    fabric.logger.log_metrics(norms, step=pos_num)
+
+    LOG_GRAD_HISTOGRAMS = False
+    if LOG_GRAD_HISTOGRAMS:
+      for k, v in model.named_parameters():
+        if v.grad is not None:
+          fabric.logger.experiment.add_histogram(tag=k, values=v.grad, global_step=pos_num)
 
 
 def Train():
@@ -161,7 +172,7 @@ def Train():
   # Possibly compile model (as recommended by Lightning docs, comile should appear before fabric.setup).
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
   model_nocompile = model
-  if config.Opt_PyTorchCompileMode is not None:
+  if config.Opt_PyTorchCompileMode is not None and not config.Exec_ExportOnly:
     model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
   
   # carefully set weight decay to apply only to appropriate subset of parameters
@@ -213,8 +224,8 @@ def Train():
 
 
   def num_warmup_positions():
-    # Warmup is 3% of positions (but not more than 20mm)
-    return int(min(20_000_000, 0.03 * config.Opt_NumTrainingPositions))
+    # Warmup is 5% of positions (but not more than 30mm)
+    return int(min(30_000_000, 0.05 * config.Opt_NumTrainingPositions))
 
 
   # Loss and optimizer
@@ -487,6 +498,11 @@ def Train():
       if config.Opt_GradientClipLevel > 0:
         fabric.clip_gradients(model, optimizer, max_norm=config.Opt_GradientClipLevel)
       scheduler.step()
+
+      GRAD_NORM_LOG_FREQUENCY = 200
+      if (num_pos // BATCH_SIZE) % GRAD_NORM_LOG_FREQUENCY == GRAD_NORM_LOG_FREQUENCY - 1:
+        on_before_optimizer_step(fabric, model, optimizer, num_pos)
+      
       optimizer.step()
       optimizer.zero_grad()
 

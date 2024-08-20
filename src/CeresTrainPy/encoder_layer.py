@@ -11,7 +11,7 @@ If not, see <http://www.gnu.org/licenses/>.
 
 # End of License Notice
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import torch
 
@@ -35,6 +35,7 @@ class EncoderLayer(torch.nn.Module):
                 alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0,
                 use_rpe : bool = False, 
                 use_rel_bias: bool = False,
+                use_nonlinear_attention: bool = False,
                 dual_attention_mode : str = 'None', test : bool = False):
     super().__init__()
 
@@ -57,8 +58,9 @@ class EncoderLayer(torch.nn.Module):
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv,  num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, 
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
-                                         use_rpe, use_rel_bias, test)
-    self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
+                                         use_rpe, use_rel_bias, use_nonlinear_attention, test)
+    if self.ffn_hidden_size > 0:
+      self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dual_attention_mode in ('DualAttentionAndFFN', 'DualAttentionOnly'):
       NUM_ATTENTION2_HEADS = 8 
@@ -92,8 +94,8 @@ class EncoderLayer(torch.nn.Module):
       self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, use_te = False) 
 
 
-  def forward(self, x: torch.Tensor, global_state : torch.Tensor) -> torch.Tensor:
-    attn_output = self.attention(x, x, x, x, global_state)    
+  def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    attn_output = self.attention(x, x, x, x)    
     
     if (self.dropout_rate > 0):
       attn_output = self.dropout_attn(attn_output)
@@ -123,7 +125,7 @@ class EncoderLayer(torch.nn.Module):
       
     if self.dual_attention_mode != 'None':
       out3_tr = out2.permute(0, 2, 1)
-      attn_output3 = self.attention2(out3_tr, out3_tr, out3_tr, out3_tr, None)
+      attn_output3 = self.attention2(out3_tr, out3_tr, out3_tr, out3_tr)
       attn_output3 = attn_output3.permute(0, 2, 1)
 
       out3 = self.ln3(out2 * self.alpha + attn_output3)
@@ -132,5 +134,5 @@ class EncoderLayer(torch.nn.Module):
         out3 = self.ln4(out3 * self.alpha + mlp_output2)
       out2 = out3
      
-    return out2, None
+    return out2
 

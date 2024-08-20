@@ -22,6 +22,7 @@ from torch import nn
 
 import lightning as pl
 from lightning.fabric import Fabric
+from lightning.pytorch.utilities import grad_norm
 
 from activation_functions import Swish, ReLUSquared
 from losses import LossCalculator
@@ -219,6 +220,7 @@ class CeresNet(pl.LightningModule):
                       alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
                       use_rpe=config.NetDef_UseRPE, 
                       use_rel_bias=config.NetDef_UseRelBias, 
+                      use_nonlinear_attention=config.NetDef_NonLinearAttention,
                       dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
         for i in range(self.NUM_LAYERS)])
@@ -283,7 +285,7 @@ class CeresNet(pl.LightningModule):
       
     # Main transformer body (stack of encoder layers)
     for i in range(self.NUM_LAYERS):
-      flow, _ = self.transformer_layer[i](flow, None)
+      flow = self.transformer_layer[i](flow)
 
       if self.denseformer:
         all_previous_x.append(flow)
