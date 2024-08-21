@@ -30,6 +30,15 @@ class LinearWrapper:
     return self._layer
 
 
+class ParameterWrapper:
+  def __init__(self, parameter):
+    self._parameter = parameter
+
+  @property
+  def parameter(self):
+    return self._parameter
+
+
 class DotProductAttention(torch.nn.Module):
   """
   Implements (scaled) Dot Product Attention.
@@ -51,6 +60,7 @@ class DotProductAttention(torch.nn.Module):
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
                use_rpe : bool = False,
+               rpe_factor_shared  = None,
                use_rel_bias: bool = False,
                use_nonlinear_attention: bool = False,
                test : bool = False) -> None:
@@ -101,12 +111,10 @@ class DotProductAttention(torch.nn.Module):
       self.k2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
       self.v2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
 
-    if self.use_rpe or self.use_rel_bias:
-      self.rpe_factor = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
-
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
     if self.use_rpe:
+      self.wrapped_rpe_factor_shared = ParameterWrapper(rpe_factor_shared) # wrap so shared layer is not re-registered
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -135,8 +143,12 @@ class DotProductAttention(torch.nn.Module):
   def smolgenPrepLayer(self):
     return self.wrapped_smolgen_prep_layer.linear
 
+  @property
+  def rpeFactorShared(self):
+    return self.wrapped_rpe_factor_shared.parameter.data
 
 
+ 
   def sdp_and_smol_or_rpe(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, smolgen:torch.Tensor): # -> torch.Tensor, torch.Tensor:
     # Note that scaling could be done separately on Q and K to possibly improve stability. See:
     #   https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/118
@@ -146,10 +158,10 @@ class DotProductAttention(torch.nn.Module):
     scores = torch.matmul(Q, K.transpose(2, 3))
 
     if self.use_rpe:
-      rpe_q = self.rpe_q @ self.rpe_factor
+      rpe_q = self.rpe_q @ self.rpeFactorShared
       rpe_q = rpe_q.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
 
-      rpe_k = self.rpe_k @ self.rpe_factor
+      rpe_k = self.rpe_k @ self.rpeFactorShared
       rpe_k = rpe_k.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       scores = scores + einsum(Q, rpe_q, "b h q d, d h q k->b h q k")
@@ -172,7 +184,7 @@ class DotProductAttention(torch.nn.Module):
     H = torch.matmul(A, V)
 
     if self.use_rpe:
-      rpe_v = self.rpe_v @ self.rpe_factor
+      rpe_v = self.rpe_v @ self.rpeFactorShared
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       
       H = H + einsum(A, rpe_v, "b h q k, d h q k->b h q d")
@@ -233,22 +245,5 @@ class DotProductAttention(torch.nn.Module):
 
     return H
 
-
-"""
-Prepare static relative position (RPE) encoding map.
-This RPE idea and initialization code taken from work of Daniel Monroe, see:
-https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd003cb8d2f/tf/tfprocess.py
-""" 
-
-def make_rpe_map():
-  # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
-  # (rounded from 15 up to 16 to be a power of 2)
-  out = torch.zeros((16*16, 64*64))
-  for i in range(8):
-    for j in range(8):
-      for k in range(8):
-        for l in range(8):
-          out[15 * (i - k + 7) + (j - l + 7), 64 * (i * 8 + j) + k * 8 + l] = 1
-  return out
 
 

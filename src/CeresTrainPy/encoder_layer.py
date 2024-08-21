@@ -34,6 +34,7 @@ class EncoderLayer(torch.nn.Module):
                 smoe_mode : str = 'None', smoe_num_experts : int = 0,
                 alpha : float = 1, layerNum : int = 0, dropout_rate : float = 0,
                 use_rpe : bool = False, 
+                rpe_factor_shared  = None,
                 use_rel_bias: bool = False,
                 use_nonlinear_attention: bool = False,
                 dual_attention_mode : str = 'None', test : bool = False):
@@ -58,7 +59,7 @@ class EncoderLayer(torch.nn.Module):
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv,  num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
                                          attention_multiplier, 
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
-                                         use_rpe, use_rel_bias, use_nonlinear_attention, test)
+                                         use_rpe, rpe_factor_shared, use_rel_bias, use_nonlinear_attention, test)
     if self.ffn_hidden_size > 0:
       self.ln2 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 

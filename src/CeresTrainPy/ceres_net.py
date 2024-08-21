@@ -200,6 +200,11 @@ class CeresNet(pl.LightningModule):
     else:
       self.smolgenPrepLayer = None
 
+    if config.NetDef_UseRPE or config.NetDef_UseRelBias:
+      self.rpe_factor_shared = torch.nn.Parameter(make_rpe_map(), requires_grad=False)
+    else:
+      self.rpe_factor_shared = None
+
     num_tokens_q = NUM_TOKENS_NET
     num_tokens_kv = NUM_TOKENS_NET
     self.transformer_layer = torch.nn.Sequential(
@@ -219,7 +224,8 @@ class CeresNet(pl.LightningModule):
                       smolgen_activation_type = config.NetDef_SmolgenActivationType,
                       alpha=self.alpha, layerNum=i, dropout_rate=self.DROPOUT_RATE,
                       use_rpe=config.NetDef_UseRPE, 
-                      use_rel_bias=config.NetDef_UseRelBias, 
+                      rpe_factor_shared=self.rpe_factor_shared,
+                      use_rel_bias=config.NetDef_UseRelBias,
                       use_nonlinear_attention=config.NetDef_NonLinearAttention,
                       dual_attention_mode = config.NetDef_DualAttentionMode if not config.Exec_TestFlag else (config.NetDef_DualAttentionMode if i % 2 == 1 else 'None'),
                       test = config.Exec_TestFlag)
@@ -463,5 +469,22 @@ class CeresNet(pl.LightningModule):
 
     return total_loss
 
+
+  
+"""
+Prepare static relative position (RPE) encoding map.
+This RPE idea and initialization code taken from work of Daniel Monroe, see:
+https://github.com/Ergodice/lczero-training/blob/a7271f25a1bd84e5e22bf924f7365cd003cb8d2f/tf/tfprocess.py
+""" 
+def make_rpe_map():
+  # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares
+  # (rounded from 15 up to 16 to be a power of 2)
+  out = torch.zeros((16*16, 64*64))
+  for i in range(8):
+    for j in range(8):
+      for k in range(8):
+        for l in range(8):
+          out[15 * (i - k + 7) + (j - l + 7), 64 * (i * 8 + j) + k * 8 + l] = 1
+  return out
 
 
