@@ -224,8 +224,8 @@ def Train():
 
 
   def num_warmup_positions():
-    # Warmup is 5% of positions (but not more than 30mm)
-    return int(min(30_000_000, 0.05 * config.Opt_NumTrainingPositions))
+    # Warmup is 5% of positions (but not more than 50mm)
+    return int(min(50_000_000, 0.05 * config.Opt_NumTrainingPositions))
 
 
   # Loss and optimizer
