@@ -111,6 +111,10 @@ class DotProductAttention(torch.nn.Module):
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
+      torch.nn.init.kaiming_uniform_(self.rpe_q, a=0.1)
+      torch.nn.init.kaiming_uniform_(self.rpe_k, a=0.1)
+      torch.nn.init.kaiming_uniform_(self.rpe_v, a=0.1)
+
     if self.use_rel_bias:
       self.rel_bias = torch.nn.Parameter(torch.zeros(self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
 
