@@ -106,10 +106,10 @@ class DotProductAttention(torch.nn.Module):
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
 
     if self.use_nonlinear_attention:
-      self.qkvLN = torch.nn.LayerNorm(self.d_model) if norm_type == 'LayerNorm' else RMSNorm(self.d_model)
-      self.q2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
-      self.k2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
-      self.v2 = torch.nn.Linear(self.d_model, self.d_model, bias=USE_BIAS)
+      self.qkvLN = torch.nn.LayerNorm(self.d_model * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_model * self.attention_multiplier)
+      self.q2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
+      self.k2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
+      self.v2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
 
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
@@ -209,7 +209,7 @@ class DotProductAttention(torch.nn.Module):
       # Idea of introducing nonlinearity in the QKV was proposed in:
       #   "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanmism with Neural Networks"
       #   Muhan Zhang, 2023
-      qkv = qkv.reshape(batch_size, -1, 3, self.d_model)
+      qkv = qkv.reshape(batch_size, -1, 3, self.d_model * self.attention_multiplier)
       qkv = self.qkvLN(qkv)
       qkv = torch.nn.functional.mish(qkv)
       q, k, v = torch.unbind(qkv, dim=-2)
