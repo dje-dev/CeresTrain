@@ -119,10 +119,24 @@ time_start = datetime.datetime.now()
 time_last_save_permanent = datetime.datetime.now()
 time_last_save_transient = datetime.datetime.now()
 
+def get_most_extreme_weight_value(model):
+  extreme_value = 0.0
+  for param in model.parameters():
+    if param.requires_grad:
+      param_max = abs(param.max().item())
+      param_min = abs(param.min().item())
+      if param_max > extreme_value:
+        extreme_value = param_max
+      if param_min > extreme_value:
+        extreme_value = param_min
+  return extreme_value
+
+
 def on_before_optimizer_step(fabric, model, optimizer, pos_num):      
     norms = grad_norm(model, norm_type=2)
     fabric.logger.log_metrics(norms, step=pos_num)
-
+    fabric.logger.log_metrics({"max_abs_weight": get_most_extreme_weight_value(model)}, step=pos_num) 
+     
     LOG_GRAD_HISTOGRAMS = False
     if LOG_GRAD_HISTOGRAMS:
       for k, v in model.named_parameters():
@@ -247,7 +261,7 @@ def Train():
 
  
   """
-  Lambda which determines current learning rate (as  a fraction of the maximum).
+  Lambda which determines current learning rate (as a fraction of the maximum).
   """
   def lr_lambda(epoch : int):
     global fraction_complete
