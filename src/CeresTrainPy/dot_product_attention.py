@@ -111,6 +111,10 @@ class DotProductAttention(torch.nn.Module):
       self.k2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
       self.v2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
 
+      # extra layernorm for enahnced training stability
+#      self.qLN = torch.nn.LayerNorm(self.d_model * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_model * self.attention_multiplier)
+#      self.kLN = torch.nn.LayerNorm(self.d_model * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_model * self.attention_multiplier)
+
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
     if self.use_rpe:
@@ -213,6 +217,9 @@ class DotProductAttention(torch.nn.Module):
       qkv = self.qkvLN(qkv)
       qkv = torch.nn.functional.mish(qkv)
       q, k, v = torch.unbind(qkv, dim=-2)
+
+#      q = self.qLN(q)
+#      k = self.kLN(k)
 
       Q = self.q2(q).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
       K = self.k2(k).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
