@@ -119,6 +119,7 @@ class CeresNet(pl.LightningModule):
     self.prior_state_dim = config.NetDef_PriorStateDim
     self.moves_left_loss_weight = moves_left_loss_weight
     self.q_deviation_loss_weight = q_deviation_loss_weight
+    self.value2_loss_weight = value2_loss_weight
     self.uncertainty_policy_weight = uncertainty_policy_weight
     self.action_uncertainty_loss_weight = action_uncertainty_loss_weight
 
@@ -161,8 +162,10 @@ class CeresNet(pl.LightningModule):
       self.action_uncertainty_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858)
 
     self.value_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)
-    self.value2_head = Head(self.Activation, 2 + self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)     
     self.unc_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+
+    if self.value2_loss_weight > 0:
+      self.value2_head = Head(self.Activation, 2 + self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3) 
 
     if self.uncertainty_policy_weight > 0:
       self.unc_policy = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
@@ -303,14 +306,14 @@ class CeresNet(pl.LightningModule):
     flattenedSquares = flattenedSquares.reshape(-1, 64 * self.HEAD_PREMAP_PER_SQUARE)
     flattenedSquares = self.headSharedLinear(flattenedSquares)
     
+    # Note that if these heads are not used we use a fill-in tensor (borrowed from unc or value) 
+    # to avoid None values that might be problematic in export (especially ONNX)
     policy_out = self.policy_head(flattenedSquares)
     value_out = self.value_head(flattenedSquares)
-    value2_out = self.value2_head(torch.cat((flattenedSquares, qblunders_negative_positive), -1))
+    value2_out = self.value2_head(torch.cat((flattenedSquares, qblunders_negative_positive), -1)) if self.value2_loss_weight > 0 else value_out
     unc_out = self.unc_head(flattenedSquares)
     unc_policy_out = self.unc_policy(flattenedSquares) if self.uncertainty_policy_weight > 0 else unc_out # unc_out is just a dummy so not None
 
-    # Note that if these heads are not used we use a fill-in tensor (borrowed from unc) 
-    # to avoid None values that might be problematic in export (especially ONNX)
     action_out             = self.action_head(flattenedSquares).reshape(-1, 1858, 3) if self.action_loss_weight > 0 else unc_out
     action_uncertainty_out = self.action_uncertainty_head(flattenedSquares) if self.action_uncertainty_loss_weight > 0 else unc_out
     state_out              = self.state_head(flattenedSquares) if self.prior_state_dim > 0 else unc_out
