@@ -39,7 +39,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <PackageReference Include="TorchSharp-cuda-windows" Version="0.102.2" />
+    <PackageReference Include="TorchSharp-cuda-windows" Version="0.103.0" />
   </ItemGroup>
 
   <ItemGroup>

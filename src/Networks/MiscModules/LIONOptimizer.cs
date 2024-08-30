@@ -140,7 +140,7 @@ namespace CeresTrain.Networks.MiscModules
 #endif
         foreach (Parameter param in group.Parameters)
         {
-          Tensor grad = param.grad();
+          Tensor grad = param.grad;
           if (grad is null)
           {
             continue;
