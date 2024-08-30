@@ -139,6 +139,15 @@ namespace CeresTrain.TPG.TPGGenerator
     public float PositionMaxFraction = 1.0f / 1_000_000f;
 
     /// <summary>
+    /// Minimum number of ply that a position must have to be accepted.
+    /// Allowing early (opening) positions seems unhelpful because:
+    ///   - there are few in number, this would be just rote memorization
+    ///   - training seemingly can become unstable with a "model collapse"
+    ///     back to the start position (possibly due to overrepresentation)
+    /// </summary>
+    public int MinPositionGamePly = 6;
+
+    /// <summary>
     /// Optional filter which can veto certain positions from being included.
     /// </summary>
     public AcceptRejectAnnotationDelegate AcceptRejectAnnotater { init; get; }
@@ -372,6 +381,8 @@ namespace CeresTrain.TPG.TPGGenerator
       {
         writer.WriteLine($"  PositionMaxFraction           : {100 * PositionMaxFraction,8:F5}%");
       }
+      writer.WriteLine($"  MinPositionGamePly            : {MinPositionGamePly}");
+
       writer.WriteLine($"  AcceptRejectAnnotater         : {(AcceptRejectAnnotater != null ? "*Yes*" : "No")}");
       writer.WriteLine();
       writer.WriteLine($"  RescoreWithTablebase          : {RescoreWithTablebase}");

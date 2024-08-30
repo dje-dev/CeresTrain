@@ -307,6 +307,13 @@ namespace CeresTrain.TPG.TPGGenerator
       ref readonly EncodedPositionWithHistory thisGamePos = ref gameAnalyzer.PositionRef(i);
       Position thisPosition = thisGamePos.FinalPosition;
 
+      if (i < Options.MinPositionGamePly)
+      {
+        // Too early in game, skip and report statistic as if numDuplicatesSkipped.
+        Interlocked.Increment(ref numDuplicatesSkipped);
+        return false;
+      }
+
       // Possibly skip this position if it has already been written too many times.
       if (includeCheckForPositionMaxFraction && Options.PositionMaxFraction < 1)
       {
