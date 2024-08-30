@@ -34,6 +34,7 @@ using CeresTrain.Utils;
 using Ceres.Base.Misc;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators.Ceres;
+using static TorchSharp.torch.nn;
 
 #endregion
 
@@ -73,6 +74,11 @@ namespace CeresTrain.NNEvaluators
     /// Underlying evaluator engine.
     /// </summary>
     IModuleNNEvaluator PytorchForwardEvaluator;
+
+    /// <summary>
+    /// Returns the 
+    /// </summary>
+    public Module Module => PytorchForwardEvaluator.Module;
 
     /// <summary>
     /// Options for the evaluator.
@@ -141,13 +147,6 @@ namespace CeresTrain.NNEvaluators
       IncludeHistory = includeHistory;
       EngineType = engineType;
       Options = options;
-
-      if (dataType != ScalarType.BFloat16)
-      {
-        throw new Exception("NNEvaluatorTorchsharp currently only supports BFloat16 data type because it is "
-                           + "assumed Ceres nets are trained in this data type and running inference in other  data types "
-                           + "types typically results in slight performance degradation (even if other type is higher precision).");
-      }
 
       CeresTrainInitialization.PrepareToUseDevice(device);
 

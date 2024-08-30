@@ -16,6 +16,8 @@ namespace CeresTrain.NNEvaluators
     void SetTraining(bool trainingMode) => throw new NotImplementedException();
     void SetType(ScalarType type) => throw new NotImplementedException();
 
+    jit.ScriptModule<Tensor, Tensor, Tensor[]> Module => null;
+
     (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
      Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
      Tensor uncertaintyPolicy, Tensor action, Tensor boardState, Tensor actionUncertainty,

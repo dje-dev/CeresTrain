@@ -49,8 +49,13 @@ namespace CeresTrain.NNEvaluators
     /// The loaded Torchscript module.
     /// </summary>
     jit.ScriptModule<Tensor, Tensor, Tensor[]> module;
-
     
+    /// <summary>
+    /// Interface method that returns Torchscript module.
+    /// </summary>
+    public jit.ScriptModule<Tensor, Tensor, Tensor[]> Module => module;
+
+
     public readonly bool UseState;
 
 
