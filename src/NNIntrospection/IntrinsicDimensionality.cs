@@ -68,50 +68,53 @@ namespace CeresTrain.NNIntrospection
         throw new ArgumentException("Parameter fit_fraction must be in (0, 1].");
       }
 
-      // Compute pairwise distances.
-      // N.B. For reasons of numerical stability, must specify compute mode explicitly to not use matrix multiplication.
-      //      See: https://github.com/pytorch/pytorch/issues/42479
-      var distances = torch.cdist(points, points, p: 2, compute_mode: compute_mode.donot_use_mm_for_euclid_dist);
-      (distances, _) = distances.topk(3, dim: -1, largest: false);
+      using (NewDisposeScope())
+      {
+        // Compute pairwise distances.
+        // N.B. For reasons of numerical stability, must specify compute mode explicitly to not use matrix multiplication.
+        //      See: https://github.com/pytorch/pytorch/issues/42479
+        var distances = torch.cdist(points, points, p: 2, compute_mode: compute_mode.donot_use_mm_for_euclid_dist);
+        (distances, _) = distances.topk(3, dim: -1, largest: false);
 
-      // Compute µ = r_2 / r_1
-      Tensor[] r = torch.split(distances, new long[] { 1, 1, 1 }, dim: -1);
-      (Tensor r0, Tensor r1, Tensor r2) = (r[0], r[1], r[2]);
-      Tensor mu = r2 / r1;
+        // Compute µ = r_2 / r_1
+        Tensor[] r = torch.split(distances, new long[] { 1, 1, 1 }, dim: -1);
+        (Tensor r0, Tensor r1, Tensor r2) = (r[0], r[1], r[2]);
+        Tensor mu = r2 / r1;
 
-      //    if (mu <= 1.0f)
-      //    {
-      //      Tensor allClose = torch.isclose(mu, torch.ones(1, device: device)))
-      //      throw new Exception("Something went wrong when computing µ.");
-      //    }
-      //    if (!((mu > 1.0f || (torch.isclose(mu, torch.ones(1, device: device))))).all()
-      //        throw new Exception("Something went wrong when computing µ.");
+        //    if (mu <= 1.0f)
+        //    {
+        //      Tensor allClose = torch.isclose(mu, torch.ones(1, device: device)))
+        //      throw new Exception("Something went wrong when computing µ.");
+        //    }
+        //    if (!((mu > 1.0f || (torch.isclose(mu, torch.ones(1, device: device))))).all()
+        //        throw new Exception("Something went wrong when computing µ.");
 
-      // Compute the empirical cumulate
-      Tensor empirical = (torch.arange(n_points) / n_points).tile(new long[] { batch_size, 1 }).unsqueeze(2);
-      empirical = empirical.to(mu.dtype).to(mu.device);
-      (mu, _) = mu.sort(dim: 1);
+        // Compute the empirical cumulate
+        Tensor empirical = (torch.arange(n_points) / n_points).tile(new long[] { batch_size, 1 }).unsqueeze(2);
+        empirical = empirical.to(mu.dtype).to(mu.device);
+        (mu, _) = mu.sort(dim: 1);
 
-      // Fit the the intrinsic dimension
-      // d = - log(1 - F(µ)) / log(µ)
-      Tensor y_full = -torch.log(1.0 - empirical);
-      Tensor x_full = torch.log(mu);
+        // Fit the the intrinsic dimension
+        // d = - log(1 - F(µ)) / log(µ)
+        Tensor y_full = -torch.log(1.0 - empirical);
+        Tensor x_full = torch.log(mu);
 
 
-      int n_fit = (int)(round(fit_fraction * n_points).cpu().item<float>());
-      Tensor y_fit = torch.narrow(y_full, 1, 0, n_fit);
-      Tensor x_fit = torch.narrow(x_full, 1, 0, n_fit);
+        int n_fit = (int)(round(fit_fraction * n_points).cpu().item<float>());
+        Tensor y_fit = torch.narrow(y_full, 1, 0, n_fit);
+        Tensor x_fit = torch.narrow(x_full, 1, 0, n_fit);
 
-      //    Tensor y_fit = y_full.slice( y_full[:, :n_fit];
-      //    Tensor x_fit = x_full[:, :n_fit];
+        //    Tensor y_fit = y_full.slice( y_full[:, :n_fit];
+        //    Tensor x_fit = x_full[:, :n_fit];
 
-      // Here assume that the values of log(1 - F(µ)) are exact and
-      // log(µ) is drawn from a normal distribution (prob. not correct).
-      // I.e. 1 / d* = argmin_(1 / d) ||(-log(1 - F(µ))) (1 / d) - µ||_2 )
-      Tensor inv_d = torch.bmm(torch.pinverse(y_fit), x_fit);
-      Tensor intrinsic_dimension = 1.0 / torch.narrow(inv_d, 1, 0, 1).squeeze(); //    intrinsic_dimension = 1.0 / inv_d[:, 0]
+        // Here assume that the values of log(1 - F(µ)) are exact and
+        // log(µ) is drawn from a normal distribution (prob. not correct).
+        // I.e. 1 / d* = argmin_(1 / d) ||(-log(1 - F(µ))) (1 / d) - µ||_2 )
+        Tensor inv_d = torch.bmm(torch.pinverse(y_fit), x_fit);
+        Tensor intrinsic_dimension = 1.0 / torch.narrow(inv_d, 1, 0, 1).squeeze().cpu(); //    intrinsic_dimension = 1.0 / inv_d[:, 0]
 
-      return points.shape.Length == 2 ? new float[] { intrinsic_dimension.item<float>() } : intrinsic_dimension.data<float>().ToArray();
+        return points.shape.Length == 2 ? new float[] { intrinsic_dimension.item<float>() } : intrinsic_dimension.data<float>().ToArray();
+      }
     }
   }
 
