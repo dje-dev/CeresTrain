@@ -14,7 +14,8 @@ If not, see <http://www.gnu.org/licenses/>.
 import torch
 from activation_functions import Swish, ReLUSquared
 
-
+# An intuitive explanation of why biases are important can be found in 
+# the YouTube video "How might LLMs store facts" by 3Blue1Brown (at about 9:00).
 USE_BIAS = True # Daniel Moore reported biases useful in FFN
 
 

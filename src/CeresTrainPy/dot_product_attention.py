@@ -102,7 +102,7 @@ class DotProductAttention(torch.nn.Module):
     USE_BIAS = False
 
     # Fused Q, K, and V linear projection for improved efficiency.
-    self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias=USE_BIAS)
+    self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias = True if self.use_nonlinear_attention else USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
 
     if self.use_nonlinear_attention:
