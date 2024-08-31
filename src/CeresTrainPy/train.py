@@ -275,7 +275,7 @@ def Train():
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down linearly to some minimum fraction.
     FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
-    FRAC_MIN = 0.10
+    FRAC_MIN = 0.15
 
     WARMUP_POS = num_warmup_positions()
     if num_pos < WARMUP_POS:
