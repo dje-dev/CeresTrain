@@ -224,10 +224,14 @@ namespace CeresTrain.TPG.TPGGenerator
 
       if (ValidateBeforeWrite)
       {
+        /// In the special case of dummy action target, we don't have any backing training data so skip validation.
+        bool skipValidationTrainingTarget = targetInfo.Source == TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.ActionHeadDummyMove;
+
         // Just before writing validate record integrity one more time.
         EncodedTrainingPosition.ValidateIntegrity(record.InputFormat, record.Version,
                                                   in record.PositionWithBoards, in record.Policies,
-                                                  "TrainingPositionGenerator postprocessing validity check failure: " + OutputFileNameBase);
+                                                  "TrainingPositionGenerator postprocessing validity check failure: " + OutputFileNameBase,
+                                                  skipValidationTrainingTarget);
       }
 
       lock (buffersTargets[targetSetIndex])
@@ -428,13 +432,15 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
       Parallel.For(0, positions.Length, new ParallelOptions() { MaxDegreeOfParallelism = MAX_PARALLELISM }, i =>
       {
         // Convert into TPG record format.
+        bool shouldValidate = validate
+                           && targetInfos[i].Source != TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.ActionHeadDummyMove;
         TPGRecordConverter.ConvertToTPGRecord(in positions[i], includeHistory, in targetInfos[i], targetPolicyOverrides?[i],
                                               minLegalMoveProbability, ref bufferForParallelThreads[i],
                                               pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare,
                                               targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders,
                                               targetInfos[i].PriorPositionWinP,
                                               targetInfos[i].PriorPositionDrawP,
-                                              targetInfos[i].PriorPositionLossP, validate);
+                                              targetInfos[i].PriorPositionLossP, shouldValidate);
       });
 
       return tpgRecordsBuffer;

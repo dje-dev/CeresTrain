@@ -674,6 +674,7 @@ const bool TEST = false;
 
                 int tryDrawIndex = ThompsonSampling.Draw(policyProbs, policyLen);
                 item4 = MakeForDrawIndex(policyMoves[tryDrawIndex]);
+                item4.Item2.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.ActionHeadDummyMove;
               }
 
               writer.Write(setNum, Options.MinProbabilityForLegalMove, item1, item2, item3, item4);
