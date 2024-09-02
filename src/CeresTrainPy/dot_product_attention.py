@@ -60,6 +60,7 @@ class DotProductAttention(torch.nn.Module):
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
                use_rpe : bool = False,
+               use_rpe_v : bool = True,  
                rpe_factor_shared  = None,
                use_rel_bias: bool = False,
                use_nonlinear_attention: bool = False,
@@ -78,6 +79,7 @@ class DotProductAttention(torch.nn.Module):
     self.test = test    
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
+    self.use_rpe_v = use_rpe_v
     self.use_rel_bias = use_rel_bias
     self.use_nonlinear_attention = use_nonlinear_attention  
 
@@ -121,11 +123,12 @@ class DotProductAttention(torch.nn.Module):
       self.wrapped_rpe_factor_shared = ParameterWrapper(rpe_factor_shared) # wrap so shared layer is not re-registered
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
-      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
+      self.rpe_v = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM)) if self.use_rpe_v else None
 
       torch.nn.init.kaiming_uniform_(self.rpe_q, a=0.1)
       torch.nn.init.kaiming_uniform_(self.rpe_k, a=0.1)
-      torch.nn.init.kaiming_uniform_(self.rpe_v, a=0.1)
+      if self.use_rpe_v:
+        torch.nn.init.kaiming_uniform_(self.rpe_v, a=0.1)
 
     if self.use_rel_bias:
       self.rel_bias = torch.nn.Parameter(torch.zeros(self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -187,7 +190,7 @@ class DotProductAttention(torch.nn.Module):
     # Get the weighted average of the values
     H = torch.matmul(A, V)
 
-    if self.use_rpe:
+    if self.use_rpe and self.use_rpe_v:
       rpe_v = self.rpe_v @ self.rpeFactorShared
       rpe_v = rpe_v.reshape(self.d_k * self.attention_multiplier, self.num_heads, 64, 64)
       

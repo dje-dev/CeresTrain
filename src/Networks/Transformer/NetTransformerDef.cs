@@ -292,6 +292,11 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool UseRPE { get; init; } = true;
 
     /// <summary>
+    /// If the RPE feature should be applied to the V matrix (as well as Q and K).
+    /// </summary>
+    public readonly bool UseRPE_V { get; init; } = true;
+
+    /// <summary>
     /// If relative bias should be used for RPE.
     /// </summary>
     public readonly bool UseRelBias { get; init; } = false;
