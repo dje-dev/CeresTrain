@@ -78,7 +78,7 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Returns the 
     /// </summary>
-    public Module Module => PytorchForwardEvaluator.Module;
+    public jit.ScriptModule<Tensor, Tensor, Tensor[]> Module => PytorchForwardEvaluator.Module;
 
     /// <summary>
     /// Options for the evaluator.
