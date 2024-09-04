@@ -352,12 +352,8 @@ namespace CeresTrain.TPG.TPGGenerator
       {
         throw new Exception("PositionMaxFraction must be greater than 0 (use 1.0 to disable filtering).");
       }
-
-      if (EmitPriorMoveWinLoss && !TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION)
-      {
-        throw new Exception("EmitPriorMoveWinLoss is enabled but TPGRecordEncoding.ENABLE_PRIOR_VALUE_POSITION is false.");
-      }
     }
+
 
     /// <summary>
     /// Dumps description of options used to generate raw files to a TextWriter.

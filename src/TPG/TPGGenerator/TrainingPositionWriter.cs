@@ -438,9 +438,7 @@ Disabled for now. If the NN evaluator can't keep up, the set of pending Tasks gr
                                               minLegalMoveProbability, ref bufferForParallelThreads[i],
                                               pliesSinceLastPieceMoveBySquare?[i], EmitPlySinceLastMovePerSquare,
                                               targetInfos[i].ForwardSumNegativeBlunders, targetInfos[i].ForwardSumPositiveBlunders,
-                                              targetInfos[i].PriorPositionWinP,
-                                              targetInfos[i].PriorPositionDrawP,
-                                              targetInfos[i].PriorPositionLossP, shouldValidate);
+                                              shouldValidate);
       });
 
       return tpgRecordsBuffer;
