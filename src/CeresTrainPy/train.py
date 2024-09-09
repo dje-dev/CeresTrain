@@ -134,6 +134,12 @@ def get_most_extreme_weight_value(model):
 
 def on_before_optimizer_step(fabric, model, optimizer, pos_num):      
     norms = grad_norm(model, norm_type=2)
+    
+    # update_magnitude is an approximate measure of effective magnitude of weight updates which 
+    # depends multiplicatively upon the size of the gradients and the current learning rate
+    update_magnitude = norms['grad_2.0_norm_total'] * optimizer.param_groups[0]['lr']
+    fabric.logger.log_metrics({"update_magnitude": update_magnitude}, step=pos_num)
+
     fabric.logger.log_metrics(norms, step=pos_num)
     fabric.logger.log_metrics({"max_abs_weight": get_most_extreme_weight_value(model)}, step=pos_num) 
      
@@ -354,6 +360,10 @@ def Train():
   
   if config.Opt_CheckpointResumeFromFileName is not None:
     loaded = fabric.load(config.Opt_CheckpointResumeFromFileName)
+     
+    # name adjustment sometimes needed for reload
+    # loaded["model"] = {f'_orig_mod.{key}': value for key, value in loaded["model"].items()}
+
     model.load_state_dict(loaded["model"])
     optimizer.load_state_dict(loaded["optimizer"])
     num_pos = int(loaded["num_pos"]) # N.B. be sure to use a multiple of the batch size
