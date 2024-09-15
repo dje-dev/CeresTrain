@@ -48,6 +48,9 @@ from lightning.pytorch.utilities import grad_norm
 
 from schedulefree_ceres import AdamWScheduleFree
 
+from AdEMAMix import AdEMAMix
+from AdEMAMixShampoo import AdEMAMixDistributedShampoo
+
 print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.enable_flash_sdp(False)
@@ -155,7 +158,7 @@ def Train():
   global fraction_complete
 
   print("**** STARTING ", NAME)
-
+  
 
   if config.Exec_UseFP8:
     from lightning.fabric.plugins import TransformerEnginePrecision
@@ -253,6 +256,10 @@ def Train():
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
+  elif config.Opt_Optimizer == 'AdEMAMix':
+    optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3=num_warmup_positions() // config.Opt_BatchSizeBackwardPass)
+  elif config.Opt_Optimizer == 'AdEMAMixShampoo':
+    optimizer = AdEMAMixDistributedShampoo(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3=num_warmup_positions() // config.Opt_BatchSizeBackwardPass)
   elif config.Opt_Optimizer == 'AdamWScheduleFree':
     num_warmup_steps = num_warmup_positions() // BATCH_SIZE
     optimizer = AdamWScheduleFree(optim_groups, lr= LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), warmup_steps=num_warmup_steps)
@@ -260,7 +267,7 @@ def Train():
     import bitsandbytes as bnb
     optimizer = bnb.optim.AdamW8bit(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2))    
   else:
-    raise ValueError("Unsupported optimizer: " + config.Opt_Optimizer)
+    raise ValueError("Unsupported optimizer: ", config.Opt_Optimizer)
 
   fraction_complete = 0
 

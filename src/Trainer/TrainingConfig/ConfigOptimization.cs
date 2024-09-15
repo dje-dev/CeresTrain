@@ -56,6 +56,18 @@ namespace CeresTrain.Trainer
     /// Code from official implementation at https://github.com/facebookresearch/schedule_free/blob/main/schedulefree/adamw_schedulefree.py.
     /// </summary>
     AdamWScheduleFree,
+
+    /// <summary>
+    /// AdEMAMix optimizer (Pagliardini et al. 2024) https://arxiv.org/abs/2409.03137
+    /// See: https://github.com/nanowell/AdEMAMix-Optimizer-Pytorch
+    /// </summary>
+    AdEMAMix,
+
+    /// <summary>
+    /// AdEMAMix-Shampoo optimizer (Pagliardini et al. 2024) https://arxiv.org/abs/2409.03137
+    /// See: https://github.com/nanowell/AdEMAMix-Optimizer-Pytorch
+    /// </summary>
+    AdEMAMixShampoo,
   }
 
 
@@ -132,7 +144,7 @@ namespace CeresTrain.Trainer
     /// scaling down of the LearningRateBase begins 
     /// (linearly from LearningRateBase to a fixed minimum value of 0.10).
     /// </summary>
-    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.5f;
+    public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.6f;
 
     /// <summary>
     /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
@@ -145,9 +157,20 @@ namespace CeresTrain.Trainer
     public readonly float Beta2 { get; init; } = 0.98f;
 
     /// <summary>
+    /// Beta 3 coefficient used with AdEMAMix optimizers.
+    /// </summary>
+    public readonly float Beta3 { get; init; } = 0.9999f;
+
+    /// <summary>
+    /// Alpha coefficient used with AdEMAMix optimizers.
+    /// </summary>
+    public readonly float Alpha { get; init; } = 5;
+
+
+    /// <summary>
     /// Value at which gradients are clipped on each optimizer step (clipping is disabled if this value is 0.0).
     /// </summary>
-    public readonly float GradientClipLevel { get; init; } = 2.0f;
+    public readonly float GradientClipLevel { get; init; } = 3.0f;
 
     #region Loss multipliers
 
@@ -160,7 +183,7 @@ namespace CeresTrain.Trainer
     /// Scaling multiplier to be applied to secondary value loss term.
     /// Typically a lower coefficient is used here because it is very noisy.
     /// </summary>
-    public readonly float LossValue2Multiplier { get; init; } = 0.3f;
+    public readonly float LossValue2Multiplier { get; init; } = 0.1f;
 
     /// <summary>
     /// Scaling multiplier to be applied to policy loss term.

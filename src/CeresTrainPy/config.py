@@ -96,6 +96,8 @@ class Configuration:
     self.Opt_LRBeginDecayAtFractionComplete = config_opt.get('LRBeginDecayAtFractionComplete', 0.25)
     self.Opt_Beta1 = config_opt.get('Beta1', 0.90)
     self.Opt_Beta2 = config_opt.get('Beta2', 0.98)
+    self.Opt_Beta3 = config_opt.get('Beta3', 0.9999)
+    self.Opt_Alpha = config_opt.get('Alpha', 5)
     self.Opt_GradientClipLevel = config_opt.get('GradientClipLevel', 1.0)
     self.Opt_LossValueMultiplier = config_opt.get('LossValueMultiplier', 0.5)
     self.Opt_LossValue2Multiplier = config_opt.get('LossValue2Multiplier', 0.0)
