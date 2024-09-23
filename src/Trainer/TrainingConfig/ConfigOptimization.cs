@@ -68,6 +68,12 @@ namespace CeresTrain.Trainer
     /// See: https://github.com/nanowell/AdEMAMix-Optimizer-Pytorch
     /// </summary>
     AdEMAMixShampoo,
+
+    /// <summary>
+    /// "SOAP: Improving and Stabilizing Shampoo using Adam" by Vyal et al. (https://arxiv.org/abs/2409.11321)
+    /// Code from official implementation at https://github.com/nikhilvyas/SOAP/blob/main/soap.py
+    /// </summary>
+    SOAP
   }
 
 

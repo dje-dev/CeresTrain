@@ -50,6 +50,7 @@ from schedulefree_ceres import AdamWScheduleFree
 
 from AdEMAMix import AdEMAMix
 from AdEMAMixShampoo import AdEMAMixDistributedShampoo
+from soap import SOAP
 
 print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -247,19 +248,24 @@ def Train():
 
 
   def num_warmup_positions():
-    # Warmup is 5% of positions (but not more than 50mm)
-    return int(min(50_000_000, 0.05 * config.Opt_NumTrainingPositions))
+    # Warmup is 5% of positions (but not more than 100mm)
+    return int(min(100_000_000, 0.05 * config.Opt_NumTrainingPositions))
 
+
+  STEPS_AdEMAMix_WARMUP = (num_warmup_positions() // 2) // config.Opt_BatchSizeBackwardPass
 
   # Loss and optimizer
   if config.Opt_Optimizer == 'NAdamW':
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
+  elif config.Opt_Optimizer == 'SOAP':
+    PRECONDITION_FREQUENCY = 10 # smaller numbers slow down optimization
+    optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), precondition_frequency=PRECONDITION_FREQUENCY)
   elif config.Opt_Optimizer == 'AdEMAMix':
-    optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3=num_warmup_positions() // config.Opt_BatchSizeBackwardPass)
+    optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdEMAMixShampoo':
-    optimizer = AdEMAMixDistributedShampoo(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3=num_warmup_positions() // config.Opt_BatchSizeBackwardPass)
+    optimizer = AdEMAMixDistributedShampoo(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdamWScheduleFree':
     num_warmup_steps = num_warmup_positions() // BATCH_SIZE
     optimizer = AdamWScheduleFree(optim_groups, lr= LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), warmup_steps=num_warmup_steps)
@@ -286,21 +292,21 @@ def Train():
       return 1.0
     
     # After warmup phase, the LR is held constant until some fraction of training is complete
-    # and thereafter ramps down linearly to some minimum fraction.
-    FRAC_START_DELAY = config.Opt_LRBeginDecayAtFractionComplete
-    FRAC_MIN = 0.12
+    # and thereafter ramps down using a truncated consine decay, terminating around 0.10
+    FRAC_START_COSINE = config.Opt_LRBeginDecayAtFractionComplete
 
     WARMUP_POS = num_warmup_positions()
     if num_pos < WARMUP_POS:
       return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
-    elif fraction_complete < FRAC_START_DELAY:
+    elif fraction_complete < FRAC_START_COSINE:
       return 1.0
     elif fraction_complete > 1:
-      return FRAC_MIN # shouldn't happen
+      return 0.05 # shouldn't happen
     else:
-      fraction_remaining = 1.0 - fraction_complete
-      frac_end_delay = 1.0 - FRAC_START_DELAY
-      return FRAC_MIN + (fraction_remaining/frac_end_delay) * (frac_end_delay - FRAC_MIN)      
+      # Truncated cosine decay
+      END_COSINE_FRAC = 1.15 # slightly larger than 1.0 so we get truncated cosine ending around 0.1
+      t = (fraction_complete - FRAC_START_COSINE) / (END_COSINE_FRAC - FRAC_START_COSINE)
+      return 0.5 * (1 + np.cos(np.pi * t))
 
   scheduler = LambdaLR(optimizer, lr_lambda)
 
