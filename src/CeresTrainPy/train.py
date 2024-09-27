@@ -304,7 +304,7 @@ def Train():
       return 0.05 # shouldn't happen
     else:
       # Truncated cosine decay
-      END_COSINE_FRAC = 1.15 # slightly larger than 1.0 so we get truncated cosine ending around 0.1
+      END_COSINE_FRAC = 1.1 # slightly larger than 1.0 so we get truncated cosine ending around 0.1
       t = (fraction_complete - FRAC_START_COSINE) / (END_COSINE_FRAC - FRAC_START_COSINE)
       return 0.5 * (1 + np.cos(np.pi * t))
 
