@@ -70,15 +70,16 @@ class TPGDataset(Dataset):
     # Get the list of files in the specified directory and select the subset appropriate for this worker.
     all_files = fnmatch.filter(os.listdir(root_dir), '*.zst')
     all_files.sort(key=lambda f: stable_str_hash(f))  # deterministic shuffle
+    assert len(all_files) > num_files_to_skip + num_workers, "Trying to skip more files than available"
+    all_files = all_files[num_files_to_skip:]
 
     # Divide files as evenly as possible among workers
     files_per_worker = len(all_files) // world_size
-    assert files_per_worker > num_files_to_skip, "Trying to skip more files than available"
     start_index = rank * files_per_worker
     end_index = start_index + files_per_worker
 
      # Assign files to this worker
-    self.files = all_files[num_files_to_skip + start_index:end_index]
+    self.files = all_files[start_index:end_index]
 
     self.worker_id = None
 
