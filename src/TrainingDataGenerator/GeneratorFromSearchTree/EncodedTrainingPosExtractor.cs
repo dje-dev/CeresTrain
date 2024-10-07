@@ -281,7 +281,7 @@ namespace CeresTrain.TrainingDataGenerator
         probabilities[i] *= probScaling;
       }
 
-      CompressedPolicyVector.Initialize(ref policy, indicies, probabilities, false);
+      CompressedPolicyVector.Initialize(ref policy, evalResult.Policy.Side, indicies, probabilities, false);
 
       return (w, d, l, m, u, policy);
     }
@@ -305,7 +305,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       // Extract policy from empirical
       CompressedPolicyVector policy = default;
-      MCTSNodeStructUtils.ExtractPolicyVectorFromVisitDistribution(in node.StructRef, ref policy);
+      MCTSNodeStructUtils.ExtractPolicyVectorFromVisitDistribution(node.SideToMove, in node.StructRef, ref policy);
 
 #if NOT
       // This version is not what we want, it extracts the neural network policy.

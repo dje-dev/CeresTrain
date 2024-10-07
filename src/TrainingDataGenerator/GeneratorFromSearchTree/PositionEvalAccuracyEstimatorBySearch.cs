@@ -187,7 +187,7 @@ namespace CeresTrain.TrainingDataGenerator
     {
       CompressedPolicyVector targetPolicy = default;
       float[] targetProbabilities = trainingPos.Policies.ProbabilitiesWithNegativeOneZeroed;
-      CompressedPolicyVector.Initialize(ref targetPolicy, targetProbabilities, false);
+      CompressedPolicyVector.Initialize(ref targetPolicy, posWithHistory.FinalPosition.SideToMove, targetProbabilities, false);
       float[] targetProbabilitiesMirrored = targetPolicy.Mirrored.DecodedNoValidate;
 
       ref readonly EncodedPositionEvalMiscInfoV6 infoTraining = ref trainingPos.PositionWithBoards.MiscInfo.InfoTraining;

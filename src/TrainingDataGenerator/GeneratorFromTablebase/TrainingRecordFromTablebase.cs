@@ -74,7 +74,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       Debug.Assert(bestMove != default || succeedIfIncompleteDTZ);
 
-      CompressedPolicyVector policyTarget = BuildPolicyTarget(score, moves);
+      CompressedPolicyVector policyTarget = BuildPolicyTarget(pos.SideToMove, score, moves);
 
       // SLOW, attempts to find actual DTM.
       // But this not possible with Syzygy, and is sometimes very wrong (confirmed with online tools that this is not possible).
@@ -151,7 +151,7 @@ namespace CeresTrain.TrainingDataGenerator
     }
 
 
-    public static CompressedPolicyVector BuildPolicyTarget(SyzygyWDLScore score, List<(MGMove, short)> moves)
+    public static CompressedPolicyVector BuildPolicyTarget(SideType side, SyzygyWDLScore score, List<(MGMove, short)> moves)
     {
       Span<int> indices = stackalloc int[moves.Count];
       Span<float> probs = stackalloc float[moves.Count];
@@ -179,7 +179,7 @@ namespace CeresTrain.TrainingDataGenerator
 #endif
 
       CompressedPolicyVector cpv = default;
-      CompressedPolicyVector.Initialize(ref cpv, indices, probs, false); // TODO: this last argument can/probably should be removed! Nonsensical.
+      CompressedPolicyVector.Initialize(ref cpv, side, indices, probs, false); // TODO: this last argument can/probably should be removed! Nonsensical.
       return cpv;
     }
 

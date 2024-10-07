@@ -89,7 +89,7 @@ namespace CeresTrain.Trainer
     public void RunTournamentTests(NNEvaluatorDef trainingEvaluatorDef, NNEvaluatorTorchsharp tsEval)
     {
       ref readonly ConfigTraining trainer = ref TrainerC.TrainingConfig;
-      NNEvaluatorDef compareEvaluatorDef = new NNEvaluatorDef(trainer.MonitoringConfig.CompareNetDef, trainer.MonitoringConfig.CompareDeviceDef);
+      NNEvaluatorDef compareEvaluatorDef = new NNEvaluatorDef(trainer.MonitoringConfig.CompareNetDef, trainer.MonitoringConfig.CompareDeviceDef, trainingEvaluatorDef.OptionsString);
       NNEvaluator compareEvaluator = NNEvaluatorFactory.BuildEvaluator(compareEvaluatorDef);
 
       GameEngineDefCeres engineTrain = new("Train", trainingEvaluatorDef);

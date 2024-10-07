@@ -307,9 +307,9 @@ namespace CeresTrain.TrainingDataGenerator
 
                 // Dump the policies
                 CompressedPolicyVector cpvTAR = default;
-                CompressedPolicyVector.Initialize(ref cpvTAR, tarPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
+                CompressedPolicyVector.Initialize(ref cpvTAR, tarPos.PositionWithBoards.FinalPosition.SideToMove, tarPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
                 CompressedPolicyVector cpv = default;
-                CompressedPolicyVector.Initialize(ref cpv, generatedNextPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
+                CompressedPolicyVector.Initialize(ref cpv, tarPos.PositionWithBoards.FinalPosition.SideToMove, generatedNextPos.Policies.ProbabilitiesWithNegativeOneZeroed, false);
                 Console.WriteLine(cpv);
                 Console.WriteLine(cpvTAR);
                 Console.WriteLine(cpv.KLDWith(in cpvTAR) + " " + cpvTAR.KLDWith(in cpv));
