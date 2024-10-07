@@ -508,7 +508,7 @@ def Train():
         # Board 4 (only used if action loss is enabled)
         if config.Opt_LossActionMultiplier > 0:
           sub_batch = batch[3]
-          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower4, q_deviation_upper4, uncertainty_policy_out4, action_out4, _, action_uncertainty_out4 = model(sub_batch['squares'], None)
+          policy_out4, value_out4, moves_left_out4, unc_out4, value2_out4, q_deviation_lower4, q_deviation_upper4, uncertainty_policy_out4, action_out4, _, action_uncertainty_out4 = model(sub_batch['squares'], state_out1)
 
 
           action4_played_move_indices = sub_batch['policy_index_in_parent'].to(dtype=torch.int)
