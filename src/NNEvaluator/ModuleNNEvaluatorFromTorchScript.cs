@@ -198,12 +198,25 @@ namespace CeresTrain.NNEvaluators
                 rawRet = (Tensor[])rawRetObj;
               }
 
-              ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
-                     rawRet.Length > 7 ? rawRet[7] : default,
-                     rawRet.Length > 8 ? rawRet[8] : default,
-                     rawRet.Length > 9 ? rawRet[9] : default,
-                     rawRet.Length > 10 ? rawRet[10] : default);
-              hasAction = rawRet.Length > 8;
+              if (rawRet.Length == 9)
+              {
+                // only needed for legacy files circa July 2024
+                ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
+                       default,
+                       rawRet.Length > 7 ? rawRet[7] : default,
+                       rawRet.Length > 8 ? rawRet[8] : default,
+                       default);
+                hasAction = rawRet.Length > 7;
+              }
+              else
+              {
+                ret = (rawRet[0], rawRet[1], rawRet[2], rawRet[3], rawRet[4], rawRet[5], rawRet[6],
+                       rawRet.Length > 7 ? rawRet[7] : default,
+                       rawRet.Length > 8 ? rawRet[8] : default,
+                       rawRet.Length > 9 ? rawRet[9] : default,
+                       rawRet.Length > 10 ? rawRet[10] : default);
+                hasAction = rawRet.Length > 8;
+              }
             }
             else
             {
