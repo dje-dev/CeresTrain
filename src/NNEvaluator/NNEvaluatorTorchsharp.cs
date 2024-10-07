@@ -790,7 +790,9 @@ namespace CeresTrain.NNEvaluators
 
           if (legalMovesIndices != null)
           {
-            InitPolicyAndActionProbabilities(i, probs, legalMovesIndices, predictionsPolicyMasked, 
+            InitPolicyAndActionProbabilities(i, probs, 
+                                             getMGPosAtIndexWasProvided ? getMGPosAtIndex(i).SideToMove : SideType.White,
+                                             legalMovesIndices, predictionsPolicyMasked, 
                                              policiesToReturn, actionsSpan, actionsToReturn, hasAction);
           }
           else
@@ -1041,6 +1043,7 @@ namespace CeresTrain.NNEvaluators
     
     static void InitPolicyAndActionProbabilities(int i,
                                                  Span<PolicyVectorCompressedInitializerFromProbs.ProbEntry> probs,
+                                                 SideType side,
                                                  short[] legalMoveIndices,
                                                  ReadOnlySpan<Half> spanPoliciesMaskedAndExponentiated,
                                                  CompressedPolicyVector[] policiesToReturn,
@@ -1082,7 +1085,9 @@ namespace CeresTrain.NNEvaluators
       }
 
       PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i],
-                                                                          ref actionsToReturn[i], hasActions,
+                                                                          ref actionsToReturn[i], 
+                                                                          side,
+                                                                          hasActions,
                                                                           numUsedSlots, CompressedPolicyVector.NUM_MOVE_SLOTS, probs);
     }
 
@@ -1098,15 +1103,20 @@ namespace CeresTrain.NNEvaluators
                                         CompressedActionVector[] actionsToReturn,
                                         bool hasAction)
     {
+      SideType side;
+
       // Retrieve or generate legal moves in this position.
       MGMoveList movesThisPosition;
       if (getMoveListAtIndex != null)
       {
         movesThisPosition = getMoveListAtIndex(i);
+
+        side = getMGPosAtIndex == null ? SideType.White : getMGPosAtIndex(i).SideToMove;
       }
       else
       {
         Position thisPos = getMGPosAtIndex(i).ToPosition;
+        side = thisPos.SideToMove;
 
         // NN will have seen position from side to move
         bool posReversed = thisPos.SideToMove == SideType.Black;
@@ -1149,6 +1159,7 @@ namespace CeresTrain.NNEvaluators
       // Finally, initialize the policy vector for thi sposition from the probs array.
       PolicyVectorCompressedInitializerFromProbs.InitializeFromProbsArray(ref policiesToReturn[i], 
                                                                           ref actionsToReturn[i],
+                                                                          side,
                                                                           hasAction,
                                                                           numMovesToProcess,
                                                                           CompressedPolicyVector.NUM_MOVE_SLOTS, probs);
