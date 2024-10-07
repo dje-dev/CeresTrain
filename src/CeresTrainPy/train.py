@@ -260,7 +260,7 @@ def Train():
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
   elif config.Opt_Optimizer == 'SOAP':
-    PRECONDITION_FREQUENCY = 10 # smaller numbers slow down optimization
+    PRECONDITION_FREQUENCY = 10 if config.NetDef_ModelDim < 512 else 20 # smaller numbers slow down optimization
     optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), precondition_frequency=PRECONDITION_FREQUENCY)
   elif config.Opt_Optimizer == 'AdEMAMix':
     optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
