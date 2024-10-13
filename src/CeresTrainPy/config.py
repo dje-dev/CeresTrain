@@ -60,7 +60,7 @@ class Configuration:
     self.Data_SourceType = config_data.get('SourceType', 'DirectFromPositionGenerator')
     self.Data_PositionGenerator = config_data.get('PositionGenerator', {})
     self.Data_TrainingFilesDirectory = config_data.get('TrainingFilesDirectory', None)
-    self.Data_NumTPGFilesToSkip = config_data.get('Data_NumTPGFilesToSkip', 0)
+    self.Data_NumTPGFilesToSkip = config_data.get('NumTPGFilesToSkip', 0)
     self.Data_FractionQ = config_data.get('FractionQ', 0.0)
     self.Data_WDLLabelSmoothing = config_data.get('WDLLabelSmoothing', 0.0)
 
