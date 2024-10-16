@@ -642,18 +642,22 @@ const bool TEST = false;
               else
               {
                 // Clear the probability of the already used move to 0 so it will not be chosen.
-                EncodedMove moveMadeInGame = EncodedMove.FromNeuralNetIndex(thisPos.PositionWithBoards.MiscInfo.InfoTraining.PlayedIndex);
+                short moveMadeInGameIndex = thisPos.PositionWithBoards.MiscInfo.InfoTraining.PlayedIndex;
                 bool found = false;
                 for (int ix=0;ix<policyLen; ix++) 
                 {
-                  if (policyMoves[ix] == moveMadeInGame)
+                  if (policyMoves[ix].IndexPacked == moveMadeInGameIndex)
                   {
                     policyProbs[ix] = 0;
                     found = true;
                     break;
                   }
                 }
-                Debug.Assert(found);
+                
+                if (!found)
+                {
+                  throw new NotImplementedException("Move made in game not found in policy moves.");  
+                }
 
                 StatUtils.Normalize(policyProbs);
 
