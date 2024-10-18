@@ -358,7 +358,7 @@ def Train():
                        rank, world_size, NUM_DATASET_WORKERS, 
                        BOARDS_PER_BATCH, config.Data_NumTPGFilesToSkip // world_size, config.Exec_TestFlag)
 
-  dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
+  dataloader = DataLoader(dataset, batch_size=None, pin_memory=True, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)
 
   if fabric.is_global_zero:
