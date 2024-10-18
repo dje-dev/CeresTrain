@@ -174,9 +174,16 @@ namespace CeresTrain.Trainer
 
 
     /// <summary>
-    /// Value at which gradients are clipped on each optimizer step (clipping is disabled if this value is 0.0).
+    /// Value at which gradients are clipped on each optimizer step 
+    /// (clipping is disabled if this value is 0.0).
+    /// 
+    /// Clipping may stabilize training.
+    /// Contrary to intuition, low values (such as 0.5) 
+    /// may actually increase speed of convergence, see:
+    /// "Why gradient clipping accelerates training: A theoretical justification for adaptivity" Zhang et. al.
+    /// https://arxiv.org/abs/1905.11881
     /// </summary>
-    public readonly float GradientClipLevel { get; init; } = 3.0f;
+    public readonly float GradientClipLevel { get; init; } = 1.0f;
 
     #region Loss multipliers
 
