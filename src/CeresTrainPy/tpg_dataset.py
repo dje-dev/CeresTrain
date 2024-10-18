@@ -22,10 +22,15 @@ from torch.utils.data import Dataset, DataLoader
 import torch.distributed as dist
 
 # stable hash function for strings so all worker processes use same function
-def stable_str_hash(s):
-    return sum(ord(c) for c in s)
+def stable_str_hash(s: str) -> int:
+    hash_value = 0
+    for char in s:
+        hash_value = (hash_value * 31 + ord(char)) % (2**32)
+    return hash_value
+
 
 MAX_MOVES = 92 # Maximum number of policy moves in a position that can be stored (TPGRecord.MAX_MOVES)
+
 
 class TPGDataset(Dataset):
   """
