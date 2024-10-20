@@ -11,7 +11,7 @@ The primary goals of the project are to:
 
 ## Project Status as of Early 2024
 
-The initial release of CeresTrain focuses on the simplified domain of endgame positions with 7 or less pieces, for which [endgame tablebases](https://en.wikipedia.org/wiki/Endgame_tablebase) (EGTB) are available. This domain offers numerous [opportunities but also challenges](./markup/egtb_training_observations.md). The initial version focuses on the [transformer](https://arxiv.org/abs/1706.03762) architecture, but the object-oriented design allows other architectures to also be be plugged in. Although this is the initial focus, the CeresTrain code base is fully general and can also be used to train on the full game.
+The initial release of CeresTrain focuses on the simplified domain of endgame positions with 7 or less pieces, for which [endgame tablebases](https://en.wikipedia.org/wiki/Endgame_tablebase) (EGTB) are available. This domain offers numerous [opportunities but also challenges](./text/egtb_training_observations.md). The initial version focuses on the [transformer](https://arxiv.org/abs/1706.03762) architecture, but the object-oriented design allows other architectures to also be be plugged in. Although this is the initial focus, the CeresTrain code base is fully general and can also be used to train on the full game.
 
 Initial results in this endgame domain are encouraging. They demonstrate the correctness, completeness, and high performance of the training platform. They also attain impressive performance. For example, a network can be trained from scratch in about 4 hours on a single high-end consumer GPU to play KRPvKRP endgames at a level of value accuracy (predicting win/draw/loss) on real-world endgame positions slightly exceeding (97.88% versus 97.56%) that of current state-of-the-art neural networks (such as T2) with about 10% the parameter count and computation (FLOPS). This complete training process can be accomplished using CeresTrain with a single command line, executing either locally or remotely (or in C# via an API).
 
@@ -36,12 +36,12 @@ To give a sense of the ease of use, speed and flexibility of the CeresTrain engi
 ## Further Information
 The following pages provide more information on various aspects of the project. Additional documentation (for example, on the C# class library) is also forthcoming.
 
-* [Philosophical underpinnings](./markup/philosophical_underpinnings.md)
-* [Observations and statistics related to EGTB training](./markup/egtb_training_observations.md)
-* [Installing and configuring CeresTrain](./markup/installing_configuring.md)
-* [Getting started - training your first net from the command line](./markup/example_command_line_experiment.md)
-* [Distributed training](./markup/distributed_training.md)
-* [Project assessment and future work](assessment_next_steps.md)
+* [Philosophical underpinnings](./text/philosophical_underpinnings.md)
+* [Observations and statistics related to EGTB training](./text/egtb_training_observations.md)
+* [Installing and configuring CeresTrain](./text/installing_configuring.md)
+* [Getting started - training your first net from the command line](./text/example_command_line_experiment.md)
+* [Distributed training](./text/distributed_training.md)
+* [Project assessment and future work](./text/assessment_next_steps.md)
 
 
 
