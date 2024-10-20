@@ -14,6 +14,7 @@ If not, see <http://www.gnu.org/licenses/>.
 # NOTE: this module is derived from: https://github.com/Rocketknight1/minimal_lczero.
 
 import math
+from multiprocessing import Value
 from typing import Tuple, NamedTuple
 
 import torch
@@ -396,19 +397,21 @@ class CeresNet(pl.LightningModule):
     q_deviation_lower_loss = 0 if q_deviation_lower_out is None else loss_calc.q_deviation_lower_loss(q_deviation_lower_target, q_deviation_lower_out, gradient_norm_logging_mode, self.q_deviation_loss_weight)
     q_deviation_upper_loss = 0 if q_deviation_upper_out is None else loss_calc.q_deviation_upper_loss(q_deviation_upper_target, q_deviation_upper_out, gradient_norm_logging_mode, self.q_deviation_loss_weight)
 
-    # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
-    # The value of this board is taken to be "more definitive" so it is the target (however this assumes policy was correct....)
-    value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value_diff_loss_weight)
-    value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value2_diff_loss_weight)
 
-    if self.action_loss_weight > 0 and action_target is not None:
+    if self.config.NetDef_TrainOn4BoardSequences:
       # TO DO: probably the multiplier_action_loss should somehow be propagated into the gradient norms when these are calculated
       action_loss = multiplier_action_loss * loss_calc.action_loss(action_target, action_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.action_loss_weight)
-      action_uncertainty_loss = 0 if self.action_uncertainty_loss_weight == 0 else multiplier_action_loss * self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out, gradient_norm_logging_mode, self.action_uncertainty_loss_weight)
+      action_uncertainty_loss = multiplier_action_loss * self.action_uncertainty_loss_weight * loss_calc.action_unc_loss(torch.abs(action_target - action_out), action_uncertainty_out, gradient_norm_logging_mode, self.action_uncertainty_loss_weight)
+      # We have two value scores and want them to be consistent modulo inversion (prior_board and this_board).
+      # The value of this board is taken to be "more definitive" so it is the target (however this assumes policy was correct....)
+      value_diff_loss = 0 if self.value_diff_loss_weight == 0 or prior_value_out == None else loss_calc.value_diff_loss(value_out, prior_value_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value_diff_loss_weight)
+      value2_diff_loss = 0 if self.value2_diff_loss_weight == 0 or prior_value2_out == None else loss_calc.value2_diff_loss(value2_out, prior_value2_out, SUBTRACT_ENTROPY, gradient_norm_logging_mode, self.value2_diff_loss_weight)
     else:
       action_loss = 0
       action_uncertainty_loss = 0
-      
+      value_diff_loss = 0
+      value2_diff_loss = 0
+
     uncertainty_policy_loss = 0 if uncertainty_policy_out is None else loss_calc.uncertainty_policy_loss(uncertainty_policy_target, uncertainty_policy_out, gradient_norm_logging_mode, self.uncertainty_policy_weight)
 
     total_loss = (self.policy_loss_weight * p_loss

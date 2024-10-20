@@ -105,7 +105,7 @@ assert config.Exec_DataType == 'BFloat16' or config.Exec_DataType == 'BFloat16Pu
 
 MAX_POSITIONS = config.Opt_NumTrainingPositions
 
-if config.Opt_LossActionMultiplier > 0 or config.NetDef_PriorStateDim > 0:
+if config.NetDef_TrainOn4BoardSequences:
   BOARDS_PER_BATCH = 4
 else:
   BOARDS_PER_BATCH = 1  

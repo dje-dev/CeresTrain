@@ -183,6 +183,12 @@ namespace CeresTrain.Networks.Transformer
     {
     }
 
+    /// <summary>
+    /// If the experimental sequence training methodology should be used,
+    /// wherein Ceres training data consists of blocks of 4 positions
+    /// (parent, optimal_child_depth_1, optimal_child_depth2, nonoptimal_child_depth1).
+    /// </summary>
+    public readonly bool TrainOn4BoardSequences { get; init; } = false;
 
     /// <summary>
     /// Number of hidden dimensions in the model.
@@ -248,7 +254,7 @@ namespace CeresTrain.Networks.Transformer
     /// "Neural Attention: Enhancing QKV Calculation in Self-Attention Mechanism with Neural Networks"
     /// https://arxiv.org/pdf/2310.11398.
     /// </summary>
-    public readonly bool NonLinearAttention { get; init; } = false;
+    public readonly bool NonLinearAttention { get; init; } = true;
 
     /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
@@ -289,7 +295,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// If relative positional encoding should be used (for Q, K and V).
     /// </summary>
-    public readonly bool UseRPE { get; init; } = true;
+    public readonly bool UseRPE { get; init; } = false;
 
     /// <summary>
     /// If the RPE feature should be applied to the V matrix (as well as Q and K).

@@ -113,6 +113,13 @@ class Configuration:
     self.Opt_TestValue = config_opt.get('TestValue', 0)
 
     # Initialize class members from config_net_def
+    self.NetDef_TrainOn4BoardSequences = config_net_def.get('TrainOn4BoardSequences', False)
+    if not self.NetDef_TrainOn4BoardSequences:
+      self.Opt_LossActionMultiplier = 0
+      self.Opt_LossActionUncertaintyMultiplier = 0
+      self.Opt_LossValueDMultiplier = 0
+      self.Opt_LossValue2DMultiplier = 0
+
     self.NetDef_ModelDim = config_net_def.get('ModelDim', 256)
     self.NetDef_NumLayers = config_net_def.get('NumLayers', 8)
     self.NetDef_NumHeads = config_net_def.get('NumHeads', 8)
