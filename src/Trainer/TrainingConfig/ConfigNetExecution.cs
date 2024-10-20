@@ -91,7 +91,7 @@ namespace CeresTrain.Trainer
                               int activationMonitoringSkipCount = 0)
     {
       ArgumentNullException.ThrowIfNull(deviceIDs);
-
+      
       ID = id;
       TorchSharpUtils.ValidatedDevice(new Device(deviceType, deviceIDs[0]));
       DeviceType = deviceType;

@@ -29,7 +29,6 @@ using CeresTrain.PositionGenerators;
 using CeresTrain.Trainer;
 using CeresTrain.Examples;
 using CeresTrain.UserSettings;
-using CeresTrain.NNEvaluators;
 using Ceres.Chess.NNEvaluators.Ceres;
 
 #endregion
@@ -186,7 +185,7 @@ namespace CeresTrain.TrainCommands
 
         string fullConfigPath = Path.Combine(configsDir, configID);
         ConfigTraining config = TrainingHelpers.AdjustAndLoadConfig(fullConfigPath, piecesStr);
-        CeresNetEvaluation.RunUCILoop(config.NetDefConfig, config.ExecConfig, resultsFile.Value.NetFileName, netSpecForUncoveredPositions, "GPU:0", null);
+        CeresNetEvaluation.RunUCILoop(config.NetDefConfig, config.ExecConfig, resultsFile.Value.TorchscriptFileName, netSpecForUncoveredPositions, "GPU:0", null);
       }
     }
 
@@ -288,7 +287,7 @@ namespace CeresTrain.TrainCommands
           config = TrainingHelpers.AdjustAndLoadConfig(Path.Combine(configsDir, configID), piecesStr);
 
           Console.WriteLine();
-          Console.WriteLine("LOADING: " + resultsFileInfo.Value.NetFileName 
+          Console.WriteLine("LOADING: " + resultsFileInfo.Value.TorchscriptFileName 
             + " pos=" + resultsFileInfo.Value.NumTrainingPositions 
             + " loss=" + resultsFileInfo.Value.LossSummary.TotalLoss
             + " value accuracy=" + resultsFileInfo.Value.LossSummary.ValueAccuracy);
@@ -296,7 +295,7 @@ namespace CeresTrain.TrainCommands
 
         PositionGeneratorRandomFromPieces generator = new PositionGeneratorRandomFromPieces(piecesStr);
 
-        string netFileName = configID == null ? null : resultsFileInfo.Value.NetFileName;
+        string netFileName = configID == null ? null : resultsFileInfo.Value.ONNXFileName;
         ICeresNeuralNetDef netDefConfig = configID == null ? default : config.NetDefConfig;
         ConfigNetExecution execConfig = configID == null ? default : config.ExecConfig;
 
@@ -332,9 +331,20 @@ namespace CeresTrain.TrainCommands
             throw new NotImplementedException();
           }
           string FN = sourceEPDOrPGNFileName;
-          NNEvaluatorOptionsCeres options = default; // TODO: fill in
-          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
-          NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, "GPU:0");
+
+          if (config.ExecConfig.SaveNetwork1FileName == null)
+          {
+            throw new Exception("SaveNetwork1FileName was null");
+          }
+
+          string DEVICE_SPEC = "GPU:0"; // ** TODO: make this adjustable
+          NNEvaluator evaluator = NNEvaluator.FromSpecification("Ceres:" + config.ExecConfig.SaveNetwork1FileName, DEVICE_SPEC);
+
+          evaluator.Options = new NNEvaluatorOptionsCeres(); // TODO: make adjustable;
+
+          //          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
+
+          NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, DEVICE_SPEC);
           (float accuracyValue, float accuracyPolicy) = CeresNetEvaluation.TestAccuracyOnPositions(generator, FN, evaluator, compareLC0Evaluator, default, (int)numPos, verbose);
         }
       }

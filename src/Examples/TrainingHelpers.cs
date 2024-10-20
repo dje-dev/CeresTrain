@@ -86,7 +86,7 @@ namespace CeresTrain.Examples
         throw new ArgumentException("Must specify either piecesStr or dataFilesDir");
       }
 
-      if (piecesStr != null && configData.TrainingFilesDirectory != null)
+      if (piecesStr != null && tpgDir != null)
       {
         throw new ArgumentException("Implementation limitation: pieces filter not currently supported when reading from training data files");
       }

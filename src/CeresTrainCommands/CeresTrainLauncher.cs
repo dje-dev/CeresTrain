@@ -58,7 +58,7 @@ namespace CeresTrain.TrainCommands
 
       // Add INFO lines to the logger (which is otherwise used for local training)
       // so that supplemental information can be parsed out for use in the TrainingResultSummary.
-      logger.AddLine($"INFO: TORCHSCRIPT_FILENAME {trainResult.NetFileName}");
+      logger.AddLine($"INFO: TORCHSCRIPT_FILENAME {trainResult.TorchscriptFileName}");
       logger.AddLine($"INFO: NUM_PARAMETERS {boardTrain.NumParameters}");
       logger.AddLine(END_TRAINING_PHRASE + " SUCCESS");
       CeresTrainCommandUtils.DoTrainingEpilogue(Environment.MachineName, configID, startTime, logger, consoleStatusTable, trainResult);

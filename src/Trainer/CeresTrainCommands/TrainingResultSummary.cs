@@ -39,8 +39,8 @@ namespace CeresTrain.Trainer
     /// <param name="trainingTime"></param>
     /// <param name="numTrainingPositions"></param>
     /// <param name="trainingLogFileName"></param>
-    /// <param name="netFileName"></param>
-    /// <param name="bestFileName"></param>
+    /// <param name="finalTorchscriptFileName"></param>
+    /// <param name="finalONNXFileName"></param>
     /// <exception cref="ArgumentNullException"></exception>
     public TrainingResultSummary(string executionCoordinatorHost, string trainingHost, string configName, 
                                  DateTime trainingEndTime, string trainingEndStatus,
@@ -48,7 +48,7 @@ namespace CeresTrain.Trainer
                                  TimeSpan trainingTime, long numTrainingPositions,
                                  TrainingLossSummary lossSummary,
                                  string trainingLogFileName,
-                                 string netFileName, string bestFileName)
+                                 string finalTorchscriptFileName, string finalONNXFileName)
     {
       LaunchTrainingHost = executionCoordinatorHost;
       TrainingHost = trainingHost;
@@ -60,8 +60,8 @@ namespace CeresTrain.Trainer
       NumTrainingPositions = numTrainingPositions;
       LossSummary = lossSummary.ReplaceNaNWithMinus999();
       TrainingLogFileName = trainingLogFileName;
-      NetFileName = netFileName;
-      BestFileName = bestFileName;
+      TorchscriptFileName = finalTorchscriptFileName;
+      ONNXFileName = finalONNXFileName;
     }
 
 
@@ -129,12 +129,12 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Name of the model file containing the neural network (last saved).
     /// </summary>
-    public readonly string NetFileName { get; init; }
+    public readonly string TorchscriptFileName { get; init; }
 
     /// <summary>
     /// Name of the model file containing the neural network (having lowest loss during training).
     /// </summary>
-    public readonly string BestFileName { get; init; }
+    public readonly string ONNXFileName { get; init; }
 
 
     /// <summary>

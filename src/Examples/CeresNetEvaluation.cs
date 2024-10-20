@@ -633,7 +633,7 @@ namespace CeresTrain.Examples
         else
         {
           // Determine network full path, remapping saved path to directory under main output directory.
-          netFileNameBase = resultsFile.Value.NetFileName;
+          netFileNameBase = resultsFile.Value.TorchscriptFileName;
           netFileNameBase = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "nets", Path.GetFileName(netFileNameBase.Replace("\\", "/")));
         }
 

@@ -142,9 +142,13 @@ namespace CeresTrain.TrainCommands
       }
 
       long numParameters = logger.GetInfoLong("NUM_PARAMETERS");
-      string tsFileName = logger.GetInfoStr("TORCHSCRIPT_FILENAME");
+      string tsFileName = Path.GetFileName(logger.GetInfoStr(logger.GetInfoStr("TS_FILENAME")));
+      string onnxFileName = Path.GetFileName(logger.GetInfoStr("ONNX16_FILENAME"));
+
       string netsDir = CeresTrainUserSettingsManager.Settings.OutputNetsDir;
       string savedTSFilename = tsFileName == null ? null : Path.Combine(netsDir, tsFileName);
+      string savedONNXFilename = onnxFileName == null ? null : Path.Combine(netsDir, onnxFileName);
+
 
       TrainingLossSummary lossSummary = default;
       TrainingStatusTable.TrainingStatusRecord[] records = consoleStatusTable.TrainingStatusRecords.Where(s => s.configID == configID).ToArray();
@@ -171,9 +175,9 @@ namespace CeresTrain.TrainCommands
       }
 
       TrainingStatusTable.TrainingStatusRecord last = records.Length > 0 ? records[^1] : default;
-      TrainingResultSummary result = new TrainingResultSummary(Environment.MachineName, trainingHost, configID, DateTime.Now, exitStatus,
-                                                               numParameters, DateTime.Now - startTime, last.NumPositions,
-                                                               lossSummary, logger.LiveLogFileName, savedTSFilename, null);
+      TrainingResultSummary result = new(Environment.MachineName, trainingHost, configID, DateTime.Now, exitStatus,
+                                         numParameters, DateTime.Now - startTime, last.NumPositions,
+                                         lossSummary, logger.LiveLogFileName, savedTSFilename, savedONNXFilename);
       return result;
     }
 
