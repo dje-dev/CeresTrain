@@ -1,6 +1,6 @@
 # CeresTrain - A Platform for Neural Network Research in Chess
 
-<img src="cerestrain_logo.png" width="275" height="275">
+<img src="./images/cerestrain_logo.png" width="275" height="275">
 
 ## Introducing CeresTrain
 CeresTrain is a software platform for training deep neural networks for chess. It builds on the pioneering [AlphaZero](https://arxiv.org/pdf/1712.01815.pdf) research from DeepMind which was subsequently replicated and greatly extended in open source by the [Leela Chess Zero](https://lczero.org) project.

@@ -5,7 +5,7 @@ CeresTrain can be utilized in one of two different ways. One way involve writing
 
 In the next section we'll utilize the command line mode and use a subset of the available commands, which can be displayed with the --help argument:
 
-![Alt text](console_commands.png)
+![Alt text](./images/console_commands.png)
 
 
 ## Running CeresTrain from the Command Line
@@ -50,7 +50,7 @@ CeresTrain train --config=smallnet --pieces=KPkp --num-pos=10000000
 
 During the course of the circa 11 minute training session, status information will be continuously logged to the console, showing various training statistics. Note that the value head accuracy attains 98.63% by the end of the session. The policy accuracy is much lower (45.19%) but this is not very meaningful because there are typically many equally good moves and this metric measures tests for exact equality.
 
-![Alt text](live_train_status.png)
+![Alt text](./images/live_train_status.png)
 
 
 
@@ -66,7 +66,7 @@ Number of test positions : 5000  KPkp
   Accuracy policy (comp): 99.80% using <weights_run1_811971.pb.gz on GPU 0>
 ```
 Because the verbose option was enabled on the command line, each test position will be logged to the console with the evaluations of the Ceres and LC0 networks shown (with errors flagged in red). For example:
-![Alt text](test_positions.png)
+![Alt text](./images/test_positions.png)
 
 It is certainly encouraging that a small neural net can be trained in just a few minutes and outperforms much larger generalized nets. However we must remember that the training and evaluation sampled uniformly from random positions. However the types of positions actually encountered in games are likely to have a significantly different distribution. We confirm this is the case by rerunning the evaluation but specifying a PGN file containing actual KPkp positions that were seen in human games (using the pos-fn argument). In this case, we see the LC0 network now dramatically outperforms, scoring 99.02% on value compared to only 96.70% for the Ceres net.
 ```
@@ -95,7 +95,7 @@ info depth 1 seldepth 1 time 16 nodes 1 score cp 111 tbhits 0 nps 61 pv c4d4
 
 We showed in the prior section that a small net (of 5 million parameters) trained for 10mm positions performs reasonably well, but still significantly below that of LC0 nets when tested on typical endgame positions. The next question is if we can train a larger net for longer and thereby achieve much higher accuracy. For this we must turn to...
 
-![Alt text](remote_live_train_status.png)
+![Alt text](./images/remote_live_train_status.png)
 ```
 CeresTrain eval --config=KP_256_10_bl --pieces=KPkp --num-pos=5000 --verbose=true --net-spec=~T81 --pos-fn=e:\cout\data\KPkp.pgn
 
