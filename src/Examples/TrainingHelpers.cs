@@ -44,7 +44,8 @@ namespace CeresTrain.Examples
     /// <param name="id"></param>
     /// <param name="deviceIDs"></param>
     public static ConfigTraining AdjustAndLoadConfig(string id, string piecesStr,
-                                                     int[] deviceIDs = null, string pyTorchCompileMode = null)
+                                                     int[] deviceIDs = null, string pyTorchCompileMode = null,
+                                                     long? numPos = null, string? tpgDir = null)
     {
       if (deviceIDs == null || deviceIDs.Length == 0)
       {
@@ -58,6 +59,28 @@ namespace CeresTrain.Examples
                                              out ConfigOptimization configOptimization, 
                                              out ConfigMonitoring configMonitoring);
 
+      configOptimization = configOptimization with
+      { 
+        NumTrainingPositions = numPos ?? configOptimization.NumTrainingPositions
+      };
+
+      configData = configData with
+      {
+        SourceType = configData.SourceType,
+        PositionGenerator = piecesStr != null ? new PositionGeneratorRandomFromPieces(piecesStr) : null,
+        TrainingFilesDirectory = tpgDir ?? configData.TrainingFilesDirectory,
+      };
+
+      if (deviceIDs != null)
+      {
+        configExec = configExec with { DeviceIDs = deviceIDs };
+      }
+
+      configOptimization = configOptimization with
+      {
+        PyTorchCompileMode = pyTorchCompileMode ?? configOptimization.PyTorchCompileMode,
+      };
+
       if (piecesStr == null && configData.TrainingFilesDirectory == null)
       {
         throw new ArgumentException("Must specify either piecesStr or dataFilesDir");
@@ -68,21 +91,8 @@ namespace CeresTrain.Examples
         throw new ArgumentException("Implementation limitation: pieces filter not currently supported when reading from training data files");
       }
 
-      configData = configData with
-      {
-        SourceType = configData.SourceType,
-        PositionGenerator = piecesStr != null ? new PositionGeneratorRandomFromPieces(piecesStr) : null,
-      };
-
-      if (deviceIDs != null)
-      {
-        configExec = configExec with { DeviceIDs = deviceIDs };
-      }
-      configOptimization = configOptimization with
-      {
-        PyTorchCompileMode = pyTorchCompileMode ?? configOptimization.PyTorchCompileMode,
-      };
       ConfigSerializationJSON.WriteConfigJSON(id, configData, configExec, configTransformerDef, configOptimization, configMonitoring);
+
       return new ConfigTraining(configExec, configTransformerDef, configData, configOptimization, configMonitoring);
     }
 

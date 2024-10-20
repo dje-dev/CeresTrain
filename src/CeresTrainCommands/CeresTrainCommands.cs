@@ -120,34 +120,39 @@ namespace CeresTrain.TrainCommands
         {
           // Run locally.
           ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, devices);
-           
-          adjustedConfig = adjustedConfig with { OptConfig  = adjustedConfig.OptConfig with { NumTrainingPositions = numPos ?? adjustedConfig.OptConfig.NumTrainingPositions }, 
-                                                 DataConfig = adjustedConfig.DataConfig with { TrainingFilesDirectory = tpgDir ?? adjustedConfig.DataConfig.TrainingFilesDirectory} };
-          result = CeresTrainLauncher.RunLocalCSharp(configID, piecesStr, in adjustedConfig, trainingStatusTable);
-        }
-        else if (hostConfig.HostName.ToUpper() == "WSL")
-        {
-          if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-          {
-            ConsoleUtils.WriteLineColored(ConsoleColor.Red, "WSL option only supported on Windows");
-            throw new Exception();
-          }
 
-          int[] overrideDevice = [0];
-          ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
-                                                                              devices, hostConfig.OverridePyTorchCompileMode);
-          result = CeresTrainLauncher.RunRemoteWSL(hostConfig.CeresTrainPyDir, configID, hostConfig.PathToOutputFromHost, in adjustedConfig, trainingStatusTable);
+          adjustedConfig = adjustedConfig with { OptConfig = adjustedConfig.OptConfig with { NumTrainingPositions = numPos ?? adjustedConfig.OptConfig.NumTrainingPositions },
+            DataConfig = adjustedConfig.DataConfig with { TrainingFilesDirectory = tpgDir ?? adjustedConfig.DataConfig.TrainingFilesDirectory } };
+          result = CeresTrainLauncher.RunLocalCSharp(configID, piecesStr, in adjustedConfig, trainingStatusTable);
         }
         else
         {
           ConfigTraining configRemote = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
-                                                                            devices, hostConfig.OverridePyTorchCompileMode);
+                                                                            devices, hostConfig.OverridePyTorchCompileMode,
+                                                                            numPos, tpgDir);
 
-          string pathToConfigFromHost = hostConfig.PathToOutputFromHost + "/configs/" + configID;
+          if (hostConfig.HostName.ToUpper() == "WSL")
+          {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+              ConsoleUtils.WriteLineColored(ConsoleColor.Red, "WSL option only supported on Windows");
+              throw new Exception();
+            }
+  
+            int[] overrideDevice = [0];
+            ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
+                                                                    devices, hostConfig.OverridePyTorchCompileMode);
 
-          result = CeresTrainLauncher.RunRemoteSSH(hostConfig.HostName, hostConfig.UserName, hostConfig.CeresTrainPyDir,
-                                                   configID, pathToConfigFromHost, in configRemote, hostConfig.PathToOutputFromHost, 
-                                                   hostConfig.DockerLaunchCommand, trainingStatusTable);
+            result = CeresTrainLauncher.RunRemoteWSL(hostConfig.CeresTrainPyDir, configID, hostConfig.PathToOutputFromHost, in adjustedConfig, trainingStatusTable);
+          }
+          else
+          {
+            string pathToConfigFromHost = hostConfig.PathToOutputFromHost + "/configs/" + configID;
+
+            result = CeresTrainLauncher.RunRemoteSSH(hostConfig.HostName, hostConfig.UserName, hostConfig.CeresTrainPyDir,
+                                                     configID, pathToConfigFromHost, in configRemote, hostConfig.PathToOutputFromHost,
+                                                     hostConfig.DockerLaunchCommand, trainingStatusTable);
+          }
         }
 
         string resultsDir = Path.Combine(CeresTrainUserSettingsManager.Settings.OutputsDir, "results");

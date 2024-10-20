@@ -40,7 +40,8 @@ namespace CeresTrain.TrainCommands
     static Option<string> configOption;
     static Option<long> numPosOption;
     static Option<int> numTPGSetsOption;
-    static Option<string> piecesOption;
+    static Option<string> piecesOptionRequired;
+    static Option<string> piecesOptionOptional;
     static Option<string> netSpecificationOption;
     static Option<string> netSpecificationOptionalOption;
     static Option<string> netSpecificationFillinOption;
@@ -80,7 +81,8 @@ namespace CeresTrain.TrainCommands
       configOption = new Option<string>("--config", "Configuration name") { IsRequired = true };
       numPosOption = new Option<long>("--num-pos", () => 2048, "Number of positions") { };
       numTPGSetsOption = new Option<int>("--num-tpg-sets", () => 1, "Number of sets of TPG positions to generate (~200mm positions per set)") { };
-      piecesOption = new Option<string>("--pieces", "Chess pieces (e.g. KRPkrp)") { IsRequired = true };
+      piecesOptionRequired = new Option<string>("--pieces", "Chess pieces (e.g. KRPkrp)") { IsRequired = true };
+      piecesOptionOptional = new Option<string>("--pieces", "Chess pieces (e.g. KRPkrp)") { IsRequired = false };
       netSpecificationOption = new Option<string>("--net-spec", "LC0 network specification in Ceres format, e.g. LC0:703810") { IsRequired = true };
       netSpecificationOptionalOption = new Option<string>("--net-spec", "LC0 network specification used to compare performance against (or null for tablebase)") { IsRequired = false };
       netSpecificationFillinOption = new Option<string>("--net-spec-fillin", "LC0 network specification of network to use for noncovered positions") { IsRequired = false };
@@ -98,13 +100,13 @@ namespace CeresTrain.TrainCommands
       // Add commands
       initCommand = new Command("init", "Initializes new config with default values.                     [config]") { configOption };
       infoCommand = new Command("info", "Display information about a configuration.                      [config]") { configOption };
-      trainCommand = new Command("train", "Start training using a configuration.                           [config] [pieces] [num-pos] [tpg-dir] [host] [devices]") { configOption, piecesOption, numPosOption, tpgDirOption, hostOption, devicesOption };
-      evalCommand = new Command("eval", "Evaluate accuracy of last trained net.                          [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec]") { configOption, piecesOption, numPosOption, verboseOption, netSpecificationOptionalOption, epdOrPgnFnOption };
-      tournCommand = new Command("tourn", "Run tournament between net and specified LC0 net (or TB).       [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec] [search-limit]") { configOption, piecesOption, numPosOption, epdOrPgnFnOption, verboseOption, netSpecificationOptionalOption, searchLimitOptionDefaultBV };
-      uciCommand = new Command("uci", "Launch trained net with specified configuration as UCI engine.  [config] [pieces] [net-spec-fillin]") { configOption, piecesOption, netSpecificationFillinOption };
-      evalLC0Command = new Command("eval-lc0", "Evaluate vs LC0 with specific pieces and network.               [pieces] [net-spec] [num-pos] [search-limit] [pos-fn] [verbose]") { piecesOption, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption };
-      extractPositionsCommand = new Command("extract-pos", "Generate EPD/PGN file with positions from specified PGN/EPD     [pieces] [num-pos] [pos-fn] [pos-out-fn]") { piecesOption, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption };
-      generateEndgameTPGCommand = new Command("gen-endgame-tpg", "Generate TPG files with positions from specified pieces or \"*\"  [pieces] [num-pos] [tar-dir] [tpg-dir]") { piecesOption, numPosOption, tarDirOption, tpgDirOption };
+      trainCommand = new Command("train", "Start training using a configuration.                           [config] [pieces] [num-pos] [tpg-dir] [host] [devices]") { configOption, piecesOptionOptional, numPosOption, tpgDirOption, hostOption, devicesOption };
+      evalCommand = new Command("eval", "Evaluate accuracy of last trained net.                          [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec]") { configOption, piecesOptionRequired, numPosOption, verboseOption, netSpecificationOptionalOption, epdOrPgnFnOption };
+      tournCommand = new Command("tourn", "Run tournament between net and specified LC0 net (or TB).       [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec] [search-limit]") { configOption, piecesOptionRequired, numPosOption, epdOrPgnFnOption, verboseOption, netSpecificationOptionalOption, searchLimitOptionDefaultBV };
+      uciCommand = new Command("uci", "Launch trained net with specified configuration as UCI engine.  [config] [pieces] [net-spec-fillin]") { configOption, piecesOptionRequired, netSpecificationFillinOption };
+      evalLC0Command = new Command("eval-lc0", "Evaluate vs LC0 with specific pieces and network.               [pieces] [net-spec] [num-pos] [search-limit] [pos-fn] [verbose]") { piecesOptionRequired, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption };
+      extractPositionsCommand = new Command("extract-pos", "Generate EPD/PGN file with positions from specified PGN/EPD     [pieces] [num-pos] [pos-fn] [pos-out-fn]") { piecesOptionRequired, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption };
+      generateEndgameTPGCommand = new Command("gen-endgame-tpg", "Generate TPG files with positions from specified pieces or \"*\"  [pieces] [num-pos] [tar-dir] [tpg-dir]") { piecesOptionRequired, numPosOption, tarDirOption, tpgDirOption };
       generateTPGCommand = new Command("gen-tpg", "Generate TPG files from TAR files.                              [tar-dir] [tpg-dir] [num-sets]") { tarDirOption, tpgDirOption, numTPGSetsOption };
       convertTARToPackedZSTCommand = new Command("convert-tar-to-zst", "Convert TAR files to packed ZST files.                          [tar-dir] [zst-dir]") { tarDirOption, packedZSTDirOption };
 
@@ -151,7 +153,7 @@ namespace CeresTrain.TrainCommands
       extractPositionsCommand.SetHandler((string pieces, long numPos, string epdOrPgnFnOption, string epdOrPgnOutputFileNameOption) =>
       {
         CeresTrainCommands.ExtractToEPD(epdOrPgnFnOption, new PieceList(pieces), epdOrPgnOutputFileNameOption, (int)numPos);
-      }, piecesOption, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption);
+      }, piecesOptionRequired, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption);
 
 
       infoCommand.SetHandler((configID) =>
@@ -163,7 +165,7 @@ namespace CeresTrain.TrainCommands
       uciCommand.SetHandler((configID, piecesStr, netSpecFillInStr) =>
       {
         CeresTrainCommands.ProcessUCICommand(configID, piecesStr, configsDir, netSpecFillInStr);
-      }, configOption, piecesOption, netSpecificationFillinOption);
+      }, configOption, piecesOptionRequired, netSpecificationFillinOption);
 
 
       convertTARToPackedZSTCommand.SetHandler((sourceDir, targetDir) =>
@@ -188,19 +190,19 @@ namespace CeresTrain.TrainCommands
         {
           CeresNetEvaluation.GenerateTPGFilesFromLC0TrainingData(piecesStr, numPos, tarDirectory, outDirectory);
         }
-      }, piecesOption, numPosOption, tarDirOption, tpgDirOption);
+      }, piecesOptionRequired, numPosOption, tarDirOption, tpgDirOption);
 
 
       trainCommand.SetHandler((configID, piecesStr, numPos, tpgDir, hostName, devices) =>
       {
         CeresTrainCommands.ProcessTrainCommand(configID, piecesStr, numPos, hostName, tpgDir, devices, null);
-      }, configOption, piecesOption, numPosOption, tpgDirOption, hostOption, devicesOption);
+      }, configOption, piecesOptionOptional, numPosOption, tpgDirOption, hostOption, devicesOption);
 
 
       evalCommand.SetHandler((configID, piecesStr, numPos, epdOrPgnFN, verbose, netSpecification) =>
       {
         CeresTrainCommands.RunEvalOrTournament(configID, piecesStr, numPos, epdOrPgnFN, verbose, netSpecification, false, configsDir, false, default);
-      }, configOption, piecesOption, numPosOption, epdOrPgnFnOption,  verboseOption, netSpecificationOptionalOption);
+      }, configOption, piecesOptionRequired, numPosOption, epdOrPgnFnOption,  verboseOption, netSpecificationOptionalOption);
 
 
       tournCommand.SetHandler((configID, piecesStr, numPos, epdOrPgnFN, verbose, compareLC0NetSpec, searchLimitSpec) =>
@@ -208,14 +210,14 @@ namespace CeresTrain.TrainCommands
         SearchLimit searchLimit = SearchLimitSpecificationString.Parse(searchLimitSpec);
         bool enableOpponentTB = compareLC0NetSpec == null;
         CeresTrainCommands.RunEvalOrTournament(configID, piecesStr, numPos, epdOrPgnFN, verbose, compareLC0NetSpec, enableOpponentTB, configsDir, true, searchLimit);
-      }, configOption, piecesOption, numPosOption, epdOrPgnFnOption, verboseOption, netSpecificationOptionalOption, searchLimitOptionDefaultBV);
+      }, configOption, piecesOptionRequired, numPosOption, epdOrPgnFnOption, verboseOption, netSpecificationOptionalOption, searchLimitOptionDefaultBV);
 
 
       evalLC0Command.SetHandler((piecesStr, netID, numPos, searchLimitSpec, epdOrPgnFN, verbose) =>
       {
         SearchLimit searchLimit = searchLimitSpec == null ? default : SearchLimitSpecificationString.Parse(searchLimitSpec);
         CeresTrainCommands.ProcessEvalLC0Command(piecesStr, netID, numPos, epdOrPgnFN, searchLimit, verbose);
-      }, piecesOption, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption);
+      }, piecesOptionRequired, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption);
     }
 
   }

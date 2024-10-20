@@ -66,6 +66,7 @@ namespace CeresTrain.TrainCommands
     }
 
 
+    static readonly object consoleOutLockObject = new();
 
     /// <summary>
     /// Runs PyTorch training code locally from a Windows machine using WSL.
@@ -93,7 +94,7 @@ namespace CeresTrain.TrainCommands
         CreateNoWindow = true
       };
 
-      lock (trainingStatusTable)
+      lock (consoleOutLockObject)
       {
         Console.WriteLine();
         ConsoleUtils.WriteLineColored(ConsoleColor.Blue, "Launching on WSL (localhost): " + startInfo.Arguments);
@@ -195,7 +196,7 @@ namespace CeresTrain.TrainCommands
       SshClient sshClient = sshClientx.SSHExecClient;
       sshClient.Connect();
 
-      lock (table)
+      lock (consoleOutLockObject)
       {
         Console.WriteLine();
         Console.WriteLine("Connected to " + hostName);
@@ -211,7 +212,7 @@ namespace CeresTrain.TrainCommands
         command = $"{dockerLaunchCommand} bash -c \"{command}\"";
       } 
 
-      lock (table)
+      lock (consoleOutLockObject)
       {
         Console.WriteLine();
         ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"Launching on {hostName} as {userName} via SSH: {command}");
@@ -219,7 +220,7 @@ namespace CeresTrain.TrainCommands
 
       using (ShellStream shellStream = sshClient.CreateShellStream("CeresTrainPy_remote_" + Environment.MachineName, 80, 24, 800, 600, 1024))
       {
-        lock (table)
+        lock (consoleOutLockObject)
         {
 
           // Writing command to the shell stream and executing it
@@ -243,7 +244,7 @@ namespace CeresTrain.TrainCommands
           }
           catch (Exception)
           {
-            lock (table)
+            lock (consoleOutLockObject )
             {
 
               if (numLinesRead == 0)
