@@ -330,10 +330,19 @@ namespace CeresTrain.Examples
       int numValueCorrectCompare = 0;
       int numPolicyCorrectCompare = 0;
 
+      int numMispredicitedDecisivePrimary = 0;
+      int numMispredicitedDecisiveCompare = 0;
+      int numMispredicitedDrawPrimary = 0;
+      int numMispredicitedDrawCompare = 0;
+
       IEnumerable<PositionWithHistory> positionSourceEnum = sourceEPDOrPGN == null
                                             ? generator.AsPositionWithHistoryEnumerable()
                                             : PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGN, numPos, p => generator.PositionMatches(in p)).AsEnumerable();
       IEnumerator<PositionWithHistory> posEnumerator = positionSourceEnum.AsEnumerable().GetEnumerator();
+
+      int[,] countActualPredictedPrimary = new int[3, 3];
+      int[,] countActualPredictedCompare = new int[3, 3];
+      int[] gameResultFrequency = new int[3];
 
       for (int i = 0; i < numPos; i++)
       {
@@ -342,24 +351,34 @@ namespace CeresTrain.Examples
           throw new Exception($"Insufficient positions matching {generator} found in file {sourceEPDOrPGN}");
         }
 
-        PositionWithHistory pos = posEnumerator.Current;
+        // N.B. We truncate any history, since endgame training tool sourcing positions
+        //      from tablebases will not have had history available during training.
+        PositionWithHistory pos = new(posEnumerator.Current.FinalPosition);
 
-        NNEvaluatorResult evalResult = evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY);
-        NNEvaluatorResult resultCompar = evaluatorCompare == null ? default : evaluatorCompare.Evaluate(pos, true, extraInputs: NNEvaluator.InputTypes.Positions);
+        const bool FILL_IN_HISTORY_CERES = true;
+        const bool FILL_IN_HISTORY_COMPARE = true;
+
+        NNEvaluatorResult evalResult = evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY_CERES);
+        NNEvaluatorResult resultCompare = evaluatorCompare == null ? default 
+                                                                   : evaluatorCompare.Evaluate(pos, FILL_IN_HISTORY_COMPARE, extraInputs: NNEvaluator.InputTypes.Positions);
 
         int gameResultTablebase = tbEvaluator.ProbeWDLAsV(pos.FinalPosition);
+        gameResultFrequency[gameResultTablebase + 1]++;
         bool netValueCorrect = gameResultTablebase == evalResult.MostProbableGameResult;
+        bool compareOK = resultCompare.MostProbableGameResult == gameResultTablebase;
+
+        countActualPredictedPrimary[gameResultTablebase+1, evalResult.MostProbableGameResult+1]++;
+        countActualPredictedCompare[gameResultTablebase+1, resultCompare.MostProbableGameResult+1]++;
 
         bool netTopMoveInBestCategory = tbEvaluator.MoveIsInOptimalCategoryForPosition(pos.FinalPosition, evalResult.Policy.TopMove(pos.FinalPosition), true);
-        bool netTopMoveInBestCategoryCompare = evaluatorCompare == null ? false : tbEvaluator.MoveIsInOptimalCategoryForPosition(pos.FinalPosition, resultCompar.Policy.TopMove(pos.FinalPosition), true);
+        bool netTopMoveInBestCategoryCompare = evaluatorCompare == null ? false : tbEvaluator.MoveIsInOptimalCategoryForPosition(pos.FinalPosition, resultCompare.Policy.TopMove(pos.FinalPosition), true);
 
-        bool compareOK = resultCompar.MostProbableGameResult == gameResultTablebase;
         if (verbose)// && (!netValueCorrect || !compareOK))
         {
           Console.Write($"TB= {gameResultTablebase,2:n0}  Primary=");
           WriteFloatRedIfNegative(evalResult.V, netValueCorrect);
           Console.Write("  Comp=");
-          WriteFloatRedIfNegative(evaluatorCompare == null ? float.NaN : resultCompar.V, compareOK);
+          WriteFloatRedIfNegative(evaluatorCompare == null ? float.NaN : resultCompare.V, compareOK);
 
           Console.WriteLine($" {evalResult.Policy,-115}   {pos.FinalPosition.FEN}");
         }
@@ -370,6 +389,37 @@ namespace CeresTrain.Examples
         numPolicyCorrectCompare += netTopMoveInBestCategoryCompare ? 1 : 0;
       }
 
+      Console.WriteLine();
+      Console.WriteLine();
+      Console.WriteLine("Test net: Actual vs predicted");
+
+      Console.WriteLine("                          Loss    Draw     Win");
+      for (int ix = 0; ix < 3; ix++)
+      {
+        string actualString = ix == 0 ? "Loss " : (ix == 1 ? "Draw " : "Win  ");
+        Console.Write($"Actual: {gameResultFrequency[ix],6:N0}   " + actualString);
+        for (int jx = 0; jx < 3; jx++)
+        {
+          Console.Write($"{countActualPredictedPrimary[ix, jx], 8:N0}");
+        }
+        Console.WriteLine();
+      }
+
+      Console.WriteLine();
+      Console.WriteLine("Compare net: Actual vs predicted");
+      Console.WriteLine("                          Loss    Draw     Win");
+      for (int ix = 0; ix < 3; ix++)
+      {
+        string actualString = ix == 0 ? "Loss " : (ix == 1 ? "Draw " : "Win  ");
+        Console.Write($"Actual: {gameResultFrequency[ix],6:N0}   " + actualString);
+        for (int jx = 0; jx < 3; jx++)
+        {
+          Console.Write($"{countActualPredictedCompare[ix, jx], 8:N0}");
+        }
+        Console.WriteLine();
+      }
+
+      Console.WriteLine();
       Console.WriteLine();
       if (trainingResult != default)
       {

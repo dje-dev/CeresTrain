@@ -338,13 +338,14 @@ namespace CeresTrain.TrainCommands
           }
 
           string DEVICE_SPEC = "GPU:0"; // ** TODO: make this adjustable
-          NNEvaluator evaluator = NNEvaluator.FromSpecification("Ceres:" + config.ExecConfig.SaveNetwork1FileName, DEVICE_SPEC);
-
-          evaluator.Options = new NNEvaluatorOptionsCeres(); // TODO: make adjustable;
-
-          //          NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
 
           NNEvaluator compareLC0Evaluator = compareLC0NetSpec == null ? null : NNEvaluator.FromSpecification(compareLC0NetSpec, DEVICE_SPEC);
+
+          NNEvaluator evaluator = NNEvaluator.FromSpecification("Ceres:" + config.ExecConfig.SaveNetwork1FileName, DEVICE_SPEC);
+          evaluator.Options = new NNEvaluatorOptionsCeres(); // TODO: make adjustable;
+
+          // NNEvaluator evaluator = CeresNetEvaluation.GetNNEvaluator(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, 0, execConfig, netFileName, true, options);
+
           (float accuracyValue, float accuracyPolicy) = CeresNetEvaluation.TestAccuracyOnPositions(generator, FN, evaluator, compareLC0Evaluator, default, (int)numPos, verbose);
         }
       }
