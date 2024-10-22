@@ -51,6 +51,7 @@ namespace CeresTrain
     {
       OutputBanner();
 
+#if NO_LONGER_WORKS
       // Enable TensorCores. Ideally would do this via TorchSharp, but not currently supported:
       //   torch.backends.cuda.matmul.allow_tf32 = True
       //   torch.backends.cudnn.allow_tf32 = True
@@ -63,6 +64,7 @@ namespace CeresTrain
       {
         Environment.SetEnvironmentVariable("NVIDIA_TF32_OVERRIDE", "1");
       }
+#endif
 
       string ceresJSONPath = CeresTrainUserSettingsManager.Settings.CeresJSONFileName;
       Console.WriteLine("Loading " + ceresJSONPath);
