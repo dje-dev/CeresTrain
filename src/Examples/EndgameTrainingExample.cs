@@ -163,10 +163,22 @@ namespace CeresTrain.Examples
     static void CheckPrerequisites()
     {
       string tbPath = CeresUserSettingsManager.Settings.SyzygyPath;
-      if (tbPath == null || !Path.Exists(tbPath))
+      if (tbPath == null)
       {
-        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Ceres.json must contain SyzygyPath entry referencing a valid directory, got: " + tbPath);
+        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Ceres.json must contain SyzygyPath entry referencing a valid directory.");
       }
+
+      else 
+      {
+        foreach (string pathPart in tbPath.Split(Path.PathSeparator))
+        {
+          if (!Directory.Exists(pathPart))
+          {
+            ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"Ceres.json contains invalid SyzygyPath entry, directory does not exist: " + pathPart);
+          }
+        } 
+      }
+
     }
 
     #endregion
