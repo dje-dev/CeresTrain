@@ -340,10 +340,13 @@ namespace CeresTrain.Examples
                                             : PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGN, numPos, p => generator.PositionMatches(in p)).AsEnumerable();
       IEnumerator<PositionWithHistory> posEnumerator = positionSourceEnum.AsEnumerable().GetEnumerator();
 
-      int[,] countActualPredictedPrimary = new int[3, 3];
-      int[,] countActualPredictedCompare = new int[3, 3];
-      int[] gameResultFrequency = new int[3];
+      PositionWithHistory[] positions = new PositionWithHistory[numPos];
 
+      // TODO: This is a common pattern that could be factored out:
+      //         -- build a batch of Positions (maybe from PGN)
+      //         -- evaluate all (Oversized)
+      //         -- extract as NNEvaluatorResult
+      EncodedPositionBatchBuilder batchBuilder = new EncodedPositionBatchBuilder(numPos, NNEvaluator.InputTypes.All);
       for (int i = 0; i < numPos; i++)
       {
         if (!posEnumerator.MoveNext())
@@ -353,14 +356,34 @@ namespace CeresTrain.Examples
 
         // N.B. We truncate any history, since endgame training tool sourcing positions
         //      from tablebases will not have had history available during training.
-        PositionWithHistory pos = new(posEnumerator.Current.FinalPosition);
+        PositionWithHistory pos = positions[i]  = new(posEnumerator.Current.FinalPosition);
 
-        const bool FILL_IN_HISTORY_CERES = true;
-        const bool FILL_IN_HISTORY_COMPARE = true;
+        batchBuilder.Add(pos, FILL_IN_HISTORY);
+//        resultsCeres[i] =  evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY_CERES);
+//        resultsCompare[i] = evaluatorCompare == null ? default
+//                                                     : evaluatorCompare.Evaluate(pos, FILL_IN_HISTORY_COMPARE, extraInputs: NNEvaluator.InputTypes.Positions);
+      }
 
-        NNEvaluatorResult evalResult = evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY_CERES);
-        NNEvaluatorResult resultCompare = evaluatorCompare == null ? default 
-                                                                   : evaluatorCompare.Evaluate(pos, FILL_IN_HISTORY_COMPARE, extraInputs: NNEvaluator.InputTypes.Positions);
+
+      EncodedPositionBatchFlat batch = batchBuilder.GetBatch();
+
+      NNEvaluatorResult[] resultsCeres = new NNEvaluatorResult[numPos];
+      NNEvaluatorResult[] resultsCompare = evaluatorCompare == null ? null : new NNEvaluatorResult[numPos];
+
+      evaluatorPrimary.EvaluateOversizedBatch(batch, (int index, NNEvaluatorResult result) => { resultsCeres[index] = result; });
+      evaluatorCompare?.EvaluateOversizedBatch(batch, (int index, NNEvaluatorResult result) => { resultsCompare[index] = result; });
+
+      int[,] countActualPredictedPrimary = new int[3, 3];
+      int[,] countActualPredictedCompare = new int[3, 3];
+      int[] gameResultFrequency = new int[3];
+      for (int i = 0; i < numPos; i++)
+      {
+        // N.B. We truncate any history, since endgame training tool sourcing positions
+        //      from tablebases will not have had history available during training.
+        PositionWithHistory pos = positions[i];
+
+        NNEvaluatorResult evalResult = resultsCeres[i];
+        NNEvaluatorResult resultCompare = evaluatorCompare  == null ? default : resultsCompare[i];
 
         int gameResultTablebase = tbEvaluator.ProbeWDLAsV(pos.FinalPosition);
         gameResultFrequency[gameResultTablebase + 1]++;
@@ -390,6 +413,8 @@ namespace CeresTrain.Examples
       }
 
       Console.WriteLine();
+      Console.WriteLine();
+      Console.WriteLine("TEST RESULTS " + sourceEPDOrPGN);
       Console.WriteLine();
       Console.WriteLine("Test net: Actual vs predicted");
 
