@@ -25,7 +25,7 @@ import torch.distributed as dist
 def stable_str_hash(s: str) -> int:
     hash_value = 0
     for char in s:
-        hash_value = (hash_value * 31 + ord(char)) % (2**32)
+        hash_value = (hash_value * 31 + ord(char)) % (59275)
     return hash_value
 
 
