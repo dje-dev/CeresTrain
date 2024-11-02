@@ -106,7 +106,7 @@ namespace CeresTrain.TPG.TPGGenerator
       ConsoleUtils.WriteLineColored(ConsoleColor.Magenta, "Ceres Training Position Generator for v6 Data");
 
       // Get full set of files to random sample over. 
-      List<string> filesToProcess = new List<string>(Directory.GetFiles(Options.SourceDirectory, "*.tar"));
+      List<string> filesToProcess = new (Directory.GetFiles(Options.SourceDirectory, "*.tar"));
       //.OrderByAscending(d => new FileInfo(d).GetLastWriteTime)
       if (Options.FilenameFilter != null)
       {
@@ -126,7 +126,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
       Options.SourceFilesSizeMB = sourceFilesSize / (float)(1024 * 1024);
 
-      // Sort files to used deterministically (by their name).
+      // Sort files to used deterministically (by hash on their name).
       // Note however that due to threading, this does not guarantee clients
       // will see data from set of files in exactly the same order every time.
       filesToProcess.Sort((s1, s2) => s1.GetHashCode().CompareTo(s2.GetHashCode()));
@@ -344,6 +344,7 @@ namespace CeresTrain.TPG.TPGGenerator
     static NNEvaluator evaluatorPrimary;
     NNEvaluator evaluatorUncertainty;
 
+    private static readonly ThreadLocal<Random> threadRandom = new(() => new Random());
 
     const bool VALIDATE_BEFORE_WRITE = true;
 
@@ -373,7 +374,9 @@ namespace CeresTrain.TPG.TPGGenerator
 
       // To enhance random sampling, skip each thread skips a random number
       // of games from beginning of each file.
-      int numGamesToSkipAtBeginningOfFile = Random.Shared.Next(500);
+      int numGamesToSkipAtBeginningOfFile = (int)(threadRandom.Value.NextInt64() % 100);
+
+      int writeToSetCounter = 0;
 
       try
       {
@@ -443,8 +446,7 @@ namespace CeresTrain.TPG.TPGGenerator
             // filtered out then keep sequentially looking for next non-filtered position.
             bool isModulusMatch = numPosScannedThisFile % Options.PositionSkipCount == thisSkipModulus;
 
-            if (!isModulusMatch && 
-                !nextPositionExemptFromModulusCheck)
+            if (!isModulusMatch && !nextPositionExemptFromModulusCheck)
             {
               Interlocked.Increment(ref NumSkippedDueToModulus);
               continue;
@@ -480,8 +482,7 @@ namespace CeresTrain.TPG.TPGGenerator
             long numBlocksWrittenThisFile = indexThisPosUsed / Options.NumRelatedPositionsPerBlock;
 
             // Rotate written positions thru all sets to enhance diversity of positions within any single file.
-            int setNum = (int)(numBlocksWrittenThisFile % Options.NumConcurrentSets);
-
+            int setNum = (writeToSetCounter++ % Options.NumConcurrentSets);
 
             if (Options.NumRelatedPositionsPerBlock == 1)
             {

@@ -22,6 +22,7 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators;
 
+
 #endregion
 
 namespace CeresTrain.TPG.TPGGenerator
@@ -117,17 +118,17 @@ namespace CeresTrain.TPG.TPGGenerator
     /// Note that consecutive selections are interleaved among the
     /// (possibly multiple) concurrent sets.
     /// 
-    /// Therefor (for example) if there NumConcurrentSets=10 and 
-    /// PositionSkipCount=20 then a game with 100 ply will have
-    /// 5 of its positions across all the files in the set,
+    /// Therefor (for example) if there NumConcurrentSets=16 and 
+    /// PositionSkipCount=15 then a game with 100 ply will have about
+    /// 7 of its positions across all the files in the set,
     /// none in the same file (only if the number of ply in the
     /// game were >200 then a single file might contain more 
-    /// than one sample per game, assuming 10 files are written per set).
+    /// than one sample per game, assuming 16 files are written per set).
     /// 
     /// Smaller numbers will increase generator performance
     /// but decrease position diversity.
     /// </summary>
-    public int PositionSkipCount { init; get; } = 20;
+    public int PositionSkipCount { init; get; } = 15;
 
     /// <summary>
     /// Optionally a number which limits the fraction of repeated positions
@@ -136,7 +137,7 @@ namespace CeresTrain.TPG.TPGGenerator
     /// Using a very small number (such as 1 in 1 million) will result in about 
     /// 7% of positions being skipped (avoid overfitting and improving training efficiency).
     /// </summary>
-    public float PositionMaxFraction = 1.0f / 1_000_000f;
+    public float PositionMaxFraction = 1.0f / 5_000_000f;
 
     /// <summary>
     /// Minimum number of ply that a position must have to be accepted.
@@ -263,8 +264,10 @@ namespace CeresTrain.TPG.TPGGenerator
 
     /// <summary>
     /// Number of threads on which positions are processed.
+    /// N.B. Important to choose at least about 32 threads because
+    ///      this is required to enhance shuffling (diversity of positions).
     /// </summary>
-    public int NumThreads { init; get; } = 8 + Math.Min(Environment.ProcessorCount, 64);
+    public int NumThreads { init; get; } = 64;
 
     #endregion
 
