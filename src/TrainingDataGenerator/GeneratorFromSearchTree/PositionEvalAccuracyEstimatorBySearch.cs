@@ -395,13 +395,14 @@ namespace CeresTrain.TrainingDataGenerator
     const int SF_NUM_THREADS = 24;
 
     static string TB_PATH => CeresUserSettingsManager.Settings.TablebaseDirectory;
-    static int SF_HASH_SIZE_MB() => HardwareManager.MemorySize > 256L * 1024 * 1024 * 1024 ? 32_768 : 2_048;
-    static string SF16_EXE => SoftwareManager.IsLinux ? @"/raid/dev/Stockfish/src/stockfish"
-                                                      : @"\\synology\dev\chess\engines\stockfish16-windows-x86-64-avx2.exe";
+    static int SF_HASH_SIZE_MB() => HardwareManager.MemorySize > 256L * 1024 * 1024 * 1024 
+                                                                  ? 8192 : 512;
+    static string SF17_EXE => SoftwareManager.IsLinux ? @"/raid/dev/Stockfish/src/stockfish"
+                                                      : @"\\synology\dev\chess\engines\stockfish17-windows-x86-64-avx2.exe";
 
 
     public static GameEngineDef EngineDefStockfish16(int numThreads = SF_NUM_THREADS, int hashtableSize = -1) =>
-  new GameEngineDefUCI("SF16", new GameEngineUCISpec("SF16", SF16_EXE, numThreads,
+  new GameEngineDefUCI("SF16", new GameEngineUCISpec("SF17", SF17_EXE, numThreads,
                        hashtableSize == -1 ? SF_HASH_SIZE_MB() : hashtableSize, TB_PATH, uciSetOptionCommands: null));
 
   }
