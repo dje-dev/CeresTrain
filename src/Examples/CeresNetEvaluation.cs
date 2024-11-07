@@ -54,6 +54,13 @@ using System.Runtime.Intrinsics.Arm;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using Ceres.Chess.NNEvaluators.Ceres;
 using Ceres.Chess.NNBackends.ONNXRuntime;
+using Ceres.Base.OperatingSystem;
+using Ceres.Chess.GameEngines;
+using Newtonsoft.Json.Serialization;
+using Spectre.Console.Rendering;
+using BenchmarkDotNet.Attributes;
+using Ceres.Base.DataTypes;
+using Ceres.MCTS.Evaluators;
 
 #endregion 
 
@@ -62,7 +69,7 @@ namespace CeresTrain.Examples
     /// <summary>
     /// Set of static methods to facilitate running various tests of Ceres neural networks.
     /// </summary>
-    public static class CeresNetEvaluation
+  public static class CeresNetEvaluation
   {
     /// <summary>
     /// Generates a set of TPG files from LC0 training games stored in TAR or ZST training data files.
@@ -304,7 +311,6 @@ namespace CeresTrain.Examples
       return new TournamentManager(def).RunTournament();
     }
 
-
     /// <summary>
     /// Test the accuracy of the specified trained network on a set of random endgame positions,
     /// listing the positions, indicating where the value and/or policy heads deviate from tablebase ground truth.
@@ -321,6 +327,12 @@ namespace CeresTrain.Examples
                                                                                       TrainingResultSummary trainingResult = default,
                                                                                       int numPos = 50, bool verbose = false)
     {
+      const bool SF_ENABLE = false;
+      const bool SF_WITH_TABLEBASE = false;
+      const int SF_NUM_THREADS = 10;
+      const float SF_SEARCH_TIME_SECS = 0.3f;
+      GameEngineUCI engineSF = SF_ENABLE ? SFEvaluatorPool.CreateSFEngine(SF_NUM_THREADS, SF_WITH_TABLEBASE) : null;
+
       bool FILL_IN_HISTORY = !evaluatorPrimary.UseBestValueMoveUseRepetitionHeuristic; // Some LC0 nets seem to require; Ceres nets will override to ignore
 
       ISyzygyEvaluatorEngine tbEvaluator = ISyzygyEvaluatorEngine.DefaultEngine;
@@ -329,11 +341,16 @@ namespace CeresTrain.Examples
       int numPolicyCorrectPrimary = 0;
       int numValueCorrectCompare = 0;
       int numPolicyCorrectCompare = 0;
+      int numValueCorrectSF = 0;
+      int numPolicyCorrectSF = 0;
 
       int numMispredicitedDecisivePrimary = 0;
       int numMispredicitedDecisiveCompare = 0;
+      int numMispredictedDecisiveSF = 0;
+
       int numMispredicitedDrawPrimary = 0;
       int numMispredicitedDrawCompare = 0;
+      int numMispredicitedDrawSF = 0;
 
       IEnumerable<PositionWithHistory> positionSourceEnum = sourceEPDOrPGN == null
                                             ? generator.AsPositionWithHistoryEnumerable()
@@ -356,12 +373,9 @@ namespace CeresTrain.Examples
 
         // N.B. We truncate any history, since endgame training tool sourcing positions
         //      from tablebases will not have had history available during training.
-        PositionWithHistory pos = positions[i]  = new(posEnumerator.Current.FinalPosition);
+        PositionWithHistory pos = positions[i] = new(posEnumerator.Current.FinalPosition);
 
         batchBuilder.Add(pos, FILL_IN_HISTORY);
-//        resultsCeres[i] =  evaluatorPrimary.Evaluate(pos, FILL_IN_HISTORY_CERES);
-//        resultsCompare[i] = evaluatorCompare == null ? default
-//                                                     : evaluatorCompare.Evaluate(pos, FILL_IN_HISTORY_COMPARE, extraInputs: NNEvaluator.InputTypes.Positions);
       }
 
 
@@ -370,11 +384,30 @@ namespace CeresTrain.Examples
       NNEvaluatorResult[] resultsCeres = new NNEvaluatorResult[numPos];
       NNEvaluatorResult[] resultsCompare = evaluatorCompare == null ? null : new NNEvaluatorResult[numPos];
 
+      // ########################################
+      if (false && SF_ENABLE)
+      {
+        IPositionEvaluationBatch bufferedBatch = evaluatorPrimary.EvaluateIntoBuffers(batch, false);
+        PositionEvaluationBatch bufferedBatchDirect = bufferedBatch as PositionEvaluationBatch;
+
+        for (int i = 0; i < numPos; i++)
+        {
+          //NNEvaluatorResult thisResult = batchEvaluated[i];
+          float scoreQ = SFEvaluatorPool.StockfishSearch(positions[i].FinalPosition, new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));  
+          //GameEngineSearchResult sfResult = engineSF.Search(positions[i], new SearchLimit(SearchLimitType.SecondsPerMove, 0.3f));
+          Console.Write(bufferedBatchDirect.GetWin1P(i) + " " + bufferedBatchDirect.GetLoss1P(i) + " --> ");
+          bufferedBatchDirect.SetWL(i, scoreQ);
+          Console.WriteLine(scoreQ + " --> " + bufferedBatchDirect.GetWin1P(i) + " " + bufferedBatchDirect.GetLoss1P(i));
+        }
+        // ########################################
+      }
+
       evaluatorPrimary.EvaluateOversizedBatch(batch, (int index, NNEvaluatorResult result) => { resultsCeres[index] = result; });
       evaluatorCompare?.EvaluateOversizedBatch(batch, (int index, NNEvaluatorResult result) => { resultsCompare[index] = result; });
 
       int[,] countActualPredictedPrimary = new int[3, 3];
       int[,] countActualPredictedCompare = new int[3, 3];
+      int[,] countActualPredictedSF = new int[3, 3];
       int[] gameResultFrequency = new int[3];
       for (int i = 0; i < numPos; i++)
       {
@@ -383,31 +416,52 @@ namespace CeresTrain.Examples
         PositionWithHistory pos = positions[i];
 
         NNEvaluatorResult evalResult = resultsCeres[i];
-        NNEvaluatorResult resultCompare = evaluatorCompare  == null ? default : resultsCompare[i];
+        NNEvaluatorResult resultCompare = evaluatorCompare == null ? default : resultsCompare[i];
+
+        //GameEngineSearchResult sfResult = null;
+        float scoreQ;
+        if (SF_ENABLE)
+        {
+          //scoreQ = SFEvaluatorPool.StockfishSearch(positions[i].FinalPosition, new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));
+          GameEngineSearchResult sfResult = engineSF.Search(positions[i], new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));
+          scoreQ = sfResult.ScoreQ;
+          //scoreQ = SFEvaluatorPool.StockfishSearch(pos.FinalPosition, new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));
+        }
 
         int gameResultTablebase = tbEvaluator.ProbeWDLAsV(pos.FinalPosition);
         gameResultFrequency[gameResultTablebase + 1]++;
         bool netValueCorrect = gameResultTablebase == evalResult.MostProbableGameResult;
         bool compareOK = resultCompare.MostProbableGameResult == gameResultTablebase;
+        int sfMostProbableGameResult = SF_ENABLE ? (scoreQ > 0.5f ? 1 : (scoreQ < -0.5 ? -1 : 0)) : 0;
+        bool sfCorrect = gameResultTablebase == sfMostProbableGameResult;
 
-        countActualPredictedPrimary[gameResultTablebase+1, evalResult.MostProbableGameResult+1]++;
-        countActualPredictedCompare[gameResultTablebase+1, resultCompare.MostProbableGameResult+1]++;
+        countActualPredictedPrimary[gameResultTablebase + 1, evalResult.MostProbableGameResult + 1]++;
+        countActualPredictedCompare[gameResultTablebase + 1, resultCompare.MostProbableGameResult + 1]++;
+        countActualPredictedSF[gameResultTablebase + 1, sfMostProbableGameResult + 1]++;
 
         bool netTopMoveInBestCategory = tbEvaluator.MoveIsInOptimalCategoryForPosition(pos.FinalPosition, evalResult.Policy.TopMove(pos.FinalPosition), true);
         bool netTopMoveInBestCategoryCompare = evaluatorCompare == null ? false : tbEvaluator.MoveIsInOptimalCategoryForPosition(pos.FinalPosition, resultCompare.Policy.TopMove(pos.FinalPosition), true);
 
         if (verbose)// && (!netValueCorrect || !compareOK))
         {
-          Console.Write($"TB= {gameResultTablebase,2:n0}  Primary=");
+          string gameResultString = gameResultTablebase == 1 ? "Win " : (gameResultTablebase == -1 ? "Loss" : "Draw"); 
+          Console.Write($"{gameResultString}  Primary=");
           WriteFloatRedIfNegative(evalResult.V, netValueCorrect);
+
           Console.Write("  Comp=");
           WriteFloatRedIfNegative(evaluatorCompare == null ? float.NaN : resultCompare.V, compareOK);
 
-          Console.WriteLine($" {evalResult.Policy,-115}   {pos.FinalPosition.FEN}");
+          if (SF_ENABLE)
+          {
+            Console.Write("  SF=");
+            WriteFloatRedIfNegative(SF_ENABLE == null ? float.NaN : scoreQ, sfCorrect);
+          }
+          Console.WriteLine($"  {evalResult.Policy,-115}   {pos.FinalPosition.FEN}");
         }
 
         numValueCorrectPrimary += netValueCorrect ? 1 : 0;
         numValueCorrectCompare += compareOK ? 1 : 0;
+        numValueCorrectSF += sfCorrect ? 1 : 0;
         numPolicyCorrectPrimary += netTopMoveInBestCategory ? 1 : 0;
         numPolicyCorrectCompare += netTopMoveInBestCategoryCompare ? 1 : 0;
       }
@@ -418,30 +472,12 @@ namespace CeresTrain.Examples
       Console.WriteLine();
       Console.WriteLine("Test net: Actual vs predicted");
 
-      Console.WriteLine("                          Loss    Draw     Win");
-      for (int ix = 0; ix < 3; ix++)
-      {
-        string actualString = ix == 0 ? "Loss " : (ix == 1 ? "Draw " : "Win  ");
-        Console.Write($"Actual: {gameResultFrequency[ix],6:N0}   " + actualString);
-        for (int jx = 0; jx < 3; jx++)
-        {
-          Console.Write($"{countActualPredictedPrimary[ix, jx], 8:N0}");
-        }
-        Console.WriteLine();
-      }
 
-      Console.WriteLine();
-      Console.WriteLine("Compare net: Actual vs predicted");
-      Console.WriteLine("                          Loss    Draw     Win");
-      for (int ix = 0; ix < 3; ix++)
+      WriteTable("Test net", countActualPredictedCompare, gameResultFrequency);
+      WriteTable("Compare", countActualPredictedCompare, gameResultFrequency);
+      if (SF_ENABLE)
       {
-        string actualString = ix == 0 ? "Loss " : (ix == 1 ? "Draw " : "Win  ");
-        Console.Write($"Actual: {gameResultFrequency[ix],6:N0}   " + actualString);
-        for (int jx = 0; jx < 3; jx++)
-        {
-          Console.Write($"{countActualPredictedCompare[ix, jx], 8:N0}");
-        }
-        Console.WriteLine();
+        WriteTable("Stockfish", countActualPredictedSF, gameResultFrequency);
       }
 
       Console.WriteLine();
@@ -464,6 +500,11 @@ namespace CeresTrain.Examples
         Console.WriteLine($"  Accuracy value (comp) : {(100.0f * ((float)numValueCorrectCompare / numPos)):F2}% using {evaluatorCompare}");
       }
 
+      if (SF_ENABLE)
+      {
+        Console.WriteLine($"  Accuracy value (SF)   : {(100.0f * ((float)numValueCorrectSF / numPos)):F2}% using {SF_SEARCH_TIME_SECS} secs with {SF_NUM_THREADS} threads");
+      }
+
       float accuracyPolicy = (100.0f * ((float)numPolicyCorrectPrimary / numPos));
       Console.WriteLine();
       Console.WriteLine($"  Accuracy policy       : {accuracyPolicy:F2}%");
@@ -477,6 +518,24 @@ namespace CeresTrain.Examples
       Console.WriteLine();
 
       return (accuracyValue, accuracyPolicy);
+    }
+
+
+    private static void WriteTable(string playerID, int[,] countActualPredictedCompare, int[] gameResultFrequency)
+    {
+      Console.WriteLine();
+      Console.WriteLine($"{playerID}: Actual vs predicted");
+      Console.WriteLine("                          Loss    Draw     Win");
+      for (int ix = 0; ix < 3; ix++)
+      {
+        string actualString = ix == 0 ? "Loss " : (ix == 1 ? "Draw " : "Win  ");
+        Console.Write($"Actual: {gameResultFrequency[ix],6:N0}   " + actualString);
+        for (int jx = 0; jx < 3; jx++)
+        {
+          Console.Write($"{countActualPredictedCompare[ix, jx],8:N0}");
+        }
+        Console.WriteLine();
+      }
     }
 
 
