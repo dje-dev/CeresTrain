@@ -258,8 +258,9 @@ def Train():
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
   elif config.Opt_Optimizer == 'SOAP':
-    PRECONDITION_FREQUENCY = 10 if config.NetDef_ModelDim < 512 else 25 # smaller numbers slow down optimization
-    optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), precondition_frequency=PRECONDITION_FREQUENCY)
+    PRECONDITION_FREQUENCY = 20 # typically small batch sizes used suggest less frequent updating is appropriate
+    optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), \
+                       precondition_frequency=PRECONDITION_FREQUENCY, shampoo_beta = -1, max_precond_dim = 99999, merge_dims= False)
   elif config.Opt_Optimizer == 'AdEMAMix':
     optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdEMAMixShampoo':
@@ -291,20 +292,20 @@ def Train():
     
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down using a truncated consine decay, terminating around 0.10
-    FRAC_START_COSINE = config.Opt_LRBeginDecayAtFractionComplete
-
+    FRAC_START_DECAY = config.Opt_LRBeginDecayAtFractionComplete
+    MIN_LR = 0.10
     WARMUP_POS = num_warmup_positions()
+
     if num_pos < WARMUP_POS:
-      return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root
-    elif fraction_complete < FRAC_START_COSINE:
+      return (float(num_pos) / float(WARMUP_POS))**0.5 # inverse square root warmup
+    elif fraction_complete < FRAC_START_DECAY:
       return 1.0
     elif fraction_complete > 1:
-      return 0.05 # shouldn't happen
+      return MIN_LR # shouldn't happen
     else:
-      # Truncated cosine decay
-      END_COSINE_FRAC = 1.1 # slightly larger than 1.0 so we get truncated cosine ending around 0.1
-      t = (fraction_complete - FRAC_START_COSINE) / (END_COSINE_FRAC - FRAC_START_COSINE)
-      return 0.5 * (1 + np.cos(np.pi * t))
+      # linear deacay to MIN_LR
+      slope = (MIN_LR - 1.0) / (1.0 - FRAC_START_DECAY)
+      return 1.0 + slope * (fraction_complete - FRAC_START_DECAY)
 
   scheduler = LambdaLR(optimizer, lr_lambda)
 
@@ -356,7 +357,7 @@ def Train():
                        rank, world_size, NUM_DATASET_WORKERS, 
                        BOARDS_PER_BATCH, config.Data_NumTPGFilesToSkip, config.Exec_TestFlag)
 
-  dataloader = DataLoader(dataset, batch_size=None, pin_memory=True, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
+  dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
   dataloader = fabric.setup_dataloaders(dataloader)
 
   if fabric.is_global_zero:
@@ -408,7 +409,9 @@ def Train():
     show_losses = (fabric.is_global_zero) and (num_pos % (1024 * 64) == 0)
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
+#    from contextlib import nullcontext
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
+#    with nullcontext():
       this_lr = -optimizer.last_alpha if config.Opt_Optimizer == 'AdamWScheduleFree' else scheduler.get_last_lr()[0]
 
       if config.Exec_ExportOnly and fabric.is_global_zero:
