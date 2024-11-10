@@ -29,6 +29,36 @@ def stable_str_hash(s: str) -> int:
     return hash_value
 
 
+# Method to enhance shuffling of TPG files.
+# Try to avoid having files from same TPG set appearing more than once within blocks of 8.
+# Make repeated passes with random perturbations to achieve this to a large or complete degree.
+def try_shuffle(file_list):
+    import random
+    BLOCK_SIZE = 8  # Assume max 8 GPUs (TPG reading workers) per node
+    SEED = 42       # Fixed seed for reproducibility across processes
+    NUM_PASSES = 50
+    rand_gen = random.Random(SEED)
+
+    for _ in range(NUM_PASSES):
+        index = 0
+        while index < len(file_list):
+            block = file_list[index:index + BLOCK_SIZE]
+            prefixes = {}
+            duplicates = []
+            for i, filename in enumerate(block):
+                prefix = filename.split('.tpg')[0]
+                if prefix in prefixes:
+                    duplicates.append(index + i)
+                else:
+                    prefixes[prefix] = True
+            # Move one of the duplicates to a deterministic "random" position
+            for dup_index in sorted(duplicates, reverse=True):
+                new_pos = rand_gen.randint(0, len(file_list) - 1)
+                file_list.insert(new_pos, file_list.pop(dup_index))
+            index += BLOCK_SIZE
+    return file_list
+
+
 MAX_MOVES = 92 # Maximum number of policy moves in a position that can be stored (TPGRecord.MAX_MOVES)
 
 
@@ -77,6 +107,7 @@ class TPGDataset(Dataset):
     all_files.sort(key=lambda f: stable_str_hash(f))  # deterministic shuffle
     assert len(all_files) > num_files_to_skip + num_workers, "Trying to skip more files than available"
     all_files = all_files[num_files_to_skip:]
+    all_files = try_shuffle(all_files)
 
     # Divide files as evenly as possible among workers
     files_per_worker = len(all_files) // world_size
