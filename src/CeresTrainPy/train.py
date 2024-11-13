@@ -246,8 +246,9 @@ def Train():
 
 
   def num_warmup_positions():
-    # Warmup is 5% of positions (but not more than 100mm)
-    return int(min(100_000_000, 0.05 * config.Opt_NumTrainingPositions))
+    # Warmup is 5% of positions (but not more than 200mm).
+    # The SOAP paper show experiment suggesting long warmups (up to 25% of training data) are beneficial.
+    return int(min(200_000_000, 0.05 * config.Opt_NumTrainingPositions))
 
 
   STEPS_AdEMAMix_WARMUP = (num_warmup_positions() // 2) // config.Opt_BatchSizeBackwardPass
@@ -258,7 +259,7 @@ def Train():
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
   elif config.Opt_Optimizer == 'SOAP':
-    PRECONDITION_FREQUENCY = 20 # typically small batch sizes used suggest less frequent updating is appropriate
+    PRECONDITION_FREQUENCY = 30 # typically small batch sizes used suggest less frequent updating is required
     optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), \
                        precondition_frequency=PRECONDITION_FREQUENCY, shampoo_beta = -1, max_precond_dim = 99999, merge_dims= False)
   elif config.Opt_Optimizer == 'AdEMAMix':
