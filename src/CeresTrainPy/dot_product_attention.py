@@ -154,6 +154,12 @@ class DotProductAttention(torch.nn.Module):
   def rpeFactorShared(self):
     return self.wrapped_rpe_factor_shared.parameter.data
 
+  # Function to cap logit scores (as used in the grok and gemma models).
+  def soft_cap(self, score, softcap):
+    score = score / softcap
+    score = torch.tanh(score)
+    score = score * softcap
+    return score
 
  
   def sdp_and_smol_or_rpe(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, smolgen:torch.Tensor): # -> torch.Tensor, torch.Tensor:
@@ -185,6 +191,10 @@ class DotProductAttention(torch.nn.Module):
       smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, self.num_tokens_q, self.num_tokens_q)
       scores = scores + smolgen_logits_repeated
      
+    # softcap logits for enhanced training stability
+    SOFTCAP = 100
+    scores = self.soft_cap(scores, SOFTCAP)
+
     A = self.softmax(scores)
 
     # Get the weighted average of the values
@@ -245,6 +255,7 @@ class DotProductAttention(torch.nn.Module):
       if self.use_rpe:
         H_cat, A = self.sdp_and_smol_or_rpe(Q, K, V, None)
       else:
+        # N.B. attention softcap is not implemented on this code path!
         H_cat = torch.nn.functional.scaled_dot_product_attention(Q, K, V)
 
     # Put all the heads back together by concat (with heads moved back to the right)
