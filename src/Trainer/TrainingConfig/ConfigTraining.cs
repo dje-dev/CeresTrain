@@ -82,7 +82,8 @@ namespace CeresTrain.Trainer
 
 
 
-    private static readonly string[] validPyTorchCompileModes = ["none", "max-autotune", "reduce-overhead", "default"];
+    private static readonly string[] validPyTorchCompileModes = ["none", "max-autotune", "reduce-overhead", 
+                                                                  "max-autotune-no-cudagraphs", "default"];
 
     /// <summary>
     /// Check if the configuration is valid.
@@ -103,11 +104,11 @@ namespace CeresTrain.Trainer
       } 
 
       if (!runningInProcess 
-       && OptConfig.PyTorchCompileMode == "max-autotune" 
+       && OptConfig.PyTorchCompileMode.Contains("max-autotune")
        && OptConfig.BatchSizeBackwardPass != OptConfig.BatchSizeForwardPass)
       {
         // As of PyTorch 2.1 yields low-level Exception, possible bug in PyTorch.
-        throw new Exception("OptimizationConfig.PyTorchCompileMode == \"max-autotune\" not functioning properly with gradient accumulation (forward batch size < backward batch size).");
+        //throw new Exception("OptimizationConfig.PyTorchCompileMode == \"max-autotune\" not functioning properly with gradient accumulation (forward batch size < backward batch size).");
       }
     }
 
