@@ -572,7 +572,7 @@ def Train():
     STATUS_UPDATE_INTERVAL = 5 # log output to console very 5 seconds
     should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
   
-    SAVE_LAST_INTERVAL = 60 * 60 # save output artifacts every 60 minutes (with label "last")    
+    SAVE_LAST_INTERVAL = 90 * 60 # save output artifacts every 90 minutes (with label "last")    
     should_save_transient = time_since_save_transient > SAVE_LAST_INTERVAL
     if should_save_transient:
       save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "last", True)
