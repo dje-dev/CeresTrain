@@ -84,6 +84,7 @@ class Configuration:
     self.Exec_TestValue = config_exec.get('TestValue', 0)
 
     # Initialize class members from config_opt
+    self.Opt_LoRARankDivisor = config_opt.get('LoRARankDivisor', 0)
     self.Opt_NumTrainingPositions = config_opt.get('NumTrainingPositions', 10_000_000)
     self.Opt_BatchSizeForwardPass = config_opt.get('BatchSizeForwardPass', 2048)
     self.Opt_BatchSizeBackwardPass = config_opt.get('BatchSizeBackwardPass', 2048)

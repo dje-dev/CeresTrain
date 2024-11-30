@@ -31,6 +31,7 @@ from encoder_layer import EncoderLayer
 from config import Configuration
 from mlp2_layer import MLP2Layer
 from rms_norm import RMSNorm
+from lora import LoRALinear
 
 from config import NUM_TOKENS_INPUT, NUM_TOKENS_NET, NUM_INPUT_BYTES_PER_SQUARE
 
@@ -66,18 +67,24 @@ class DWA(torch.nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(self, Activation, IN_SIZE, FC_SIZE, OUT_SIZE):
-        super(Head, self).__init__()
+  def __init__(self, Activation, IN_SIZE, FC_SIZE, OUT_SIZE, lora_rank_divisor):
+    super(Head, self).__init__()
 
-        self.fc = nn.Linear(IN_SIZE, FC_SIZE)
-        self.fcActivation = Activation
-        self.fcFinal = nn.Linear(FC_SIZE, OUT_SIZE)
+    self.fc = nn.Linear(IN_SIZE, FC_SIZE)
+    if lora_rank_divisor > 0:
+      self.fc = LoRALinear(self.fc, lora_rank_divisor, True)
 
-    def forward(self, flow):
-        flow = self.fc(flow)
-        flow = self.fcActivation(flow)
-        flow = self.fcFinal(flow)
-        return flow
+    self.fcActivation = Activation
+
+    self.fcFinal = nn.Linear(FC_SIZE, OUT_SIZE)
+    if lora_rank_divisor > 0:
+      self.fcFinal = LoRALinear(self.fcFinal, lora_rank_divisor, True)
+
+  def forward(self, flow):
+    flow = self.fc(flow)
+    flow = self.fcActivation(flow)
+    flow = self.fcFinal(flow)
+    return flow
 
 
 class CeresNet(pl.LightningModule):
@@ -151,32 +158,32 @@ class CeresNet(pl.LightningModule):
     self.HEAD_IN_SIZE = 64 * (self.HEAD_PREMAP_PER_SQUARE // HEAD_SHARED_LINEAR_DIV)
     self.headSharedLinear = nn.Linear(64 * self.HEAD_PREMAP_PER_SQUARE, self.HEAD_IN_SIZE)
 
-    self.policy_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858)
+    self.policy_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858, config.Opt_LoRARankDivisor)
     
     if self.prior_state_dim > 0:
-      self.state_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 64*self.prior_state_dim)
+      self.state_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 64*self.prior_state_dim, config.Opt_LoRARankDivisor)
 
     if action_loss_weight > 0:
-      self.action_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858 * 3)
+      self.action_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858 * 3, config.Opt_LoRARankDivisor)
 
     if action_uncertainty_loss_weight > 0:
-      self.action_uncertainty_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858)
+      self.action_uncertainty_head = Head(self.Activation, self.HEAD_IN_SIZE, 128 * HEAD_MULT, 1858, config.Opt_LoRARankDivisor)
 
-    self.value_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3)
-    self.unc_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+    self.value_head = Head(self.Activation, self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3, config.Opt_LoRARankDivisor)
+    self.unc_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1, config.Opt_LoRARankDivisor)
 
     if self.value2_loss_weight > 0:
-      self.value2_head = Head(self.Activation, 2 + self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3) 
+      self.value2_head = Head(self.Activation, 2 + self.HEAD_IN_SIZE, 64 * HEAD_MULT, 3, config.Opt_LoRARankDivisor) 
 
     if self.uncertainty_policy_weight > 0:
-      self.unc_policy = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+      self.unc_policy = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1, config.Opt_LoRARankDivisor)
     
     if moves_left_loss_weight > 0:
-      self.mlh_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+      self.mlh_head = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1, config.Opt_LoRARankDivisor)
 
     if q_deviation_loss_weight > 0:      
-      self.qdev_upper = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
-      self.qdev_lower = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1)
+      self.qdev_upper = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1, config.Opt_LoRARankDivisor)
+      self.qdev_lower = Head(self.Activation, self.HEAD_IN_SIZE, 32 * HEAD_MULT, 1, config.Opt_LoRARankDivisor)
 
 
 

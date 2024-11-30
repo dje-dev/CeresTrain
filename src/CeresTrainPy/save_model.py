@@ -20,6 +20,8 @@ from lightning.fabric import Fabric
 from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
 
 from config import Configuration
+from lora import collect_and_save_lora_parameters
+
 
 def save_checkpoint(NAME : str, 
                OUTPUTS_DIR : str,
@@ -28,6 +30,11 @@ def save_checkpoint(NAME : str,
                model_nocompile,
                state : Dict[str, Any], 
                num_pos : str):
+
+  # In LoRA mode we don't save full checkpoints
+  # Instead save_model will output just a binary file with the LoRA weights.
+  if config.Opt_LoRARankDivisor > 0:
+    return
 
   # Save PyTorch checkpoint.
   # N.B. This should be called independent of fabric.is_global_zero (https://github.com/Lightning-AI/pytorch-lightning/issues/19780)    
@@ -48,9 +55,16 @@ def save_model(NAME : str,
                save_all_formats : str):
 
   with torch.no_grad():
-    convert_type = model_nocompile.dtype
 
+    # If running in LoRA fine-tuning mode, only sage the LoRA weights file
+    if config.Opt_LoRARankDivisor > 0:
+      SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + ".lora_" + num_pos + '.bin')
+      collect_and_save_lora_parameters(model_nocompile, SAVE_FULL_NAME)
+      return
+
+    convert_type = model_nocompile.dtype
     model_nocompile.eval()
+
 
     # AOT export. Works (generates .so file), but seemingly slower than ONNX export options.
     if False and fabric.is_global_zero and CONVERT_ONLY:

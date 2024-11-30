@@ -100,6 +100,15 @@ namespace CeresTrain.Trainer
     }
 
     /// <summary>
+    /// If nonzero, LoRA fine-tuning mode is enabled.
+    /// See: "LoRA: Low-Rank Adaptation of Large Language Models" by Hu et. al. (https://arxiv.org/abs/2106.09685)
+    /// The model parameters are frozen except for some inserted LoRA layers.
+    /// The rank of the layer is some divisor of the rank of the input dimension.
+    /// </summary>
+    public readonly int LoRARankDivisor { get; init; } = 0;
+
+
+    /// <summary>
     /// Number of training positions to use before halting training.
     /// </summary>
     public readonly long NumTrainingPositions { get; init; } = int.MaxValue;
@@ -131,7 +140,7 @@ namespace CeresTrain.Trainer
 
     /// <summary>
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).
-    /// Valid values: "default", "reduce-overhead", or "max-autotune".
+    /// Valid values: "default", "reduce-overhead", or "max-autotune" or "max-autotune-no-cudagraphs"
     /// </summary>
     public readonly string PyTorchCompileMode { get; init; } = "max-autotune";
 

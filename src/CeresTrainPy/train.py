@@ -102,6 +102,7 @@ BATCH_SIZE = config.Opt_BatchSizeBackwardPass
 
 assert config.NetDef_PreNorm == False, 'PreNorm not supported'
 assert config.Exec_DataType == 'BFloat16' or config.Exec_DataType == 'BFloat16Pure', 'Only BFloat16 or BFloat16Pure training supported'
+assert config.Opt_LoRARankDivisor == 0 or config.Opt_CheckpointResumeFromFileName is not None, 'LoRA requires Opt_CheckpointResumeFromFileName resume'
 
 MAX_POSITIONS = config.Opt_NumTrainingPositions
 
@@ -190,12 +191,19 @@ def Train():
                    action_uncertainty_loss_weight = config.Opt_LossActionUncertaintyMultiplier,
                    q_ratio=config.Data_FractionQ)
 
+
+  if config.Opt_LoRARankDivisor > 0:
+    # Freeze all parameters except LoRA
+    for name, param in model.named_parameters():
+      if not ("lora_A" in name or "lora_B" in name or "lora_alpha" in name):
+        param.requires_grad = False
    
   # Possibly compile model (as recommended by Lightning docs, comile should appear before fabric.setup).
   # N.B. when debugging, may be helpful to disable this line (otherwise breakpoints relating to graph evaluation will not be hit).
   model_nocompile = model
   if config.Opt_PyTorchCompileMode is not None and not config.Exec_ExportOnly:
-    model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)  # choices:default, reduce-overhead, max-autotune 
+    # mode choices: default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs    
+    model = torch.compile(model, mode=config.Opt_PyTorchCompileMode, dynamic=False)
   
   # carefully set weight decay to apply only to appropriate subset of parameters
   # based on code from: https://github.com/karpathy/minGPT
@@ -212,6 +220,8 @@ def Train():
               no_decay.add(fpn)
           elif "rpe" in fpn:
               decay.add(fpn)
+          elif "lora" in fpn:
+              no_decay.add(fpn)
           elif "transformer_layer" in fpn:
               decay.add(fpn)           
           elif "rpe_factor" in fpn:
@@ -244,6 +254,12 @@ def Train():
       {"params": [param_dict[pn] for pn in sorted(list(no_decay)) if "rpe_factor" not in pn], "weight_decay": 0.0},
   ]
 
+  if config.Opt_LoRARankDivisor > 0:
+    # LoRA parameters are not in the saved model, so the above optim_groups is incomplete (won't work)
+    # Therefore disable use of optim_groups (apply weight decay to all parameters).
+    # TODO: Consider if this needs to be improved (though it's probaby harmless).
+    optim_groups = model.parameters()
+
 
   def num_warmup_positions():
     # Warmup is 5% of positions (but not more than 200mm).
@@ -254,7 +270,9 @@ def Train():
   STEPS_AdEMAMix_WARMUP = (num_warmup_positions() // 2) // config.Opt_BatchSizeBackwardPass
 
   # Loss and optimizer
-  if config.Opt_Optimizer == 'NAdamW':
+  if config.Opt_Optimizer == 'SGD':
+    optimizer = optim.SGD(optim_groups, lr=LR*0, momentum=config.Opt_Beta1, weight_decay=WEIGHT_DECAY)
+  elif config.Opt_Optimizer == 'NAdamW':
     optimizer = optim.NAdam(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), decoupled_weight_decay=True)
   elif config.Opt_Optimizer == 'AdamW':
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=False)
@@ -373,12 +391,54 @@ def Train():
   
   if config.Opt_CheckpointResumeFromFileName is not None:
     loaded = fabric.load(config.Opt_CheckpointResumeFromFileName)
-     
+   
     # name adjustment sometimes needed for reload
     # loaded["model"] = {f'_orig_mod.{key}': value for key, value in loaded["model"].items()}
 
-    model.load_state_dict(loaded["model"])
-    optimizer.load_state_dict(loaded["optimizer"])
+    if config.Opt_LoRARankDivisor == 0:
+      # load checkpoint parameters, expect all to match (strict = True)
+      model.load_state_dict(loaded["model"], strict = True)
+    else:
+      # Rebuild new state dictionary.
+      # Mostly copy over parameters from the checkpoint with same name,
+      # except if the current model has original_layer
+      # (indicating now subsumed within original_layer within LoRA layer) 
+      # then map to the original name as saved in the pre-LoRA checkpoint.
+      new_state_dict = {}
+
+      for name, param in model.state_dict().items():
+        if "lora_" in name:
+          pass # not expected to be found in checkpoint, can start out empty
+        else:
+          # Map to the original name (before it was subsumed within original_layer)
+          name_in_checkpoint = name.replace("original_layer.", "") if "original_layer" in name else name
+          new_state_dict[name] = loaded["model"][name_in_checkpoint]
+
+      # Load updated state dict
+      model.load_state_dict(new_state_dict, strict=False)
+
+
+    # Check all layers for zero parameters
+    if config.Opt_CheckpointResumeFromFileName is not None:
+      for name, param in model.named_parameters():
+        if param.requires_grad:  # Check only trainable parameters
+          if torch.all(param == 0):  # Check if all elements in the tensor are zero
+            print(f"Note: layer {name} has all zero values. This is expected only for LoRA layers.")
+
+    if config.Opt_LoRARankDivisor == 0:
+      optimizer.load_state_dict(loaded["optimizer"])
+    else:
+      # Special logic to deal with missing LoRA optimizer parameters in the checkpoint 
+      loaded_optimizer_state = loaded["optimizer"]
+      current_param_groups = optimizer.param_groups
+      loaded_param_groups = loaded_optimizer_state["param_groups"]
+
+      # Adjust loaded state to match current optimizer
+      if len(current_param_groups) != len(loaded_param_groups):
+        loaded_optimizer_state["param_groups"] = current_param_groups
+      optimizer.load_state_dict(loaded_optimizer_state)
+    
+    
     num_pos = int(loaded["num_pos"]) # N.B. be sure to use a multiple of the batch size
     print("INFO: LOAD_CHECKPOINT", config.Opt_CheckpointResumeFromFileName, num_pos)
 
@@ -561,6 +621,7 @@ def Train():
 
 
     current_time = datetime.datetime.now()
+
     global time_start
     global time_last_status_update
     global time_last_save_transient
@@ -572,7 +633,8 @@ def Train():
     STATUS_UPDATE_INTERVAL = 5 # log output to console very 5 seconds
     should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
   
-    SAVE_LAST_INTERVAL = 90 * 60 # save output artifacts every 90 minutes (with label "last")    
+    # save output artifacts every 120 (or 30 if LoRA) minutes (with label "last")    
+    SAVE_LAST_INTERVAL = 120 * 60 if config.Opt_LoRARankDivisor == 0 else 30 * 60
     should_save_transient = time_since_save_transient > SAVE_LAST_INTERVAL
     if should_save_transient:
       save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, "last", True)
