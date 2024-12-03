@@ -14,66 +14,86 @@
 #region Using directives
 
 using System;
-
-using Ceres.Chess;
-using Ceres.Chess.EncodedPositions;
+using System.Collections.Generic;
+using Ceres.MCTS.MTCSNodes.Struct;
 using Ceres.MCTS.MTCSNodes;
-using Ceres.MCTS.LeafExpansion;
+
+using CeresTrain.TPG;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using Ceres.MCTS.LeafExpansion;
 
 #endregion
 
 namespace CeresTrain.TrainingDataGenerator
 {
-    /// <summary>
-    /// Helper methods which extract training data from a training search tree.
-    /// </summary>
-    public static class TPGExtractorFromTree
+  public static class TPGExtractorFromTree
   {
     /// <summary>
-    /// Extracts a TPGRecord (suitable as a training target) from specified node in specified search tree.
+    /// Extracts List of TPGRecord from tree having a minimum specified number of visits.
     /// </summary>
-    /// <param name="tree"></param>
-    /// <param name="node"></param>
-    /// <param name="emitLastPlySinceSquare"></param>
-    /// <param name="emitMoves"></param>
+    /// <param name="minNodesRequired"></param>
+    /// <param name="fillInTPGReader"></param>
+    /// <param name="numNonFillInTPGs"></param>
+    /// <param name="acceptNodePredicate"></param>
     /// <returns></returns>
-    public static TPGRecord ExtractTPGRecordFromNode(MCTSTree tree, in MCTSNode node, bool emitLastPlySinceSquare)
+    public static List<TPGRecord> ExtractTPGsFromTree(MCTSTree tree,
+                                                      int minNodesRequired,
+                                                      TPGFileReader fillInTPGReader,
+                                                      out int numNonFillInTPGs,
+                                                      Predicate<MCTSNode> acceptNodePredicate = null)
     {
-      EncodedPositionWithHistory encodedPosToConvert = default;
-      Span<Position> lastSearchPositions = tree.HistoryPositionsForNode(node, 2, false);
-      encodedPosToConvert.SetFromSequentialPositions(lastSearchPositions, false);
+      List<TPGRecord> ret = new();
 
-      // Set targets for WDL, etc.
-      (float w, float d, float l, float m, float unc, CompressedPolicyVector policy) targets;
-      targets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(tree, node);
+      int count = 0;
+      int countNonFillInTPGs = 0;
 
-      TPGTrainingTargetNonPolicyInfo targetInfo = default;
-      (float w, float d, float l) wdl = (targets.w, targets.d, targets.l);
-      targetInfo.ResultDeblunderedWDL = wdl;
-      targetInfo.ResultNonDeblunderedWDL = wdl;
-      targetInfo.BestWDL = wdl;
+      MCTSNode rootNode = tree.Root;
+      rootNode.Context.Root.StructRef.Traverse(rootNode.Context.Tree.Store,
+        (ref MCTSNodeStruct nodeRef, int depth) =>
+        {
+          //     if (nodeRef.N >= minN && FP16.IsNaN(nodeRef.VSecondary))// && !nodeRef.IsTranspositionLinked)
+          if (nodeRef.N < minNodesRequired)
+          {
+            // We must be done, children will all have N strictly less than minNodes.
+            return false;
+          }
+          else
+          {
+            MCTSTree tree = rootNode.Context.Tree;
+            MCTSNode node = tree.GetNode(nodeRef.Index);
 
-      targetInfo.IntermediateWDL = default;// gameAnalyzer.intermediateBestWDL[i];
-      targetInfo.MLH = TPGRecordEncoding.MLHEncoded(targets.m);
-      targetInfo.DeltaQVersusV = targets.unc;
-      throw new Exception("not yet implememented here: KLDPolicy");
-      throw new Exception("Possibly need to remediate and set the ForwardMinQDeviation properly just below.");
-      targetInfo.ForwardMinQDeviation = 0;
+            if (acceptNodePredicate == null || acceptNodePredicate(node))
+            {
+              float diff = (float)Math.Abs(rootNode.Q - nodeRef.Q * (depth % 2 == 1 ? -1 : 1));
+              // Console.WriteLine((diff > 0.25 ? "*" : " ") + LastSearchResult.ScoreQ + " --> " + nodeRef.N + " " + depth + " " + nodeRef.Q);
 
-      targetInfo.DeltaQForwardAbs = float.NaN;// gameAnalyzer.deltaQIntermediateBestWDL[i];
-      targetInfo.Source = TPGTrainingTargetNonPolicyInfo.TargetSourceInfo.Training;
+              const bool EMIT_LAST_PLY_SINCE_SQUARE = false;
+              TPGRecord tpgRecord = TPGExtractorFromNode.ExtractTPGRecordFromNode(tree, node, EMIT_LAST_PLY_SINCE_SQUARE);
+              ret.Add(tpgRecord);
+              countNonFillInTPGs++;
 
-      // Construct TPG record from the above
-      TPGRecord tpgRecord = default;
-      TPGRecordConverter.ConvertToTPGRecord(in encodedPosToConvert, true, default, targetInfo, targets.policy,
-                                           CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE,
-                                           ref tpgRecord, default,
-                                           emitLastPlySinceSquare, 0, 0);
+              if (fillInTPGReader != null)
+              {
+                lock (fillInTPGReader)
+                {
+                  // It is assumed that the tpgReader is configured to 
+                  // return batches of the appropriate size for fill-in.
+                  TPGRecord[] fillInTPG = fillInTPGReader.NextBatch();
+                  for (int i = 0; i < fillInTPG.Length; i++)
+                  {
+                    ret.Add(fillInTPG[i]);
+                  }
+                }
+              }
 
-      return tpgRecord;
+              count++;
+            }
+            return true;
+          }
+        }, Ceres.Base.DataType.Trees.TreeTraversalType.DepthFirst);
+
+      numNonFillInTPGs = countNonFillInTPGs;
+      return ret;
     }
-
   }
-
 }

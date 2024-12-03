@@ -66,9 +66,9 @@ using Ceres.MCTS.Evaluators;
 
 namespace CeresTrain.Examples
 {
-    /// <summary>
-    /// Set of static methods to facilitate running various tests of Ceres neural networks.
-    /// </summary>
+  /// <summary>
+  /// Set of static methods to facilitate running various tests of Ceres neural networks.
+  /// </summary>
   public static class CeresNetEvaluation
   {
     /// <summary>
@@ -151,7 +151,9 @@ namespace CeresTrain.Examples
     /// <param name="piecesString"></param>
     /// <param name="numPositions"></param>
     /// <param name="outputDirectory"></param>
-    public static void GenerateTPGFilesFromRandomTablebasePositions(string piecesString, long numPositions, string outputDirectory)
+    public static void GenerateTPGFilesFromTablebasePositions(string piecesString, 
+                                                              long numPositions, 
+                                                              string outputDirectory)
     {
       if (!Directory.Exists(outputDirectory))
       {
@@ -164,18 +166,18 @@ namespace CeresTrain.Examples
       int NUM_THREADS = 4 + (int)MathF.Min(16, Environment.ProcessorCount / 2);
       const int BATCH_SIZE = 1024;
       long NUM_BATCHES_TO_WRITE = numPositions / (NUM_THREADS * BATCH_SIZE);
-      ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"GenerateTPGFileFromRandomTablebasePositions positions {numPositions} "
+      ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"GenerateTPGFileFromTablebasePositions positions {numPositions} "
                                                      + $"of {piecesString} with {NUM_THREADS} threads to {outputDirectory}");
 
       // Launch and wait for parallel threads, each writing to separate file.
       DateTime startTime = DateTime.Now;
       const bool SUCCEED_IF_INCOMPLETE_DTZ_INFORMATION = true;
-      using (new TimingBlock("GenerateTPGFilesFromRandomTablebasePositions"))
+      using (new TimingBlock("GenerateTPGFilesFromTablebasePositions"))
       {
         List<Task> tasks = new();
         Enumerable.Range(0, NUM_THREADS).ToList().ForEach(i =>
         {
-          tasks.Add(Task.Run(() => GenerateTPGFileFromRandomTablebasePositions(SUCCEED_IF_INCOMPLETE_DTZ_INFORMATION, outputDirectory, piecesString, i, BATCH_SIZE, NUM_BATCHES_TO_WRITE)));
+          tasks.Add(Task.Run(() => GenerateTPGFileFromTablebasePositions(SUCCEED_IF_INCOMPLETE_DTZ_INFORMATION, outputDirectory, piecesString, i, BATCH_SIZE, NUM_BATCHES_TO_WRITE)));
         });
         Task.WaitAll(tasks.ToArray());
       }
@@ -193,15 +195,20 @@ namespace CeresTrain.Examples
     /// <param name="succeedIfIncompleteDTZInformation"></param>
     /// <param name="outputDirectory"></param>
     /// <param name="piecesString"></param>
-    /// <param name="filnameIndex"></param>
+    /// <param name="filenameIndex"></param>
     /// <param name="batchSize"></param>
     /// <param name="numBatches"></param>
-    static void GenerateTPGFileFromRandomTablebasePositions(bool succeedIfIncompleteDTZInformation, string outputDirectory, string piecesString, int filnameIndex, int batchSize, long numBatches)
+    static void GenerateTPGFileFromTablebasePositions(bool succeedIfIncompleteDTZInformation, 
+                                                      string outputDirectory, 
+                                                      string piecesString, 
+                                                      int filenameIndex, 
+                                                      int batchSize, 
+                                                      long numBatches)
     {
       PositionGeneratorRandomFromPieces generator = new PositionGeneratorRandomFromPieces(piecesString);
       TablebaseTPGBatchGenerator tpgGenerator = new(generator.ID, generator.GeneratePosition, succeedIfIncompleteDTZInformation, batchSize);
 
-      string outFN = Path.Combine(outputDirectory, @$"{FileUtils.FileNameSanitized(generator.ID)}_{filnameIndex}.dat.zst");
+      string outFN = Path.Combine(outputDirectory, @$"{FileUtils.FileNameSanitized(generator.ID)}_{filenameIndex}.dat.zst");
 
       const int COMPRESSION_LEVEL = 10;
       using FileStream fs = new FileStream(outFN, FileMode.Create, FileAccess.Write);
@@ -222,6 +229,23 @@ namespace CeresTrain.Examples
 
       Console.WriteLine("Done " + outFN);
       tpgGenerator.Shutdown();
+    }
+
+
+    static void WriteFloatRedIfNegative(float f, bool ok)
+    {
+      if (float.IsNaN(f))
+      {
+        Console.Write("".PadLeft(3));
+      }
+      else if (!ok)
+      {
+        ConsoleUtils.WriteLineColored(ConsoleColor.Red, f.ToString("0.##").PadLeft(6), false);
+      }
+      else
+      {
+        Console.Write(f.ToString("0.##").PadLeft(6));
+      }
     }
 
 
@@ -393,7 +417,7 @@ namespace CeresTrain.Examples
         for (int i = 0; i < numPos; i++)
         {
           //NNEvaluatorResult thisResult = batchEvaluated[i];
-          float scoreQ = SFEvaluatorPool.StockfishSearch(positions[i].FinalPosition, new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));  
+          float scoreQ = SFEvaluatorPool.StockfishSearch(positions[i].FinalPosition, new SearchLimit(SearchLimitType.SecondsPerMove, SF_SEARCH_TIME_SECS));
           //GameEngineSearchResult sfResult = engineSF.Search(positions[i], new SearchLimit(SearchLimitType.SecondsPerMove, 0.3f));
           Console.Write(bufferedBatchDirect.GetWin1P(i) + " " + bufferedBatchDirect.GetLoss1P(i) + " --> ");
           bufferedBatchDirect.SetWL(i, scoreQ);
@@ -444,7 +468,7 @@ namespace CeresTrain.Examples
 
         if (verbose)// && (!netValueCorrect || !compareOK))
         {
-          string gameResultString = gameResultTablebase == 1 ? "Win " : (gameResultTablebase == -1 ? "Loss" : "Draw"); 
+          string gameResultString = gameResultTablebase == 1 ? "Win " : (gameResultTablebase == -1 ? "Loss" : "Draw");
           Console.Write($"{gameResultString}  Primary=");
           WriteFloatRedIfNegative(evalResult.V, netValueCorrect);
 
@@ -721,23 +745,8 @@ namespace CeresTrain.Examples
                                                string netFNOverride = null,
                                                string netFNOverride2 = null)
     {
+      throw new NotImplementedException();
 #if NOT
-      // Automatically strip off extension ".onnx" if found since this is appended back on later.
-      if (engineType == NNEvaluatorInferenceEngineType.ONNXRuntime
-        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16
-        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntimeTensorRT
-        || engineType == NNEvaluatorInferenceEngineType.ONNXRuntime16TensorRT)
-      {
-        if (netFNOverride != null && netFNOverride.ToLower().EndsWith(".onnx"))
-        {
-          netFNOverride = netFNOverride.Substring(0, netFNOverride.IndexOf(".onnx"));
-        }
-        if (netFNOverride2 != null && netFNOverride2.ToLower().EndsWith(".onnx"))
-        {
-          netFNOverride2 = netFNOverride2.Substring(0, netFNOverride2.IndexOf(".onnx"));
-        }
-      }
-#endif
 
       string netFileName1 = null;
       string netFileName2 = null;
@@ -810,6 +819,7 @@ namespace CeresTrain.Examples
                                SaveNetwork2FileName = netFileName2,
                              },
                              netFileName1, null, null, null, useHistory, options);
+#endif
     }
 
 
@@ -842,6 +852,8 @@ namespace CeresTrain.Examples
                                               bool useHistory,
                                               NNEvaluatorOptionsCeres evaluatorOptions)
     {
+      throw new NotImplementedException();
+#if NOT
       execConfig = execConfig with
       {
         UseHistory = useHistory,
@@ -1006,21 +1018,7 @@ namespace CeresTrain.Examples
     }
 
 
-
-    static void WriteFloatRedIfNegative(float f, bool ok)
-    {
-      if (float.IsNaN(f))
-      {
-        Console.Write("".PadLeft(3));
-      }
-      else if (!ok)
-      {
-        ConsoleUtils.WriteLineColored(ConsoleColor.Red, f.ToString("0.##").PadLeft(6), false);
-      }
-      else
-      {
-        Console.Write(f.ToString("0.##").PadLeft(6));
-      }
+#endif
     }
   }
 }

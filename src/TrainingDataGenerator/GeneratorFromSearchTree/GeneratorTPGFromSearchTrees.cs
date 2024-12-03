@@ -31,6 +31,8 @@ using Ceres.Chess.Positions;
 using Ceres.Chess.EncodedPositions;
 using CeresTrain.TPG;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using CeresTrain.TrainingDataGenerator.CeresTrain.TrainingDataGenerator;
+using Ceres.MCTS.MTCSNodes;
 
 #endregion
 
@@ -121,11 +123,15 @@ namespace CeresTrain.TrainingDataGenerator
 
 
 
-    static int GenerateTPGFromTAR(string sourceTARFileName, Stream outputStream,
+    static int GenerateTPGFromTAR(string sourceTARFileName, 
+                                  Stream outputStream,
                                   IEnumerable<PositionEvalAccuracyEstimatorBySearch> trainingDataEvaluators,
-                                  int skipCount, int maxTPGToGenerate,
+                                  int skipCount, 
+                                  int maxTPGToGenerate,
                                   RunSearchFromTrainingPositionPredicate runSearchFromTrainingPositionDelegate,
-                                  int numSearchNodes, SearchLimit searchLimitSF, int minNumNodesWriteAsTPG,
+                                  int numSearchNodes, 
+                                  SearchLimit searchLimitSF, 
+                                  int minNumNodesWriteAsTPG,
                                   TPGFileReader tpgReader)
     {
       int numSeen = 0;
@@ -180,12 +186,12 @@ namespace CeresTrain.TrainingDataGenerator
 
     static Task LaunchTaskToStartSearchAndTPGGeneration(int numSearchNodes, SearchLimit searchLimitSF,
                                                         Action<int> registerNumGeneratedNonFillInTPGs,
-                                                         BlockingCollection<PositionEvalAccuracyEstimatorBySearch> evaluators,
-                                                         EncodedTrainingPosition refPos,
-                                                         Predicate<PositionEvalAccuracyEstimatorBySearch> lastSearchResultShouldBeWrittenAsTPG,
-                                                         int minNumNodesForNodeToBeWrittenAsTPG,
-                                                         TPGFileReader tpgReader,
-                                                         Stream writeTPGStream)
+                                                        BlockingCollection<PositionEvalAccuracyEstimatorBySearch> evaluators,
+                                                        EncodedTrainingPosition refPos,
+                                                        Predicate<PositionEvalAccuracyEstimatorBySearch> lastSearchResultShouldBeWrittenAsTPG,
+                                                        int minNumNodesForNodeToBeWrittenAsTPG,
+                                                        TPGFileReader fillInTPGReader,
+                                                        Stream writeTPGStream)
     {
       PositionEvalAccuracyEstimatorBySearch thisEvaluator;
       thisEvaluator = evaluators.Take();
@@ -205,7 +211,8 @@ namespace CeresTrain.TrainingDataGenerator
             //trainingDataEvaluator.LastSearchResult.Search.Manager.DumpFullInfo(Console.Out, "UCI");
 
             // Extract set of TPGRecords taken from the search tree.
-            List<TPGRecord> tpgsNew = thisEvaluator.ExtractTPGsFromLastTree(minNumNodesForNodeToBeWrittenAsTPG, tpgReader, out int numNonFillInTPGs);
+            MCTSNode rootNode = thisEvaluator.LastSearchResult.Search.SearchRootNode;
+            List<TPGRecord> tpgsNew = TPGExtractorFromTree.ExtractTPGsFromTree(rootNode.Tree, minNumNodesForNodeToBeWrittenAsTPG, fillInTPGReader, out int numNonFillInTPGs);
 
             // Write TPGs to output stream.
             ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(tpgsNew.ToArray().AsSpan());

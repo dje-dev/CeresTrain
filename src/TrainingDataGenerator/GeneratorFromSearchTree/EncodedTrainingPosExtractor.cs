@@ -55,7 +55,7 @@ namespace CeresTrain.TrainingDataGenerator
       //      newPosHistory.SetFromSequentialPositions(.Positions, false); // this also takes care of the misc info
 
       // Extract training targets
-      (float w, float d, float l, float m, float unc, CompressedPolicyVector policy) targets;
+      (float w, float d, float l, float m, float unc, CompressedPolicyVector policysSearch, CompressedPolicyVector policysNet) targets;
       targets = ExtractTrainingTargetsFromNode(tree, node);
 
       // Create the EncodedPolicyVector (start with -1's, then fill in with the actual populated values).
@@ -64,7 +64,7 @@ namespace CeresTrain.TrainingDataGenerator
       unsafe
       {
         float* encodedProbs = epv.ProbabilitiesPtr;
-        foreach ((EncodedMove Move, float Probability) entry in targets.policy.ProbabilitySummary(0))
+        foreach ((EncodedMove Move, float Probability) entry in targets.policysSearch.ProbabilitySummary(0))
         {
           encodedProbs[entry.Move.IndexNeuralNet] = entry.Probability;
         }
@@ -294,7 +294,7 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="tree"></param>
     /// <param name="node"></param>
     /// <returns></returns>
-    public static (float w, float d, float l, float m, float unc, CompressedPolicyVector policy)
+    public static (float w, float d, float l, float m, float unc, CompressedPolicyVector policySearch, CompressedPolicyVector policyNet)
       ExtractTrainingTargetsFromNode(MCTSTree tree, in MCTSNode node)
     {
       float w = node.WAvg;
@@ -304,16 +304,15 @@ namespace CeresTrain.TrainingDataGenerator
       float u = MathF.Abs((float)node.Q - node.V);
 
       // Extract policy from empirical
-      CompressedPolicyVector policy = default;
-      MCTSNodeStructUtils.ExtractPolicyVectorFromVisitDistribution(node.SideToMove, in node.StructRef, ref policy);
+      CompressedPolicyVector policySearch = default;
+      MCTSNodeStructUtils.ExtractPolicyVectorFromVisitDistribution(node.SideToMove, in node.StructRef, ref policySearch);
 
-#if NOT
+
       // This version is not what we want, it extracts the neural network policy.
-      CompressedPolicyVector policyVector = default;
-      MCTSNodeStructUtils.ExtractPolicyVector(search.Manager.Context.ParamsSelect.PolicySoftmax, in node.StructRef, ref policyVector);
-#endif
+      CompressedPolicyVector policyNeuralNet = default;
+      MCTSNodeStructUtils.ExtractPolicyVector(tree.Context.ParamsSelect.PolicySoftmax, in node.StructRef, ref policyNeuralNet);
 
-      return (w, d, l, m, u, policy);
+      return (w, d, l, m, u, policySearch, policyNeuralNet);
     }
 
   }

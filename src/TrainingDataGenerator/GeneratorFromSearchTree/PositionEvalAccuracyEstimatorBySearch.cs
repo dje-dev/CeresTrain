@@ -14,7 +14,6 @@
 #region Using directives
 
 using System;
-using System.Collections.Generic;
 
 using Ceres.Base.Math;
 using Ceres.Base.OperatingSystem;
@@ -29,10 +28,7 @@ using Ceres.Chess.GameEngines;
 using Ceres.Chess.NetEvaluation.Batch;
 
 using Ceres.MCTS.Params;
-using Ceres.MCTS.MTCSNodes.Struct;
 using Ceres.MCTS.MTCSNodes;
-
-using CeresTrain.TPG;
 using Ceres.Features.GameEngines;
 using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
@@ -137,7 +133,7 @@ namespace CeresTrain.TrainingDataGenerator
     {
       if (includeStockfish)
       {
-        SFEngine = (GameEngineUCI)EngineDefStockfish16().CreateEngine();
+        SFEngine = (GameEngineUCI)EngineDefStockfish17().CreateEngine();
         Console.WriteLine("Stockfish Engine Started: " + SFEngine);
       }
 
@@ -215,67 +211,6 @@ namespace CeresTrain.TrainingDataGenerator
 
     }
 
-    /// <summary>
-    /// Extracts List of TPGRecord from tree having a minimum specified number of visits.
-    /// </summary>
-    /// <param name="minNodes"></param>
-    /// <param name="acceptNodePredicate"></param>
-    /// <returns></returns>
-    public List<TPGRecord> ExtractTPGsFromLastTree(int minNodes, TPGFileReader tpgReader,
-                                                  out int numNonFillInTPGs, Predicate<MCTSNode> acceptNodePredicate = null)
-    {
-      List<TPGRecord> ret = new();
-
-      int count = 0;
-      int countNonFillInTPGs = 0;
-      MCTSNode rootNode = LastSearchResult.Search.SearchRootNode;
-
-      LastSearchResult.Search.Manager.Context.Root.StructRef.Traverse(LastSearchResult.Search.Manager.Context.Tree.Store,
-        (ref MCTSNodeStruct nodeRef, int depth) =>
-        {
-          //     if (nodeRef.N >= minN && FP16.IsNaN(nodeRef.VSecondary))// && !nodeRef.IsTranspositionLinked)
-          if (nodeRef.N < minNodes)
-          {
-            // We must be done, children will all have N strictly less than minNodes.
-            return false;
-          }
-          else
-          {
-            MCTSNode node = LastSearchResult.Search.Manager.Context.Tree.GetNode(nodeRef.Index);
-
-            if (acceptNodePredicate == null || acceptNodePredicate(node))
-            {
-              float diff = (float)Math.Abs(LastSearchResult.ScoreQ - nodeRef.Q * (depth % 2 == 1 ? -1 : 1));
-              // Console.WriteLine((diff > 0.25 ? "*" : " ") + LastSearchResult.ScoreQ + " --> " + nodeRef.N + " " + depth + " " + nodeRef.Q);
-
-              const bool EMIT_LAST_PLY_SINCE_SQUARE = false;
-              TPGRecord tpgRecord = TPGExtractorFromTree.ExtractTPGRecordFromNode(LastSearchResult.Search.Manager.Context.Tree, node, EMIT_LAST_PLY_SINCE_SQUARE);
-              ret.Add(tpgRecord);
-              countNonFillInTPGs++;
-
-              if (tpgReader != null)
-              {
-                lock (tpgReader)
-                {
-                  // It is assumed that the tpgReader is configured to 
-                  // return batches of the appropriate size for fill-in.
-                  TPGRecord[] fillInTPG = tpgReader.NextBatch();
-                  for (int i = 0; i < fillInTPG.Length; i++)
-                  {
-                    ret.Add(fillInTPG[i]);
-                  }
-                }
-              }
-
-              count++;
-            }
-            return true;
-          }
-        }, Ceres.Base.DataType.Trees.TreeTraversalType.DepthFirst);
-
-      numNonFillInTPGs = countNonFillInTPGs;
-      return ret;
-    }
 
 
     /// <summary>
@@ -289,8 +224,10 @@ namespace CeresTrain.TrainingDataGenerator
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     public bool DoSearchEvaluation(PositionWithHistory posWithHistory,
-                                   SearchLimit searchLimit, SearchLimit searchLimitSF,
-                                   float trainingQ, float[] targetProbabilitiesMirrored,
+                                   SearchLimit searchLimit, 
+                                   SearchLimit searchLimitSF,
+                                   float trainingQ, 
+                                   float[] targetProbabilitiesMirrored,
                                    in EncodedPositionEvalMiscInfoV6 infoTraining)
     {
       //      if (posWithHistory.FinalPosition.CalcTerminalStatus() != GameResult.Unknown) { }
@@ -337,6 +274,7 @@ namespace CeresTrain.TrainingDataGenerator
       return true;
     }
 
+
     private void DoEvaluationBySearch(PositionWithHistory posWithHistory, SearchLimit searchLimit, SearchLimit searchLimitSF, float trainingQ, float[] targetProbabilitiesMirrored)
     {
       CeresEngine.ResetGame();
@@ -355,9 +293,9 @@ namespace CeresTrain.TrainingDataGenerator
       }
 
       // Update statistics
-      (float w, float d, float l, float m, float unc, CompressedPolicyVector policy) trainingTargets;
+      (float w, float d, float l, float m, float unc, CompressedPolicyVector policySearch, CompressedPolicyVector policyNet) trainingTargets;
       trainingTargets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(LastSearchResult.Search.Manager.Context.Tree, LastSearchResult.Search.SearchRootNode);
-      float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, trainingTargets.policy.Mirrored.DecodedAndNormalized);
+      float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, trainingTargets.policySearch.Mirrored.DecodedAndNormalized);
 
       // Subtract off entropy of target policy to focus on error part.
       float targetEntropy= StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, targetProbabilitiesMirrored);
@@ -372,7 +310,7 @@ namespace CeresTrain.TrainingDataGenerator
       sumAbsoluteValueDiffsCeres += MathF.Abs(qdiffCeres);
       sumCrossEntropyErrorCeres += thisPolicyErrorSearch;
 
-      bool topMoveMatches = trainingTargets.policy.TopMove(posWithHistory.FinalPosition) == LastSearchResult.BestMove.BestMove;
+      bool topMoveMatches = trainingTargets.policySearch.TopMove(posWithHistory.FinalPosition) == LastSearchResult.BestMove.BestMove;
       sumTopMoveAgree += topMoveMatches ? 1 : 0;
 
       if (LastSFSearchResult != null)
@@ -389,20 +327,20 @@ namespace CeresTrain.TrainingDataGenerator
     /// <param name="node"></param>
     /// <returns></returns>
     public TPGRecord ExtractTPGRecordFromNode(MCTSNode node, bool emitLastPlySinceSquare)
-      => TPGExtractorFromTree.ExtractTPGRecordFromNode(LastSearchResult.Search.Manager.Context.Tree, node, emitLastPlySinceSquare);
+      => TPGExtractorFromNode.ExtractTPGRecordFromNode(LastSearchResult.Search.Manager.Context.Tree, node, emitLastPlySinceSquare);
 
 
     const int SF_NUM_THREADS = 24;
 
     static string TB_PATH => CeresUserSettingsManager.Settings.TablebaseDirectory;
     static int SF_HASH_SIZE_MB() => HardwareManager.MemorySize > 256L * 1024 * 1024 * 1024 
-                                                                  ? 8192 : 512;
+                                                                  ? 256 : 64;
     static string SF17_EXE => SoftwareManager.IsLinux ? @"/raid/dev/Stockfish/src/stockfish"
                                                       : @"\\synology\dev\chess\engines\stockfish17-windows-x86-64-avx2.exe";
 
 
-    public static GameEngineDef EngineDefStockfish16(int numThreads = SF_NUM_THREADS, int hashtableSize = -1) =>
-  new GameEngineDefUCI("SF16", new GameEngineUCISpec("SF17", SF17_EXE, numThreads,
+    public static GameEngineDef EngineDefStockfish17(int numThreads = SF_NUM_THREADS, int hashtableSize = -1) =>
+  new GameEngineDefUCI("SF17", new GameEngineUCISpec("SF17", SF17_EXE, numThreads,
                        hashtableSize == -1 ? SF_HASH_SIZE_MB() : hashtableSize, TB_PATH, uciSetOptionCommands: null));
 
   }

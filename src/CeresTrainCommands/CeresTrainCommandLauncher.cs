@@ -184,7 +184,7 @@ namespace CeresTrain.TrainCommands
       {
         if (tarDirectory == null)
         {
-          CeresNetEvaluation.GenerateTPGFilesFromRandomTablebasePositions(piecesStr, numPos, outDirectory);
+          CeresNetEvaluation.GenerateTPGFilesFromTablebasePositions(piecesStr, numPos, outDirectory);
         }
         else
         {
