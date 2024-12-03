@@ -46,11 +46,6 @@ namespace CeresTrain.Trainer
     NAdamW,
 
     /// <summary>
-    /// Lion optimizer.
-    /// </summary>
-    LION,
-
-    /// <summary>
     /// Schedule-free Adam optimizer.
     /// See "The Road Less Scheduled by Defazio et. al. at https://arxiv.org/abs/2405.15682)
     /// Code from official implementation at https://github.com/facebookresearch/schedule_free/blob/main/schedulefree/adamw_schedulefree.py.

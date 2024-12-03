@@ -517,20 +517,6 @@ namespace CeresTrain.Trainer
         AdamW.ParamGroup[] adamWOptGroups = GetOptimizerAdamWGroups(model);
         optimizer = AdamW(adamWOptGroups);
       }
-      else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.LION)
-      {
-        //LION almost always diverged after 15 minutes to 3 hours  only once did it run a long time(20 hours, to 650mm pos)
-        // this was with batch size 3 * 1024, beta1 = 0.95, beta2 = 0.98, LR = 0.5e-4
-        // but the result was slightly worse than AdamW runs.
-        // *** NOTE: The above was discovered to be affected by a bug, beta2 was being set to same value as beta1
-
-        // N.B. Not yet implemented is per-parameter weight decay, etc.
-        optimizer = new LIONOptimizer(model.parameters(),
-                                      lr: TrainingConfig.OptConfig.LearningRateBase,
-                                      beta1: TrainingConfig.OptConfig.Beta1,
-                                      beta2: TrainingConfig.OptConfig.Beta2,
-                                      weight_decay: TrainingConfig.OptConfig.WeightDecay);
-      }
       else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.NAdamW)
       {
         // TODO: Retrun NAdam after TorchSharp bug noted here is fixed: https://github.com/dotnet/TorchSharp/pull/1155
