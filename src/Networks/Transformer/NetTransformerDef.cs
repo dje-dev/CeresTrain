@@ -144,7 +144,6 @@ namespace CeresTrain.Networks.Transformer
       NumLayers = numLayers;
       NumHeads = numHeads;
       FFNMultiplier = ffnMultiplier;
-      NormType = NormalizationType.RMSNorm;
 
       if (extraFeatures.HasFlag(TransformerFeatures.Attention2x))
       {
@@ -183,10 +182,12 @@ namespace CeresTrain.Networks.Transformer
     {
     }
 
+
     /// <summary>
     /// If the experimental sequence training methodology should be used,
     /// wherein Ceres training data consists of blocks of 4 positions
     /// (parent, optimal_child_depth_1, optimal_child_depth2, nonoptimal_child_depth1).
+    /// Requires training TPG data to be generated in this format.
     /// </summary>
     public readonly bool TrainOn4BoardSequences { get; init; } = false;
 
@@ -225,11 +226,13 @@ namespace CeresTrain.Networks.Transformer
 
     /// <summary>
     /// Multiplier for the attention heads (dimensionality upscaled by this factor before being split into heads).
+    /// Experimental feature, typically not used (multiplier 1).
     /// </summary>
     public readonly int AttentionMultiplier { get; init; } = 1;
 
     /// <summary>
     /// Factor by which the FFN inner hidden layer is larger than the model dimension.
+    /// Commonly between 2 and 4.
     /// </summary>
     public readonly int FFNMultiplier { get; init; } = 4;
 
@@ -244,7 +247,8 @@ namespace CeresTrain.Networks.Transformer
     public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.Mish;
 
     /// <summary>
-    /// Dimension of the vector (per square) passed between consecutive positions.
+    /// Dimension of the vector (per square) passed between consecutive positions
+    /// (only relevant when TrainOn4BoardSequences is true).
     /// </summary>
     public readonly int PriorStateDim { get; init; } = 0;
 
@@ -260,6 +264,7 @@ namespace CeresTrain.Networks.Transformer
     /// If true, use deep normalization (with scaling of residual connection).
     /// NOTE: the deepnorm implementation may be incomplete (weight initialization possibly missing).
     /// See: "DeepNet: Scaling Transformers to 1,000 Layers" (2022) by Wang et. al. (https://arxiv.org/abs/2203.00555).
+    /// Typically not found necessary/useful for the limited depth networks used for Chess.
     /// </summary>
     public readonly bool DeepNorm { get; init; } = false;
 
@@ -269,8 +274,11 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly bool DenseFormer { get; init; } = false;
 
+
+    #region Smolgen related
+
     /// <summary>
-    /// Number of per square dimensions used for Smolgen (or 0 if Smolgen not used).
+    /// Number of per square dimensions used for Smolgen (or 0 if Smolgen not used) or 0 to disable.
     /// Invented by Ergodice, see: https://github.com/Ergodice/lczero-training.
     /// </summary>
     public readonly int SmolgenDimPerSquare { get; init; } = 0;
@@ -291,16 +299,21 @@ namespace CeresTrain.Networks.Transformer
     /// Lc0 nets my have used swish, but simple linear (no activation) seemingly also found good.
     /// </summary>
     public readonly ActivationType SmolgenActivationType { get; init; } = ActivationType.None;
+    
+    #endregion
+
 
     /// <summary>
-    /// If relative positional encoding should be used (for Q, K and V).
+    /// If relative positional encoding should be used (for Q, K and possibly V).
+    /// Similar to Smolgen, but may slowdown inference more.
     /// </summary>
     public readonly bool UseRPE { get; init; } = false;
 
     /// <summary>
     /// If the RPE feature should be applied to the V matrix (as well as Q and K).
+    /// Often set to false because unclear that it is benefical (especially after extra inference cost).
     /// </summary>
-    public readonly bool UseRPE_V { get; init; } = true;
+    public readonly bool UseRPE_V { get; init; } = false;
 
     /// <summary>
     /// If relative bias should be used for RPE.
@@ -315,6 +328,7 @@ namespace CeresTrain.Networks.Transformer
 
     /// <summary>
     /// The soft mixture of networks (MoE) configuration.
+    /// Set to default value to disable.
     /// </summary>
     public readonly SoftMoEParams SoftMoEConfig { get; init; } = new SoftMoEParams();
 

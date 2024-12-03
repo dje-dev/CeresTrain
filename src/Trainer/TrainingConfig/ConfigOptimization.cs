@@ -94,7 +94,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Default constructor for deserialization.
     /// </summary>
-    [JsonConstructorAttribute]
+    [JsonConstructor]
     public ConfigOptimization()
     {
     }
@@ -134,30 +134,34 @@ namespace CeresTrain.Trainer
     public readonly int CheckpointFrequencyNumPositions { get; init; } = 200_000_000;
 
     /// <summary>
-    /// Optional name of file containing the starting checkpoint from which training will be resumed.
+    /// Optional name of file containing the starting checkpoint from which training will be resumed,
+    /// or none if training is to start from scratch.
     /// </summary>
     public readonly string CheckpointResumeFromFileName { get; init; }
 
     /// <summary>
     /// String to be used for model argument of the PyTorch compile method (or null for no compile).
     /// Valid values: "default", "reduce-overhead", or "max-autotune" or "max-autotune-no-cudagraphs"
+    /// with "max-autotune" often giving best training speed but slowing down initialization.
     /// </summary>
-    public readonly string PyTorchCompileMode { get; init; } = "max-autotune";
+    public readonly string PyTorchCompileMode { get; init; } = "default";
 
     /// <summary>
     /// Weight decay coefficient for the optimizer.
+    /// A small weight decay may help stabilize training or possibly enhance generalization.
     /// </summary>
     public readonly float WeightDecay { get; init; } = 0.01f;
 
     /// <summary>
-    /// Maximum learning rate to be used with the optimizer.
+    /// Maximum learning rate to be used during optimization.
+    /// Learning rate typically needs to be lower for small batch sizes and/or larger networks.
     /// </summary>
     public readonly float LearningRateBase { get; init; } = 2E-4f;
 
     /// <summary>
-    /// Fraction complete (between 0 and 1) at which
-    /// scaling down of the LearningRateBase begins 
-    /// (linearly from LearningRateBase to a fixed minimum value of 0.10).
+    /// Fraction complete (between 0 and 1) at which scaling down of the LearningRateBase begins 
+    /// (linearly from LearningRateBase to a fixed minimum value of 0.10x starting rate).
+    /// For short(long)-duration training values of 0.6 (0.4) may be good choices.
     /// </summary>
     public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.6f;
 
@@ -193,6 +197,7 @@ namespace CeresTrain.Trainer
     /// https://arxiv.org/abs/1905.11881
     /// </summary>
     public readonly float GradientClipLevel { get; init; } = 1.0f;
+
 
     #region Loss multipliers
 
@@ -237,20 +242,23 @@ namespace CeresTrain.Trainer
 
     /// <summary>
     /// Scaling multiplier to be applied to difference in value scores between consecutive positions.
+    /// Only available when TrainOn4BoardSequences is true.
     /// This acts as consistency regularizer.
-    /// Seems to have small positlve benefit, especially for action head accuracy.
+    /// Seems to have small positive benefit, especially for action head accuracy.
     /// </summary>
     public readonly float LossValueDMultiplier { get; init; } = 0.1f;
 
     /// <summary>
     /// Scaling multiplier to be applied to difference in value2 scores between consecutive positions.
+    /// Only available when TrainOn4BoardSequences is true.
     /// This acts as consistency regularizer.
-    /// Benefit is unclear for Value2 because this training targtet is so noisy.
+    /// Benefit is unclear for Value2 because this training target is so noisy.
     /// </summary>
     public readonly float LossValue2DMultiplier { get; init; } = 0.0f;
 
     /// <summary>
     /// Loss weight applied to error in action prediction (relative to actual value2 from position).
+    /// Only available when TrainOn4BoardSequences is true.
     /// </summary>
     public readonly float LossActionMultiplier { get; init; } = 0.3f;
 
