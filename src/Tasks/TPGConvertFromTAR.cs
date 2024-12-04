@@ -45,12 +45,13 @@ namespace CeresTrain.Tasks
     const bool DEBUG = false; // turn this on to dump the diagnostic data for every position (e.g. deblundering/rescoring)
     const bool SMALL = false; // set to True to reduce file sizes by 80% (for testing)
 
-    // WARNING! Modifying the sizing below may possible result in low-level failures in TPG generation
+    // WARNING! Modifying the sizing below may possibly result in low-level failures in TPG generation
     //          due to not fully understood assumptions about the number of positions (divisibility requirements).
-    //          Switching to "SMALL" mode (see above) is safe, othewise exercise caution.
-    const int OUTPUT_FILE_SIZE_DIVISOR = SMALL ? 5 : 1;
+    //          Switching to "SMALL" mode (see above) is safe, otherwise exercise caution.
+    const int OUTPUT_FILE_SIZE_DIVISOR = SMALL ? 5 : 1; // using 5 yields about 200mm positions in a set
     const long NUM_POS_TOTAL = 4096 * 10 * (1640 / OUTPUT_FILE_SIZE_DIVISOR) * 3;
     // END WARNING
+
 
 
     /// <summary>
@@ -132,7 +133,6 @@ namespace CeresTrain.Tasks
         {
           TargetCompression = System.IO.Compression.CompressionLevel.Optimal, // SmallestSize is maybe 10% smaller, moderately slower
 
-          // TODO: cleanup hardcoded path here
           CeresJSONFileName = CeresTrainUserSettingsManager.Settings.CeresJSONFileName,
           Description = description,
           SourceDirectory = sourceDirectoryTARsOrZSTs,
@@ -142,45 +142,32 @@ namespace CeresTrain.Tasks
 
           AnnotationNNEvaluator = nNEvaluator,
 
-#if NOT
-            // Write ensembled V to unused field in training data for possible distillation.
-            AnnotationNNEvaluator = nNEvaluator,
-            AnnotationPostprocessor = (Position position, NNEvaluatorResult nnEvalResult, in EncodedTrainingPosition trainingPosition) =>
-            {
-              trainingPosition.Position.MiscInfo.SetUnusedFields(nnEvalResult.V, float.NaN);
-              //Console.WriteLine($"Saw nnV={nnEvalResult.V} fileQ=  {trainingPosition.Position.MiscInfo.InfoTraining.ResultQ} pos: {position.FEN}");
-            },
-            TargetFileNameBase = SoftwareManager.IsLinux ? @$"/raid/train/tpg/pos{DateTime.Now.Ticks % 100000}"
-                                                     : @$"d:\train\tpg\pos{DateTime.Now.Ticks % 100000}",
-
-#endif
-
           OutputFormat = TPGGeneratorOptions.OutputRecordFormat.TPGRecord, // note: possibly update FillInHistoryPlanes below
           FillInHistoryPlanes = true,
 
           EmitPlySinceLastMovePerSquare = false,
+
           NumRelatedPositionsPerBlock = numRelatedPositionsPerBlock,
           EmitPriorMoveWinLoss = emitPriorMoveWinLoss,
 
-          EnablePositionFocus = false, // validation that this an improvement not yet complete
-
           RescoreWithTablebase = useTablebases,
-          NumThreads = debugMode ? 1 : 4 + Math.Min(Environment.ProcessorCount, 80), // See degradation of throughput over time if too high (e.g. if 72 total thread)
+          NumThreads = debugMode ? 1 : 16 + Math.Min(Environment.ProcessorCount, 50),
 
           NumConcurrentSets = debugMode ? 1 : 16,
           PositionSkipCount = positionSkipCount,
 
           AnnotationPostprocessor = postprocessorDelegate,
 
-          PositionMaxFraction = 1.0f / 1_000_000,
+          PositionMaxFraction = 1.0f / 10_000_000, // extreme deduplication attempted
           NumPositionsTotal = numPositionsTotal,
 
           Deblunder = TPGGeneratorOptions.DeblunderType.PositionQ,
-          DeblunderThreshold = 0.10f, // 0.06 sometimes used instead, but 0.10 seems closer to typcical Lc0 threshold
-          DeblunderUnintnededThreshold = 99, // effectively disables the feature
+          DeblunderThreshold = 0.06f,
 
           Verbose = debugMode,
-          TargetFileNameBase = Path.Combine(targetDirectoryTPGs, @$"TPG_{DateTime.Now.Ticks % 100000}")
+          TargetFileNameBase = Path.Combine(targetDirectoryTPGs, @$"TPG_{DateTime.Now.Ticks % 100000}"),
+
+          EnablePositionFocus = true, // Currently this simply filters out extreme blunder-impacted postions
         };
 
         // Create the generator and run
