@@ -110,6 +110,11 @@ namespace CeresTrain.TPG.TPGGenerator
       float forwardMaxSingleNegativeBlunder = rescorer.forwardMaxSingleNegativeBlunder[indexPlyThisGame];
       float forwardMaxSinglePositiveBlunder = rescorer.forwardMaxSinglePositiveBlunder[indexPlyThisGame];
 
+      // We reject those positions for which the game outcome was mostly like impacted
+      // by major injected noise in the game generation process.
+      // This improves the quality of the Z (game outcome) training target.
+      // Impact is measured both in absolute term (magnitude of suboptimality of largest injected blunder)
+      // and also in terms of the magnitude of imbalance of positive and negative blunders experienced by each side.
       ShouldRejectImbalance = (MathF.Abs(forwardSumPositiveBlunders - forwardSumNegativeBlunders) > THERSHOLD_REJECT_BLUNDER_IMBALANCE);
       ShouldRejectSingleBlunder = forwardMaxSingleNegativeBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE
                                || forwardMaxSinglePositiveBlunder > THERSHOLD_REJECT_SINGLE_BLUNDER_MAGNITUDE;
