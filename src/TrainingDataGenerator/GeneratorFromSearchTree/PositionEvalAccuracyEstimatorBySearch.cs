@@ -294,7 +294,11 @@ namespace CeresTrain.TrainingDataGenerator
 
       // Update statistics
       (float w, float d, float l, float m, float unc, CompressedPolicyVector policySearch, CompressedPolicyVector policyNet) trainingTargets;
-      trainingTargets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(LastSearchResult.Search.Manager.Context.Tree, LastSearchResult.Search.SearchRootNode);
+      if (LastSearchResult.Search.SearchRootNode.N < 10)
+      {
+        throw new Exception("Insufficient search size to extract reliable policy ");
+      }
+      trainingTargets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(LastSearchResult.Search.Manager.Context.Tree, LastSearchResult.Search.SearchRootNode, true);
       float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, trainingTargets.policySearch.Mirrored.DecodedAndNormalized);
 
       // Subtract off entropy of target policy to focus on error part.
@@ -326,8 +330,8 @@ namespace CeresTrain.TrainingDataGenerator
     /// </summary>
     /// <param name="node"></param>
     /// <returns></returns>
-    public TPGRecord ExtractTPGRecordFromNode(MCTSNode node, bool emitLastPlySinceSquare)
-      => TPGExtractorFromNode.ExtractTPGRecordFromNode(LastSearchResult.Search.Manager.Context.Tree, node, emitLastPlySinceSquare);
+    public TPGRecord ExtractTPGRecordFromNode(MCTSNode node, float fractionEmpiricalPolicy, bool emitLastPlySinceSquare)
+      => TPGExtractorFromNode.ExtractTPGRecordFromNode(LastSearchResult.Search.Manager.Context.Tree, node, fractionEmpiricalPolicy, emitLastPlySinceSquare);
 
 
     const int SF_NUM_THREADS = 24;

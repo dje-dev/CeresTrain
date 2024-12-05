@@ -38,6 +38,7 @@ namespace CeresTrain.TrainingDataGenerator
     /// <returns></returns>
     public static List<TPGRecord> ExtractTPGsFromTree(MCTSTree tree,
                                                       int minNodesRequired,
+                                                      float fractionEmpiricalPolicy,
                                                       TPGFileReader fillInTPGReader,
                                                       out int numNonFillInTPGs,
                                                       Predicate<MCTSNode> acceptNodePredicate = null)
@@ -52,7 +53,7 @@ namespace CeresTrain.TrainingDataGenerator
         (ref MCTSNodeStruct nodeRef, int depth) =>
         {
           //     if (nodeRef.N >= minN && FP16.IsNaN(nodeRef.VSecondary))// && !nodeRef.IsTranspositionLinked)
-          if (nodeRef.N < minNodesRequired)
+          if (nodeRef.N < minNodesRequired || nodeRef.NumChildrenExpanded == 0)
           {
             // We must be done, children will all have N strictly less than minNodes.
             return false;
@@ -68,7 +69,7 @@ namespace CeresTrain.TrainingDataGenerator
               // Console.WriteLine((diff > 0.25 ? "*" : " ") + LastSearchResult.ScoreQ + " --> " + nodeRef.N + " " + depth + " " + nodeRef.Q);
 
               const bool EMIT_LAST_PLY_SINCE_SQUARE = false;
-              TPGRecord tpgRecord = TPGExtractorFromNode.ExtractTPGRecordFromNode(tree, node, EMIT_LAST_PLY_SINCE_SQUARE);
+              TPGRecord tpgRecord = TPGExtractorFromNode.ExtractTPGRecordFromNode(tree, node, fractionEmpiricalPolicy, EMIT_LAST_PLY_SINCE_SQUARE);
               ret.Add(tpgRecord);
               countNonFillInTPGs++;
 

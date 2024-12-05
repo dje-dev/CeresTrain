@@ -20,6 +20,9 @@ using Ceres.Chess.EncodedPositions;
 using Ceres.MCTS.MTCSNodes;
 using Ceres.MCTS.LeafExpansion;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using System.Collections.Generic;
+using System.Diagnostics;
+using Ceres.Chess.EncodedPositions.Basic;
 
 #endregion
 
@@ -35,22 +38,49 @@ namespace CeresTrain.TrainingDataGenerator
     /// </summary>
     /// <param name="tree"></param>
     /// <param name="node"></param>
+    /// <param name="fractionEmpiricalPolicy"></param>
     /// <param name="emitLastPlySinceSquare"></param>
-    /// <param name="emitMoves"></param>
     /// <returns></returns>
-    public static TPGRecord ExtractTPGRecordFromNode(MCTSTree tree, in MCTSNode node, bool emitLastPlySinceSquare)
+    public static TPGRecord ExtractTPGRecordFromNode(MCTSTree tree, 
+                                                     in MCTSNode node, 
+                                                     float fractionEmpiricalPolicy, 
+                                                     bool emitLastPlySinceSquare)
     {
       EncodedPositionWithHistory encodedPosToConvert = default;
       Span<Position> lastSearchPositions = tree.HistoryPositionsForNode(node, 8, false);
-//      foreach (var pp in lastSearchPositions)
-//      {
-//        Console.WriteLine(pp.FEN);
-//      }
       encodedPosToConvert.SetFromSequentialPositions(lastSearchPositions, false);
 
       // Set targets for WDL, etc.
       (float w, float d, float l, float m, float unc, CompressedPolicyVector policySearch, CompressedPolicyVector policyNet) targets;
-      targets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(tree, node);
+      const int MIN_N_FOR_POLICY = 5;
+      bool blendInEmpiricalPolicy = node.N > MIN_N_FOR_POLICY;
+      targets = EncodedTrainingPositionExtractor.ExtractTrainingTargetsFromNode(tree, node, blendInEmpiricalPolicy);
+
+
+      List<int> indices = new();
+      List<float> probs = new();
+      bool includeEmpiricalPolicy = node.N > MIN_N_FOR_POLICY && fractionEmpiricalPolicy > 0;
+      foreach ((EncodedMove Move, float Probability) policyEntryNetwork in targets.policyNet.ProbabilitySummary(0))
+      {
+        indices.Add(policyEntryNetwork.Move.IndexNeuralNet);
+
+        float probability = policyEntryNetwork.Probability; // default value if not blending in empirical policy
+        if (includeEmpiricalPolicy)
+        {
+          int otherPolicyIndex = targets.policySearch.IndexOfMove(policyEntryNetwork.Move);
+          if (otherPolicyIndex != -1)
+          {
+            float empiricalProb = targets.policySearch.PolicyInfoAtIndex(otherPolicyIndex).Probability;
+            probability = (1.0f - fractionEmpiricalPolicy) * policyEntryNetwork.Probability +
+                          fractionEmpiricalPolicy          * empiricalProb;
+          }
+        }
+        probs.Add(probability);
+      }
+
+
+      CompressedPolicyVector returnBlendedPolicy = default;
+      CompressedPolicyVector.Initialize(ref returnBlendedPolicy, node.SideToMove, indices.ToArray(), probs.ToArray(), alreadySorted: false);
 
       TPGTrainingTargetNonPolicyInfo targetInfo = default;
       (float w, float d, float l) wdl = (targets.w, targets.d, targets.l);
@@ -74,7 +104,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       // Construct TPG record from the above
       TPGRecord tpgRecord = default;
-      TPGRecordConverter.ConvertToTPGRecord(in encodedPosToConvert, true, default, targetInfo, targets.policySearch,
+      TPGRecordConverter.ConvertToTPGRecord(in encodedPosToConvert, true, default, targetInfo, returnBlendedPolicy,
                                            CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE,
                                            ref tpgRecord, default,
                                            emitLastPlySinceSquare, 0, 0);
