@@ -105,7 +105,7 @@ class TPGDataset(Dataset):
     # Get the list of files in the specified directory and select the subset appropriate for this worker.
     all_files = fnmatch.filter(os.listdir(root_dir), '*.zst')
     all_files.sort(key=lambda f: stable_str_hash(f))  # deterministic shuffle
-    assert len(all_files) > num_files_to_skip + num_workers, "Trying to skip more files than available"
+    assert len(all_files) >= num_files_to_skip + num_workers, f"Trying to skip more files than available: {len(all_files)} available, {num_files_to_skip} to skip, {num_workers} workers"
     all_files = all_files[num_files_to_skip:]
     all_files = try_shuffle(all_files)
 
