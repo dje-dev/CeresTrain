@@ -114,7 +114,8 @@ namespace CeresTrain.TPG
     {
       if (!enumerator.MoveNext())
       {
-        throw new Exception($"Ran out of data in TPG file {TPGFileName}");
+        Console.WriteLine($"No more data data in TPG file {TPGFileName}");
+        return null;
       }
 
       return enumerator.Current;
