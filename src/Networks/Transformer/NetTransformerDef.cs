@@ -78,8 +78,14 @@ namespace CeresTrain.Networks.Transformer
       /// <summary>
       /// Mish activation ("Mish: A Self Regularized Non-Monotonic Activation Function" by Diganta Misra)
       /// </summary>
-      Mish
+      Mish,
+
+      /// <summary>
+      /// Identity activation.
+      /// </summary>
+      Identity
     }
+
 
     /// <summary>
     /// Type of secondary attention mode (if any).

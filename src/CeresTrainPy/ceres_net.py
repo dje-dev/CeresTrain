@@ -132,14 +132,16 @@ class CeresNet(pl.LightningModule):
     self.action_uncertainty_loss_weight = action_uncertainty_loss_weight
 
     
-    if (config.NetDef_HeadsActivationType == 'ReLU'):
+    if config.NetDef_HeadsActivationType == 'ReLU':
       self.Activation = torch.nn.ReLU()
-    elif (config.NetDef_HeadsActivationType == 'ReLUSquared'):
+    elif config.NetDef_HeadsActivationType == 'ReLUSquared':
       self.Activation = ReLUSquared()
-    elif (config.NetDef_HeadsActivationType == 'Swish'):
+    elif config.NetDef_HeadsActivationType == 'Swish':
       self.Activation = Swish()
-    elif (config.NetDef_HeadsActivationType == 'Mish'):
+    elif config.NetDef_HeadsActivationType == 'Mish':
       self.Activation = torch.nn.Mish()
+    elif config.NetDef_HeadsActivationType == 'Identity':
+      self.Activation = torch.nn.Identity()
     else:
       raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
     self.test = config.Exec_TestFlag
