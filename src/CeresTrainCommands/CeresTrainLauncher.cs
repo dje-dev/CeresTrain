@@ -76,28 +76,29 @@ namespace CeresTrain.TrainCommands
     /// <param name="hostPathToOutput"></param>
     /// <param name="config"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunRemoteWSL(string ceresTrainPyDir, string configID, string hostPathToOutput,
-                                                     in ConfigTraining config, TrainingStatusTable trainingStatusTable)
+    public static TrainingResultSummary RunPyTorchLocal(string hostName, string ceresTrainPyDir, string configID, string hostPathToOutput,
+                                                       in ConfigTraining config, TrainingStatusTable trainingStatusTable)
     {
+      bool isWSL = hostName.ToUpper() == "WSL";
       string configFullPath = $"{hostPathToOutput}/configs/{configID}";
 
-      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue("wsl", ceresTrainPyDir, configID, in config, configFullPath, trainingStatusTable);
+      (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(configID, ceresTrainPyDir, configID, in config, configFullPath, trainingStatusTable);
       DateTime startTime = DateTime.Now;
 
       ProcessStartInfo startInfo = new()
       {
-        FileName = "wsl",
+        FileName = isWSL ? "wsl" : "bash",
         Arguments = $"bash -c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {hostPathToOutput}\"",
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
-        CreateNoWindow = true
+        CreateNoWindow = isWSL,
       };
 
       lock (consoleOutLockObject)
       {
         Console.WriteLine();
-        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, "Launching on WSL (localhost): " + startInfo.Arguments);
+        ConsoleUtils.WriteLineColored(ConsoleColor.Blue, $"Launching on {hostName} (localhost): " + startInfo.Arguments);
       }
 
       using Process process = new Process { StartInfo = startInfo };
@@ -113,7 +114,7 @@ namespace CeresTrain.TrainCommands
           string line = process.StandardOutput.ReadLine();
           logger.AddLine(line);
 
-          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, configID, "WSL", ref startTime, ref numTrainLinesSeen, line);
+          CeresTrainCommandUtils.UpdateTableWithLine(consoleStatusTable, configID, configID, ref startTime, ref numTrainLinesSeen, line);
 
           if (line.Contains(END_TRAINING_PHRASE))
           {
@@ -133,7 +134,7 @@ namespace CeresTrain.TrainCommands
 
       process.WaitForExit();
 
-      return CeresTrainCommandUtils.DoTrainingEpilogue("wsl", configID, startTime, logger, consoleStatusTable);
+      return CeresTrainCommandUtils.DoTrainingEpilogue(hostName, configID, startTime, logger, consoleStatusTable);
     }
 
 
@@ -149,10 +150,10 @@ namespace CeresTrain.TrainCommands
     /// <param name="config"></param>
     /// <param name="saveNetDirectory"></param>
     /// <returns></returns>
-    public static TrainingResultSummary RunRemoteSSH(string hostName, string userName, string hostWorkingDir, string configID,
-                                                     string configPath, in ConfigTraining config, string outputsDirectory,
-                                                     string dockerLaunchCommand,
-                                                     TrainingStatusTable trainingStatusTable)
+    public static TrainingResultSummary RunPyTorchRemote(string hostName, string userName, string hostWorkingDir, string configID,
+                                                         string configPath, in ConfigTraining config, string outputsDirectory,
+                                                         string dockerLaunchCommand,
+                                                         TrainingStatusTable trainingStatusTable)
     {
       (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(hostName, hostWorkingDir, configID, in config, configPath, trainingStatusTable);
 

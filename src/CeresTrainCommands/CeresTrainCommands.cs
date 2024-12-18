@@ -115,7 +115,7 @@ namespace CeresTrain.TrainCommands
 
         string configBaseName = Path.Combine(configsDir, configID);
 
-        if (hostConfig.HostName == null) // local
+        if (hostConfig.HostName == null) // local PyTorch
         {
           // Run locally.
           ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr, devices);
@@ -129,10 +129,10 @@ namespace CeresTrain.TrainCommands
           ConfigTraining configRemote = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
                                                                             devices, hostConfig.OverridePyTorchCompileMode,
                                                                             numPos, tpgDir);
-
-          if (hostConfig.HostName.ToUpper() == "WSL")
+          bool isWSL = hostConfig.HostName.ToUpper() == "WSL";
+          if (isWSL || hostConfig.HostName == System.Environment.MachineName)
           {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (isWSL && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
               ConsoleUtils.WriteLineColored(ConsoleColor.Red, "WSL option only supported on Windows");
               throw new Exception();
@@ -140,17 +140,18 @@ namespace CeresTrain.TrainCommands
   
             int[] overrideDevice = [0];
             ConfigTraining adjustedConfig = TrainingHelpers.AdjustAndLoadConfig(configBaseName, piecesStr,
-                                                                    devices, hostConfig.OverridePyTorchCompileMode);
+                                                                                devices, hostConfig.OverridePyTorchCompileMode);
 
-            result = CeresTrainLauncher.RunRemoteWSL(hostConfig.CeresTrainPyDir, configID, hostConfig.PathToOutputFromHost, in adjustedConfig, trainingStatusTable);
+            result = CeresTrainLauncher.RunPyTorchLocal(hostConfig.HostName, hostConfig.CeresTrainPyDir, configID, 
+                                                        hostConfig.PathToOutputFromHost, in adjustedConfig, trainingStatusTable);
           }
           else
           {
             string pathToConfigFromHost = hostConfig.PathToOutputFromHost + "/configs/" + configID;
 
-            result = CeresTrainLauncher.RunRemoteSSH(hostConfig.HostName, hostConfig.UserName, hostConfig.CeresTrainPyDir,
-                                                     configID, pathToConfigFromHost, in configRemote, hostConfig.PathToOutputFromHost,
-                                                     hostConfig.DockerLaunchCommand, trainingStatusTable);
+            result = CeresTrainLauncher.RunPyTorchRemote(hostConfig.HostName, hostConfig.UserName, hostConfig.CeresTrainPyDir,
+                                                         configID, pathToConfigFromHost, in configRemote, hostConfig.PathToOutputFromHost,
+                                                         hostConfig.DockerLaunchCommand, trainingStatusTable);
           }
         }
 

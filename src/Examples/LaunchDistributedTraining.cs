@@ -17,7 +17,6 @@ using System;
 using CeresTrain.Trainer;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.TrainCommands;
-using CeresTrain.Networks.SoftMoE;
 
 using static CeresTrain.Networks.Transformer.NetTransformerDef;
 using System.Collections.Generic;
@@ -45,8 +44,8 @@ namespace CeresTrain.Examples
   public static class LaunchDistributedTraining
   {
     // The following two constants must definitely be changed to match your environment.
-    const string HOSTNAME       = "SERVER1"; // name of host on which execution will take place
-    const string TPG_SOURCE_DIR =@"/mnt/f/TPG_DATA"; // source directory containing TPGs
+    static string HOSTNAME { get => Environment.MachineName; } // name of (possibly remote) host on which execution will take place
+    const string TPG_SOURCE_DIR = @"/mnt/f/TPG1_Aug2024_dedup"; // source directory containing TPGs
 
     const string RUN_ID_BASE = "256_10_8_4"; // identification string for training run
     const long NUM_TRAINING_POS = 200_000_000; // number of training positions
@@ -73,7 +72,7 @@ namespace CeresTrain.Examples
           execDef => execDef with { },
           dataDef => dataDef with { }
           ),
-
+#if NOT
         // Modified run on GPU 1 (turn off the Smolgen feature).
         MakeSessionSpec(RUN_ID_BASE + "_NO_SMOLGEN", HOSTNAME, [1], TPG_SOURCE_DIR, NUM_TRAINING_POS,
           netDef => netDef with { SmolgenDim = 0 }, 
@@ -81,7 +80,7 @@ namespace CeresTrain.Examples
           execDef => execDef with { },
           dataDef => dataDef with { }
           ),
-
+#endif
       ];
 
 
@@ -170,7 +169,7 @@ namespace CeresTrain.Examples
           GradientClipLevel = 1f, // The SOAP paper seems to suggest low (possibly even very low) clips levels outperform.
 
           BatchSizeBackwardPass = 1024 * 4,
-          BatchSizeForwardPass = 1024 * 2,
+          BatchSizeForwardPass = 1024 * 4,
 
           LossPolicyMultiplier = 1.5f,
           LossValueMultiplier = 1, // using 1 compared to 0.25 better by about +10 Elo @500mm with D512
@@ -194,9 +193,16 @@ namespace CeresTrain.Examples
 
         MonitoringConfig = new ConfigMonitoring() with { },
       };
+      
 
-
-      return new TrainingSessionSpecification(id, CeresTrainHostConfig.RegisteredConfigs[hostID], hostGPUs, config);
+      if (CeresTrainHostConfig.RegisteredConfigs.TryGetValue(hostID, out CeresTrainHostConfig hostConfig))
+      {
+        return new TrainingSessionSpecification(id, hostConfig, hostGPUs, config);
+      }
+      else
+      {
+        throw new ArgumentException($"Settings not found for specified host {hostID} in CeresTrainHosts. Beware case sensitivity.");
+      }
     }
 
   }
