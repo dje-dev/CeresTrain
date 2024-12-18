@@ -120,8 +120,9 @@ def save_model(NAME : str,
       except Exception as e:
         print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
+    SAVE_TS = False
     SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + ".ts_" + num_pos)
-    if fabric.is_global_zero:
+    if SAVE_TS and fabric.is_global_zero:
       try:
         SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + "_" + num_pos + ".ts")
         model_nocompile.to_torchscript(file_path=SAVE_FULL_NAME, method='trace', example_inputs=sample_inputs)
