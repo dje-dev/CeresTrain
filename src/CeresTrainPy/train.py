@@ -262,9 +262,9 @@ def Train():
 
 
   def num_warmup_positions():
-    # Warmup is 5% of positions (but not more than 200mm).
-    # The SOAP paper show experiment suggesting long warmups (up to 25% of training data) are beneficial.
-    return int(min(200_000_000, 0.05 * config.Opt_NumTrainingPositions))
+    # Warmup is 5% of positions (but not more than 100mm).
+    # Note that some sources (e.g. the SOAP paper) suggest long warmups (up to 25% of training data) are beneficial.
+    return int(min(100_000_000, 0.05 * config.Opt_NumTrainingPositions))
 
 
   STEPS_AdEMAMix_WARMUP = (num_warmup_positions() // 2) // config.Opt_BatchSizeBackwardPass
@@ -312,7 +312,7 @@ def Train():
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down using a truncated consine decay, terminating around 0.10
     FRAC_START_DECAY = config.Opt_LRBeginDecayAtFractionComplete
-    MIN_LR = 0.10
+    MIN_LR = 0.20
     WARMUP_POS = num_warmup_positions()
 
     if num_pos < WARMUP_POS:
@@ -450,6 +450,7 @@ def Train():
   assert batch_size_opt >= batch_size_forward and batch_size_opt % batch_size_forward == 0, 'data batch size must be be multiple of optimization batch size'
   num_batches_gradient_accumulate = batch_size_opt // batch_size_forward
   batch_accumulation_counter = 0
+  last_save_model_pos = 0
 
   loss_calc = LossCalculator(model)
 
@@ -612,13 +613,13 @@ def Train():
     num_batches = num_pos // BATCH_SIZE
 
     # emit output files including checkpoint if specified interval passed
-    if config.Opt_CheckpointFrequencyNumPositions > 0:
+    if config.Opt_CheckpointFrequencyNumPositions > 0 and (num_pos - last_save_model_pos > 10_000_000):
       num_batches_between_checkpoints = config.Opt_CheckpointFrequencyNumPositions // BATCH_SIZE
       if num_batches % num_batches_between_checkpoints == 0:
         save_checkpoint(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos))
         if fabric.is_global_zero:
           save_model(NAME, OUTPUTS_DIR, config, fabric, model_nocompile, state, str(num_pos), True)
-
+        last_save_model_pos = num_pos
 
     current_time = datetime.datetime.now()
 
@@ -630,10 +631,10 @@ def Train():
     time_since_status_update = (current_time - time_last_status_update).seconds
     time_since_save_transient = (current_time - time_last_save_transient).seconds
 
-    STATUS_UPDATE_INTERVAL = 5 # log output to console very 5 seconds
+    STATUS_UPDATE_INTERVAL = 10 # log output to console every 10 seconds
     should_show_status = (time_since_status_update > STATUS_UPDATE_INTERVAL) or (num_pos >= MAX_POSITIONS)
   
-    # save output artifacts every 120 (or 30 if LoRA) minutes (with label "last")    
+    # save output artifacts (except checkpoint file) every 120 (or 30 if LoRA) minutes (with label "last")    
     SAVE_LAST_INTERVAL = 120 * 60 if config.Opt_LoRARankDivisor == 0 else 30 * 60
     should_save_transient = time_since_save_transient > SAVE_LAST_INTERVAL
     if should_save_transient:
