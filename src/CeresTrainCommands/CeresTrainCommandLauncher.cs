@@ -59,6 +59,7 @@ namespace CeresTrain.TrainCommands
     static Command infoCommand;
     static Command trainCommand;
     static Command evalCommand;
+    static Command sampleTrainCommand;
     static Command tournCommand;
     static Command evalLC0Command;
     static Command generateEndgameTPGCommand;
@@ -103,6 +104,7 @@ namespace CeresTrain.TrainCommands
       trainCommand = new Command("train", "Start training using a configuration.                           [config] [pieces] [num-pos] [tpg-dir] [host] [devices]") { configOption, piecesOptionOptional, numPosOption, tpgDirOption, hostOption, devicesOption };
       evalCommand = new Command("eval", "Evaluate accuracy of last trained net.                          [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec]") { configOption, piecesOptionRequired, numPosOption, verboseOption, netSpecificationOptionalOption, epdOrPgnFnOption };
       tournCommand = new Command("tourn", "Run tournament between net and specified LC0 net (or TB).       [config] [pieces] [num-pos] [pos-fn] [verbose] [net-spec] [search-limit]") { configOption, piecesOptionRequired, numPosOption, epdOrPgnFnOption, verboseOption, netSpecificationOptionalOption, searchLimitOptionDefaultBV };
+      sampleTrainCommand = new Command("sample-train", "Launches sample training session (needs C# configuration).") { };
       uciCommand = new Command("uci", "Launch trained net with specified configuration as UCI engine.  [config] [pieces] [net-spec-fillin]") { configOption, piecesOptionRequired, netSpecificationFillinOption };
       evalLC0Command = new Command("eval-lc0", "Evaluate vs LC0 with specific pieces and network.               [pieces] [net-spec] [num-pos] [search-limit] [pos-fn] [verbose]") { piecesOptionRequired, netSpecificationOption, numPosOption, searchLimitOption, epdOrPgnFnOption, verboseOption };
       extractPositionsCommand = new Command("extract-pos", "Generate EPD/PGN file with positions from specified PGN/EPD     [pieces] [num-pos] [pos-fn] [pos-out-fn]") { piecesOptionRequired, numPosOption, epdOrPgnFnOption, epdOrPgnOutputFileNameOption };
@@ -115,6 +117,7 @@ namespace CeresTrain.TrainCommands
       rootCommand.AddCommand(trainCommand);
       rootCommand.AddCommand(evalCommand);
       rootCommand.AddCommand(tournCommand);
+      rootCommand.AddCommand(sampleTrainCommand);
       rootCommand.AddCommand(uciCommand);
       rootCommand.AddCommand(evalLC0Command);
       rootCommand.AddCommand(extractPositionsCommand);
@@ -204,6 +207,10 @@ namespace CeresTrain.TrainCommands
         CeresTrainCommands.RunEvalOrTournament(configID, piecesStr, numPos, epdOrPgnFN, verbose, netSpecification, false, configsDir, false, default);
       }, configOption, piecesOptionRequired, numPosOption, epdOrPgnFnOption,  verboseOption, netSpecificationOptionalOption);
 
+      sampleTrainCommand.SetHandler(() =>
+      {
+        LaunchDistributedTraining.Run();
+      });
 
       tournCommand.SetHandler((configID, piecesStr, numPos, epdOrPgnFN, verbose, compareLC0NetSpec, searchLimitSpec) =>
       {
