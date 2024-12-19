@@ -74,7 +74,6 @@ namespace CeresTrain.TrainCommands
       File.WriteAllText(filePath, json);
     }
 
-
     /// <summary>
     /// Reads a set of host configurations from a file and returns as a List of CeresTrainHostConfig.
     /// </summary>
@@ -88,7 +87,7 @@ namespace CeresTrain.TrainCommands
         string json = File.ReadAllText(filePath);
 
         // Deserialize the JSON content into a List of CeresTrainHostConfig
-        var configList = JsonSerializer.Deserialize<List<CeresTrainHostConfig>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        List<CeresTrainHostConfig> configList = JsonSerializer.Deserialize<List<CeresTrainHostConfig>>(json, new JsonSerializerOptions { AllowTrailingCommas = true, PropertyNameCaseInsensitive = true });
 
         return configList ?? new List<CeresTrainHostConfig>();
       }
