@@ -87,8 +87,8 @@ namespace CeresTrain.TrainCommands
 
       ProcessStartInfo startInfo = new()
       {
-        FileName = isWSL ? "wsl" : "bash",
-        Arguments = $"bash -c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {hostPathToOutput}\"",
+        FileName = isWSL ? "wsl" : "/usr/bin/bash",
+        Arguments = (isWSL ? "bash " : "") + $"-c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {hostPathToOutput}\"",
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
@@ -148,8 +148,11 @@ namespace CeresTrain.TrainCommands
     /// <param name="configID"></param>
     /// <param name="configPath"></param>
     /// <param name="config"></param>
-    /// <param name="saveNetDirectory"></param>
+    /// <param name="outputsDirectory"></param>
+    /// <param name="dockerLaunchCommand"></param>
+    /// <param name="trainingStatusTable"></param>
     /// <returns></returns>
+    /// <exception cref="Exception"></exception>
     public static TrainingResultSummary RunPyTorchRemote(string hostName, string userName, string hostWorkingDir, string configID,
                                                          string configPath, in ConfigTraining config, string outputsDirectory,
                                                          string dockerLaunchCommand,
@@ -186,7 +189,7 @@ namespace CeresTrain.TrainCommands
     const string END_TRAINING_PHRASE = "INFO: EXIT_STATUS";
 
     static void DoGoRemote(TrainingStatusTable table, FileLogger logger,
-                           string hostName, string userName, 
+                           string hostName, string userName,
                            string dockerLaunchCommand,
                            string configID, string baseDir,
                            string configBasePath, string outputsDirectory)
@@ -211,7 +214,7 @@ namespace CeresTrain.TrainCommands
       if (dockerLaunchCommand != null)
       {
         command = $"{dockerLaunchCommand} bash -c \"{command}\"";
-      } 
+      }
 
       lock (consoleOutLockObject)
       {
@@ -245,9 +248,8 @@ namespace CeresTrain.TrainCommands
           }
           catch (Exception)
           {
-            lock (consoleOutLockObject )
+            lock (consoleOutLockObject)
             {
-
               if (numLinesRead == 0)
               {
                 ConsoleUtils.WriteLineColored(ConsoleColor.Red, $"Immediate error/disconnect received from host {hostName} with command {command} for {configBasePath}");
