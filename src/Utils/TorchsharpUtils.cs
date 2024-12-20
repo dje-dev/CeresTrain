@@ -35,6 +35,22 @@ namespace CeresTrain.Utils
   public static class TorchSharpUtils
   {
     /// <summary>
+    /// Returns string representation of the shapes.
+    /// </summary>
+    /// <param name="shapes"></param>
+    /// <returns></returns>
+    public static string ShapeStr(long[] shapes)
+    {
+      string ret = "[";
+      for (int i = 0; i < shapes.Length; i++)
+      {
+        ret += shapes[i] + (i == shapes.Length - 1 ? "" : ", ");
+      }
+      return ret + "]";
+    }
+
+
+    /// <summary>
     /// Returns number of parameters in a TorchSharp module.
     /// </summary>
     /// <param name="model"></param>

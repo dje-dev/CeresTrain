@@ -126,23 +126,13 @@ namespace CeresTrain.Utils
       rmsNorm.Scale = nn.Parameter(weightsNew);
     }
 
-    static string ShapeStr(long[] shapes)
-    {
-      string ret = "[";
-      for (int i = 0; i < shapes.Length; i++)
-      {
-        ret += shapes[i] + (i == shapes.Length - 1 ? "" : ", ");
-      }
-      return ret + "]";
-    }
-
 
     static bool SizesSame(Parameter p1, Tensor p2) => p2.size().SequenceEqual(p1.size());
     static bool CheckSizesSame(string paramName, Parameter p1, Tensor p2)
       => SizesSame(p1, p2) ? true :
                              throw new ArgumentException(paramName + " parameter sizes not the same, "
-                                                       + "network expects: " + ShapeStr(p1.size()) + " "
-                                                       + "provided params: " + ShapeStr(p2.size()));
+                                                       + "network expects: " + TorchSharpUtils.ShapeStr(p1.size()) + " "
+                                                       + "provided params: " + TorchSharpUtils.ShapeStr(p2.size()));
 
     static void MarkParamUsed(string paramName, HashSet<string> weightsLoaded)
     {
