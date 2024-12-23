@@ -228,16 +228,21 @@ class CeresNet(pl.LightningModule):
       squares = squares[0]
       
     flow = squares
-    qblunders_negative_positive = squares[:, 0, 119:121].clone().view(-1, 2)
 
-    # non-inplace version of the next two lines 
-    # required to avoid problems with ONNX execution
-    flow = torch.cat((flow[:, :, :119], torch.zeros_like(flow[:, :, 119:121]), flow[:, :, 121:]), dim=2)
+    # save a copy of the qblunders (2 bytes) for later use in value 2 head (only)
+    QBLUNDER_SLICE_BEGIN = 119
+    QBLUNDER_SLICE_END = 121
+    qblunders_negative_positive = squares[:, 0, QBLUNDER_SLICE_BEGIN:QBLUNDER_SLICE_END].clone().view(-1, 2)
 
-#    condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
-#    flow[:, :, 107] = condition.bfloat16()
-#    flow[:, :, 108] = 1 - flow[:, :, 107]
-      
+    # insert zeros at the two qblunder slots in the main flow (masked out)
+    # N.B. it is essential that this operation be done not using in-place operations so the 
+    #      PyTorch compile and ONNX graph generation correctly captures in the computation graph
+    flow = torch.cat((flow[:, :, :QBLUNDER_SLICE_BEGIN], torch.zeros_like(flow[:, :, QBLUNDER_SLICE_BEGIN:QBLUNDER_SLICE_END]), flow[:, :, QBLUNDER_SLICE_END:]), dim=2)
+
+    # experimental (disabled) custom value head blending
+    # condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
+    # flow[:, :, 107] = condition.bfloat16()
+    # flow[:, :, 108] = 1 - flow[:, :, 107]
 
     # Embedding layer.
     flow_squares = flow.reshape(-1, NUM_TOKENS_INPUT, (NUM_TOKENS_INPUT * NUM_INPUT_BYTES_PER_SQUARE) // NUM_TOKENS_INPUT)
