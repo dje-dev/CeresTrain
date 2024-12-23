@@ -25,45 +25,17 @@ import lightning as pl
 from lightning.fabric import Fabric
 from lightning.pytorch.utilities import grad_norm
 
-from activation_functions import Swish, ReLUSquared
+from activation_functions import to_activation
 from losses import LossCalculator
 from encoder_layer import EncoderLayer
 from config import Configuration
 from mlp2_layer import MLP2Layer
 from rms_norm import RMSNorm
 from lora import LoRALinear
+from utils import DWA
 
 from config import NUM_TOKENS_INPUT, NUM_TOKENS_NET, NUM_INPUT_BYTES_PER_SQUARE
 
-
-"""
-Code from:
-  "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
-    https://arxiv.org/pdf/2402.02622v2.pdf
-This code is taken directly from the paper, not from their github repository.
-
-The github code would be advisable or necessary for very deep nets (50 to 100 layers)
-to improve performance and reduce memory usage.
-
-However this is unnecessary for Ceres nets which are not as deep.
-Also the more complex github implementation uses in place operations that are not supported by torch.compile.
-"""
-class DWA(torch.nn.Module): 
-  def __init__(self, n_alphas, depth=None):
-    super().__init__()
-    self.n_alphas = n_alphas
-    alphas = torch.zeros((n_alphas,))
-    alphas[-1] = 1.0
-    if depth is not None:
-      alphas = alphas.unsqueeze(1)
-      alphas = alphas.repeat(1, depth)
-    self.alphas = torch.nn.Parameter(alphas)
-
-  def forward(self, all_previous_x):
-    weighted_avg = all_previous_x[0] * self.alphas[0]
-    for i in range(1, self.n_alphas):
-      weighted_avg += self.alphas[i] * all_previous_x[i]
-    return weighted_avg
 
 
 class Head(nn.Module):
@@ -132,18 +104,7 @@ class CeresNet(pl.LightningModule):
     self.action_uncertainty_loss_weight = action_uncertainty_loss_weight
 
     
-    if config.NetDef_HeadsActivationType == 'ReLU':
-      self.Activation = torch.nn.ReLU()
-    elif config.NetDef_HeadsActivationType == 'ReLUSquared':
-      self.Activation = ReLUSquared()
-    elif config.NetDef_HeadsActivationType == 'Swish':
-      self.Activation = Swish()
-    elif config.NetDef_HeadsActivationType == 'Mish':
-      self.Activation = torch.nn.Mish()
-    elif config.NetDef_HeadsActivationType == 'Identity':
-      self.Activation = torch.nn.Identity()
-    else:
-      raise Exception('Unknown activation type', config.NetDef_HeadsActivationType)
+    self.Activation  = self.to_activation(config.NetDef_HeadsActivationType)
     self.test = config.Exec_TestFlag
 
     self.embedding_layer = nn.Linear(NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
@@ -259,14 +220,11 @@ class CeresNet(pl.LightningModule):
     self.q_ratio = q_ratio
 
     if (self.denseformer):
-      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2, depth=self.EMBEDDING_DIM) for i in range(self.NUM_LAYERS)])
- 
+      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2, depth=self.EMBEDDING_DIM) for i in range(self.NUM_LAYERS)])
 
   def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(squares, list):
       # when saving/restoring from ONNX the input will appear as a list instead of sequence of arguments
-#      squares = squares[0]
-#      prior_state = squares[1]
       squares = squares[0]
       
     flow = squares
@@ -275,8 +233,6 @@ class CeresNet(pl.LightningModule):
     # non-inplace version of the next two lines 
     # required to avoid problems with ONNX execution
     flow = torch.cat((flow[:, :, :119], torch.zeros_like(flow[:, :, 119:121]), flow[:, :, 121:]), dim=2)
-#    flow[:, :, 119] = 0 # QNegativeBlunders
-#    flow[:, :, 120] = 0 # QPositiveBlunders
 
 #    condition = (flow[:, :, 109] <0.01) & (flow[:, :, 110] < 0.3) & (flow[:, :, 111] < 0.3)
 #    flow[:, :, 107] = condition.bfloat16()

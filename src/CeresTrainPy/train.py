@@ -44,8 +44,6 @@ from lightning.fabric import Fabric
 from lightning.fabric.loggers import TensorBoardLogger, CSVLogger
 from lightning.pytorch.utilities import grad_norm
 
-from schedulefree_ceres import AdamWScheduleFree
-
 from AdEMAMix import AdEMAMix
 from AdEMAMixShampoo import AdEMAMixDistributedShampoo
 from soap import SOAP
@@ -284,9 +282,6 @@ def Train():
     optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdEMAMixShampoo':
     optimizer = AdEMAMixDistributedShampoo(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
-  elif config.Opt_Optimizer == 'AdamWScheduleFree':
-    num_warmup_steps = num_warmup_positions() // BATCH_SIZE
-    optimizer = AdamWScheduleFree(optim_groups, lr= LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), warmup_steps=num_warmup_steps)
   elif config.Opt_Optimizer == 'AdamW8bit':
     import bitsandbytes as bnb
     optimizer = bnb.optim.AdamW8bit(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2))    
@@ -303,12 +298,7 @@ def Train():
   def lr_lambda(epoch : int):
     global fraction_complete
     global num_pos
-
-    # In the case of AdamWScheduleFree, the optimizer itself manages scheduling
-    # (though the paper mentions it would be possible to overlay additional scheduling, e.g. quick decay at end of training).
-    if config.Opt_Optimizer == 'AdamWScheduleFree':
-      return 1.0
-    
+   
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down using a truncated consine decay, terminating around 0.10
     FRAC_START_DECAY = config.Opt_LRBeginDecayAtFractionComplete
@@ -471,10 +461,8 @@ def Train():
     show_losses = (fabric.is_global_zero) and (num_pos % (1024 * 64) == 0)
 
     is_accumulating = ((batch_accumulation_counter + 1) % num_batches_gradient_accumulate) != 0
-#    from contextlib import nullcontext
     with fabric.no_backward_sync(model, enabled=is_accumulating): # see https://lightning.ai/docs/fabric/stable/advanced/gradient_accumulation.html
-#    with nullcontext():
-      this_lr = -optimizer.last_alpha if config.Opt_Optimizer == 'AdamWScheduleFree' else scheduler.get_last_lr()[0]
+      this_lr = scheduler.get_last_lr()[0]
 
       if config.Exec_ExportOnly and fabric.is_global_zero:
         assert config.Opt_CheckpointResumeFromFileName is not None, "ExportOnly specified but no checkpoint file specified"

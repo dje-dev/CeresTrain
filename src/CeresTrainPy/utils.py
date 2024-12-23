@@ -15,6 +15,38 @@ import os
 import sys
 import torch
 
+import torch
+
+
+"""
+Code from:
+  "DenseFormer: Enhancing Information Flow in Transformers via Depth Weighted Averaging," Pagliardini et. al.  
+    https://arxiv.org/pdf/2402.02622v2.pdf
+This code is taken directly from the paper, not from their github repository.
+
+The github code would be advisable or necessary for very deep nets (50 to 100 layers)
+to improve performance and reduce memory usage.
+
+However this is unnecessary for Ceres nets which are not as deep.
+Also the more complex github implementation uses in place operations that are not supported by torch.compile.
+"""
+class DWA(torch.nn.Module): 
+  def __init__(self, n_alphas, depth=None):
+    super().__init__()
+    self.n_alphas = n_alphas
+    alphas = torch.zeros((n_alphas,))
+    alphas[-1] = 1.0
+    if depth is not None:
+      alphas = alphas.unsqueeze(1)
+      alphas = alphas.repeat(1, depth)
+    self.alphas = torch.nn.Parameter(alphas)
+
+  def forward(self, all_previous_x):
+    weighted_avg = all_previous_x[0] * self.alphas[0]
+    for i in range(1, self.n_alphas):
+      weighted_avg += self.alphas[i] * all_previous_x[i]
+    return weighted_avg
+
 
 """
 Logs the FLOPS (floating point operations) of the model (per position)

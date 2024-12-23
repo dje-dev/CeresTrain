@@ -12,7 +12,7 @@ If not, see <http://www.gnu.org/licenses/>.
 # End of License Notice
 
 import torch
-from activation_functions import Swish, ReLUSquared
+from activation_functions import to_activation
 
 # An intuitive explanation of why biases are important can be found in 
 # the YouTube video "How might LLMs store facts" by 3Blue1Brown (at about 9:00).
@@ -42,20 +42,7 @@ class MLP2Layer(torch.nn.Module):
       if activation_type == 'SwiGLU':
         self.linear3 = torch.nn.Linear(model_dim, ffn_inner_dim, bias=False) 
 
-    if (activation_type == 'None'):
-      self.activation_fn = torch.nn.Identity()
-    elif (activation_type == 'ReLU'):
-      self.activation_fn = torch.nn.ReLU()
-    elif (activation_type == 'ReLUSquared'):
-      self.activation_fn = ReLUSquared()
-    elif (activation_type == 'Swish'):
-      self.activation_fn = Swish()
-    elif (activation_type == 'Mish'):
-      self.activation_fn = torch.nn.Mish()
-    elif (activation_type == 'SwiGLU'):
-      self.activation_fn = torch.nn.SiLU() # First of SwiGLU here
-    else:
-      raise Exception('Unknown activation type', activation_type)
+    self.activation_fn = to_activation(activation_type)
 
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:

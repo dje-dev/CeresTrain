@@ -13,6 +13,28 @@ If not, see <http://www.gnu.org/licenses/>.
 
 import torch
 
+
+def to_activation(self, activation_str : str) -> torch.nn.Module:
+  """
+  Converts a string identifier of activation to a PyTorch activation function.
+  """
+  if activation_str == 'ReLU':
+    return torch.nn.ReLU()
+  elif activation_str == 'ReLUSquared':
+    return ReLUSquared()
+  elif activation_str == 'Swish':
+    return Swish()
+  elif activation_str == 'Mish':
+    return torch.nn.Mish()
+  elif activation_str == 'None' or activation_str == 'Identity':
+    return torch.nn.Identity()
+  elif activation_str == 'SwiGLU':
+    assert(False, "SwiGLU disabled. Use requires two functions, SiLU (here) but also subsequent Linear (see mlp2 for example)")
+    #self.activation_fn = torch.nn.SiLU() # First 
+  else:
+    raise Exception('Unknown activation type', activation_str)
+ 
+
 class Swish(torch.nn.Module):
   """
   Swish activation function.
