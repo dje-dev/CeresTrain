@@ -142,7 +142,7 @@ namespace CeresTrain.TrainCommands
       }
 
       long numParameters = logger.GetInfoLong("NUM_PARAMETERS");
-      string tsFileName = Path.GetFileName(logger.GetInfoStr(logger.GetInfoStr("TS_FILENAME")));
+      string tsFileName = Path.GetFileName(logger.GetInfoStr("TS_FILENAME"));
       string onnxFileName = Path.GetFileName(logger.GetInfoStr("ONNX16_FILENAME"));
 
       string netsDir = CeresTrainUserSettingsManager.Settings.OutputNetsDir;
