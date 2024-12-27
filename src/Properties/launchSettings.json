@@ -2,11 +2,10 @@
   "profiles": {
     "CeresTrain": {
       "commandName": "Project",
+      "commandLineArgs": "sample-train",
       "xcommandLineArgs": "tourn --search-limit=bv --config=test1 --pieces=KPPkppk --num-pos=100 --verbose=false --net-spec=811971",
       "xycommandLineArgs": "eval --config=KRP_256_8_bl --pieces=KRPkrp --num-pos=2000 --verbose=true --net-spec=703810",
-      "acommandLineArgs": "train --config=t1 --pieces=KPk --num-pos=500000 --host=wsl",
-      "commandLineArgs": "train --config=t1 --pieces=KPkp --num-pos=10000000"
-
+      "acommandLineArgs": "train --config=t1 --pieces=KPk --num-pos=500000 --host=wsl"
     }
   }
 }
