@@ -108,7 +108,6 @@ class CeresNet(pl.LightningModule):
     self.test = config.Exec_TestFlag
 
     self.embedding_layer = nn.Linear(NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
-    self.embedding_layer2 = None if NUM_TOKENS_NET == NUM_TOKENS_INPUT else nn.Linear(NUM_INPUT_BYTES_PER_SQUARE, self.EMBEDDING_DIM)
     self.embedding_norm = torch.nn.LayerNorm(self.EMBEDDING_DIM, eps=1E-6) if config.NetDef_NormType == 'LayerNorm' else RMSNorm(self.EMBEDDING_DIM, eps=1E-6)
 
     HEAD_MULT = config.NetDef_HeadWidthMultiplier
@@ -253,12 +252,7 @@ class CeresNet(pl.LightningModule):
       append_tensor = append_tensor.reshape(squares.shape[0], NUM_TOKENS_INPUT, self.prior_state_dim)
       flow_squares = torch.cat((flow_squares, append_tensor), dim=-1)
 
-    flow = self.embedding_layer(flow_squares)
-
-    if NUM_TOKENS_NET > NUM_TOKENS_INPUT:
-      flow2 = self.embedding_layer2(flow_squares)
-      flow = torch.cat([flow, flow2], 1)
-      
+    flow = self.embedding_layer(flow_squares)     
     flow = self.embedding_norm(flow)
       
     if self.denseformer:
