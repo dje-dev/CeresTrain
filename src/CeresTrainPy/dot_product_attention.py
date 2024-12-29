@@ -224,7 +224,7 @@ class DotProductAttention(torch.nn.Module):
       Q, K, V = qkv.chunk(3, dim=-1)    
     else:
       # Idea of introducing nonlinearity in the QKV was proposed in:
-      #   "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanmism with Neural Networks"
+      #   "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanism with Neural Networks"
       #   Muhan Zhang, 2023
       qkv = qkv.reshape(batch_size, -1, 3, self.d_model * self.attention_multiplier)
       qkv = self.qkvLN(qkv)
