@@ -13,6 +13,7 @@
 
 #region Using directives
 
+using System;
 using TorchSharp;
 using TorchSharp.Modules;
 using static TorchSharp.torch;
@@ -53,6 +54,8 @@ namespace CeresTrain.Networks.MiscModules
     /// <param name="hasBias"></param>
     public SwiGLU(int dim, bool hasBias = true) : base(nameof(SwiGLU))
     {
+      throw new NotImplementedException("Needs remediation to implement LoadWeights");
+
       HasBias = hasBias;
       Dim = dim;
 

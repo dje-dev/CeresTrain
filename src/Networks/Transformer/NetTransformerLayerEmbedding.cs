@@ -19,6 +19,8 @@ using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 using TorchSharp.Modules;
 using CeresTrain.Utils;
+using CeresTrain.Networks.MiscModules;
+using System;
 
 #endregion
 
@@ -29,10 +31,15 @@ namespace CeresTrain.Networks.Transformer
   /// </summary>
   internal class NetTransformerLayerEmbedding : Module<Tensor, Tensor>
   {
+    public readonly NetTransformerDef.NormalizationType NormType;
+
     /// <summary>
     /// Linear embedding layer.
     /// </summary>
     Linear linear;
+
+    RMSNorm norm;  
+
 
 
     /// <summary>
@@ -41,9 +48,17 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="name"></param>
     /// <param name="inputDim"></param>
     /// <param name="modelDim"></param>
-    public NetTransformerLayerEmbedding(string name, int inputDim, int modelDim) : base("embedding_layer")
+    public NetTransformerLayerEmbedding(string name, int inputDim, int modelDim, NetTransformerDef.NormalizationType normType) : base("embedding_layer")
     {
+      if (normType != NetTransformerDef.NormalizationType.RMSNorm)
+      {
+        throw new NotImplementedException("Only RMSNorm currently supported");
+      }
+
       this.name = name;
+      NormType = normType;
+
+      norm = new RMSNorm(modelDim, eps: 1e-6f);
       linear = Linear(inputDim, modelDim, hasBias: true);
 
       RegisterComponents();
@@ -56,7 +71,13 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="weightsSource"></param>
     /// <param name="weightsLoaded"></param>
     public void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded)
-        => ModuleParamLoadingUtils.LinearLoad(weightsSource, weightsLoaded, linear, "embedding_layer.weight", "embedding_layer.bias");
+    {
+      ModuleParamLoadingUtils.LinearLoad(weightsSource, weightsLoaded, linear,
+                                         "embedding_layer.weight", "embedding_layer.bias");
+      ModuleParamLoadingUtils.RMSNormLoad(weightsSource, weightsLoaded,
+                                          norm, $"embedding_norm.scale");
+
+    }
 
 
     /// <summary>

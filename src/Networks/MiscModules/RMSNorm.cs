@@ -40,6 +40,7 @@ namespace CeresTrain.Networks.MiscModules
     {
       Epsilon = eps;
       Scale = Parameter(ones(dim));
+
       RegisterComponents();
     }
 

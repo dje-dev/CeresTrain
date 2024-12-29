@@ -37,14 +37,9 @@ namespace CeresTrain.Networks.Transformer
   public class NetTransformerLayerHead : Module<Tensor, Tensor, Tensor>
   {
     /// <summary>
-    /// Input model dimension (embedding dimension).
+    /// Input dimension.
     /// </summary>
-    public readonly int ModelDim;
-
-    /// <summary>
-    /// Number of input square (sequence length).
-    /// </summary>
-    public readonly int NumSquares;
+    public readonly int InputDim;
 
     /// <summary>
     /// Type of activation to use for all but final layer.
@@ -58,11 +53,6 @@ namespace CeresTrain.Networks.Transformer
 
 
     /// <summary>
-    /// Divisor used to convert between embedding dimension and reduced dimension output by reduce squares layer.
-    /// </summary>
-    public int PremapDimDivisor;
-
-    /// <summary>
     /// Input width of first linear layer.
     /// </summary>
     public readonly int Dim1;
@@ -71,17 +61,6 @@ namespace CeresTrain.Networks.Transformer
     /// Input width of second linear layer.
     /// </summary>
     public readonly int Dim2;
-
-    /// <summary>
-    /// Input width of third linear layer.
-    /// </summary>
-    public readonly int Dim3;
-
-    /// <summary>
-    /// Optional initial layer that maps vectors from each square
-    /// to a smaller dimension before concatenation.
-    /// </summary>
-    public Linear LinearPremap;
 
     /// <summary>
     /// First linear layer.
@@ -93,14 +72,8 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly Linear Linear2;
 
-    /// <summary>
-    /// Final linear layer.
-    /// </summary>
-    public readonly Linear Linear3;
 
     bool SaveIntermediateActivations;
-
-    bool PremapAlreadyApplied;
 
     public static Tensor lastOutputTrunk;
 
@@ -109,35 +82,26 @@ namespace CeresTrain.Networks.Transformer
     /// Constructor.
     /// </summary>
     /// <param name="name"></param>
-    /// <param name="numSquares"></param>
     /// <param name="modelDim"></param>
     /// <param name="dim1"></param>
     /// <param name="dim2"></param>
-    /// <param name="dim3"></param>
     /// <param name="activation"></param>
     /// <param name="finalActivation"></param>
     /// <param name="saveIntermediateActivations"></param>
-    /// <param name="reduceSquaresAlreadyApplied"></param>
     /// <exception cref="NotImplementedException"></exception>
-    public NetTransformerLayerHead(string name, int numSquares,
-                                   int modelDim,
-                                   int premapDimDivisor,
-                                   int dim1, int dim2, int dim3,
+    public NetTransformerLayerHead(string name,
+                                   int inputDim,
+                                   int dim1, int dim2,
                                    NetTransformerDef.ActivationType activation,
                                    string finalActivation,
-                                   bool saveIntermediateActivations,
-                                   bool reduceSquaresAlreadyApplied) : base(name)
+                                   bool saveIntermediateActivations) : base(name)
     {
-      NumSquares = numSquares;
       Activation = activation;
       FinalActivation = finalActivation;
-      ModelDim = modelDim;     
-      PremapDimDivisor = premapDimDivisor;
+      InputDim = inputDim;
       Dim1 = dim1;
       Dim2 = dim2;
-      Dim3 = dim3;
       SaveIntermediateActivations = saveIntermediateActivations;
-      PremapAlreadyApplied = reduceSquaresAlreadyApplied;
 
       if (saveIntermediateActivations)
       {
@@ -149,35 +113,18 @@ namespace CeresTrain.Networks.Transformer
         throw new Exception("SwiGLU not supported for network heads.");
       }
 
-      if (!reduceSquaresAlreadyApplied)
-      {
-        if (premapDimDivisor > 1)
-        {
-          LinearPremap = Linear(modelDim, modelDim / premapDimDivisor, hasBias: true);
-        }
-      }
 
-      int inputWidth = NumSquares * modelDim / premapDimDivisor;
-      Linear1 = Linear(inputWidth, dim1, hasBias: true);     
+      Linear1 = Linear(inputDim, dim1, hasBias: true);     
       Linear2 = Linear(dim1, dim2, hasBias: true);
-      Linear3 = Linear(dim2, dim3, hasBias: true);
 
       RegisterComponents();
     }
 
 
-    public void LoadWeights(Dictionary<string, Tensor> weightsSource,
-                            HashSet<string> weightsLoaded,
-                            string premapLayerName, string linearBaseName)
+    public void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded, string linearBaseName)
     {
-      if (PremapDimDivisor > 1)
-      {
-        LinearLoad(weightsSource, weightsLoaded, LinearPremap, premapLayerName + ".weight", premapLayerName + ".bias");
-      }
-
-      LinearLoad(weightsSource, weightsLoaded, Linear1, linearBaseName + "1.weight", linearBaseName + "1.bias");
-      LinearLoad(weightsSource, weightsLoaded, Linear2, linearBaseName + "2.weight", linearBaseName + "2.bias");
-      LinearLoad(weightsSource, weightsLoaded, Linear3, linearBaseName + "3.weight", linearBaseName + "3.bias");
+      LinearLoad(weightsSource, weightsLoaded, Linear1, linearBaseName + ".fc.weight", linearBaseName + ".fc.bias");
+      LinearLoad(weightsSource, weightsLoaded, Linear2, linearBaseName + ".fcFinal.weight", linearBaseName + ".fcFinal.bias");
     }
 
 
@@ -186,20 +133,11 @@ namespace CeresTrain.Networks.Transformer
     {
       using (DisposeScope disposeScopeEval = NewDisposeScope())
       {
-        if (!PremapAlreadyApplied)
+        //***** TEMPORARY! SLOWER!!!
+        if (SaveIntermediateActivations)
         {
-          if (PremapDimDivisor > 1)
-          {
-            x = LinearPremap.call(x);
-
-            //***** TEMPORARY! SLOWER!!!
-            if (SaveIntermediateActivations)
-            {
-              lastOutputTrunk = x.clone().DetachFromDisposeScope();
-            }
-
-            x = x.reshape(-1, NumSquares * (ModelDim / PremapDimDivisor));
-          }
+          throw new NotImplementedException();
+//              lastOutputTrunk = x.clone().DetachFromDisposeScope();
         }
 
         Tensor x1 = Linear1.call(x);
@@ -207,15 +145,12 @@ namespace CeresTrain.Networks.Transformer
         x1 = TorchSharpUtils.WithActivation(x1, Activation);
         Tensor x2 = Linear2.call(x1);
         x1.Dispose();
-        x2 = TorchSharpUtils.WithActivation(x2, Activation); 
-
-        Tensor x3 = Linear3.call(x2);
 
         if (FinalActivation != null)
         {
           if (FinalActivation == "RELU")
           {
-            x3 = functional.relu(x3);
+            x2 = functional.relu(x2);
           }
           else
           {
@@ -223,7 +158,7 @@ namespace CeresTrain.Networks.Transformer
           }
         }
 
-        return x3.MoveToOuterDisposeScope();
+        return x2.MoveToOuterDisposeScope();
       }
     }
 

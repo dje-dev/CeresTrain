@@ -88,6 +88,12 @@ namespace CeresTrain.Networks.Transformer
     /// Type of dual attention mode to use (if any).
     /// </summary>
     public readonly NetTransformerDef.DualAttentionModeType DualAttentionMode;
+
+
+    /// <summary>
+    /// If non-linear attention should be used.
+    /// </summary>
+    public readonly bool NonLinearAttention;
     
     /// <summary>
     /// Number of neurons to be used per square if Smolgen is enabled (otherwise 0).
@@ -153,6 +159,9 @@ namespace CeresTrain.Networks.Transformer
     Linear attentionQKV;
     Linear attentionOutput;
 
+    Module<Tensor, Tensor> normNLA;
+    Linear q2, k2, v2;
+
     Linear attentionQKVDual;
     Linear attentionOutputDual;
 
@@ -163,7 +172,6 @@ namespace CeresTrain.Networks.Transformer
     Linear mlpLinearDual1;
     Linear mlpLinearDual2;
 
-    Linear toGlobalV;
 
     Module<Tensor, Tensor> norm1;
     Module<Tensor, Tensor> norm2;
@@ -184,6 +192,9 @@ namespace CeresTrain.Networks.Transformer
     LayerSoftMoEBatchedDual moe;
 
     SoftMoEParams SoftMoEParams;
+
+    // Implementations often but not always use no bias
+    const bool USE_BIAS = false; // N.B. Weight loading code assumes this is false
 
 
 
@@ -210,7 +221,9 @@ namespace CeresTrain.Networks.Transformer
     /// <exception cref="ArgumentException"></exception>
     public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, bool preNorm,
                                       NetTransformerDef.NormalizationType normType,
-                                      int attentionMultiplier, NetTransformerDef.DualAttentionModeType dualAttentionMode,
+                                      int attentionMultiplier, 
+                                      NetTransformerDef.DualAttentionModeType dualAttentionMode,
+                                      bool nonlinearAttention,
                                       int ffnMult, NetTransformerDef.ActivationType ffnActivation,
                                       float alpha, float dropoutRate, bool dropoutDuringInference, float clipLevel,
                                       bool monitorCosineSimilarity,
@@ -236,6 +249,7 @@ namespace CeresTrain.Networks.Transformer
       PreNorm = preNorm;
       AttentionMultiplier = attentionMultiplier;
       DualAttentionMode = dualAttentionMode;
+      NonLinearAttention = nonlinearAttention;
       DropoutRate = dropoutRate;
       DropoutDuringInference = dropoutDuringInference;
       ClipLevel = clipLevel;
@@ -247,7 +261,21 @@ namespace CeresTrain.Networks.Transformer
       SmolgenActivation = smolgenActivation;
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
-      attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: false);
+      attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
+
+      if (NonLinearAttention)
+      {
+        if (normType != NetTransformerDef.NormalizationType.RMSNorm)
+        {
+          throw new NotImplementedException("Non-linear attention currently only supported with RMSNorm");
+        }
+        normNLA = new RMSNorm(dim, NORM_EPS);
+
+        q2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+        k2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+        v2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+      }
+
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
 
       if (DualAttentionMode != NetTransformerDef.DualAttentionModeType.None)
@@ -272,7 +300,7 @@ namespace CeresTrain.Networks.Transformer
                                           layerNum: layerNum);
       }
 
-      const bool USE_FFN_BIAS = false;
+      const bool USE_FFN_BIAS = true;
 
       if (!useSoftMoE || softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
@@ -358,7 +386,6 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="sm4Shared"></param>
     void SmolgenAttentionInit(ref Linear sm4Shared)
     {
-
       if (SmolgenPerSquareDim > 0)
       {
         smolgenLinear1 = Linear(DimModel, SmolgenPerSquareDim);
@@ -577,16 +604,56 @@ namespace CeresTrain.Networks.Transformer
 
 
     private Tensor Attention(Tensor x, bool isEval, int batch_size, Tensor attentionInput,
-                         int attentionMultiplier,
-                         Linear attKQV, bool useSmolgen, Linear attnOutput)
+                             int attentionMultiplier,
+                             Linear attKQV, bool useSmolgen, Linear attnOutput)
     {
       Tensor qkv = attKQV.call(attentionInput);
 
-      // Split apart Q, K, V (with heads on the left)
-      qkv = qkv.reshape(batch_size, 64, NumHeads, 3 * DimPerHead);
-      qkv = qkv.permute(0, 2, 1, 3);
-      Tensor[] qkvChunks = qkv.chunk(3, -1);
-      (Tensor attentionQ, Tensor attentionK, Tensor attentionV) = (qkvChunks[0], qkvChunks[1], qkvChunks[2]);
+#if NOT
+    if not self.use_nonlinear_attention:
+// Split apart Q, K, V (with heads on the left)
+      qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
+      qkv = qkv.permute(0, 2, 1, 3)
+      Q, K, V = qkv.chunk(3, dim=-1)    
+    else:
+      qkv = qkv.reshape(batch_size, -1, 3, self.d_model * self.attention_multiplier)
+      qkv = self.qkvLN(qkv)
+      qkv = torch.nn.functional.mish(qkv)
+      q, k, v = torch.unbind(qkv, dim=-2)
+
+      attention.Q = self.q2(q).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
+      attention.K = self.k2(k).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
+      attention.V = self.v2(v).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)  
+#endif
+
+      Tensor attentionQ;
+      Tensor attentionK;
+      Tensor attentionV;
+
+      if (!NonLinearAttention)
+      {
+        // Split apart Q, K, V (with heads on the left)
+        qkv = qkv.reshape(batch_size, 64, NumHeads, 3 * DimPerHead);
+        qkv = qkv.permute(0, 2, 1, 3);
+        Tensor[] qkvChunks = qkv.chunk(3, -1);
+        (attentionQ, attentionK, attentionV) = (qkvChunks[0], qkvChunks[1], qkvChunks[2]);
+      }
+      else
+      {
+        // Idea of introducing nonlinearity in the QKV was proposed in:
+        // "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanism with Neural Networks" by Muhan Zhang, 2023
+
+        qkv = qkv.reshape(batch_size, -1, 3, DimModel * attentionMultiplier);
+        qkv = attentionQKV.forward(qkv);
+        qkv = torch.nn.functional.Mish(qkv);
+        Tensor[] unboundQKV = torch.unbind(qkv, dim: -2);
+        (attentionQ, attentionK, attentionV)  = (unboundQKV[0], unboundQKV[1], unboundQKV[2]);
+
+        attentionQ = q2.forward(attentionQ).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+        attentionK = k2.forward(attentionK).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+        attentionV = v2.forward(attentionV).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+      }
+
 
       float thisClipLevel = ClipLevel != 0 && LayerNum == NumLayers - 1 ? ClipLevel : 0;
       bool monitorThisTime = MonitorCosineSimilarity && MonitoringCurrentInvocation;
@@ -710,12 +777,21 @@ namespace CeresTrain.Networks.Transformer
         } 
       }
 
-      LinearLoad(weightsSource, weightsLoaded, attentionQKV, $"transformer_layer.{LayerNum}.attention.qkv.weight", null);
+
+      LinearLoad(weightsSource, weightsLoaded, attentionQKV, $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
       LinearLoad(weightsSource, weightsLoaded, attentionOutput, $"transformer_layer.{LayerNum}.attention.W_h.weight", $"transformer_layer.{LayerNum}.attention.W_h.bias");
+
+      if (NonLinearAttention)
+      {
+        RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)normNLA, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
+        LinearLoad(weightsSource, weightsLoaded, q2, $"transformer_layer.{LayerNum}.attention.q2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, k2, $"transformer_layer.{LayerNum}.attention.k2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, v2, $"transformer_layer.{LayerNum}.attention.v2.weight", null);
+      }
 
       if (SoftMoEParams.NumExperts == 0 || SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
-        LinearLoad(weightsSource, weightsLoaded, mlpLinear1, $"transformer_layer.{LayerNum}.mlp.linear1.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, mlpLinear1, $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
@@ -727,7 +803,7 @@ namespace CeresTrain.Networks.Transformer
       || (SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinearSecondLayer
        && SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear))
       {
-        LinearLoad(weightsSource, weightsLoaded, mlpLinear2, $"transformer_layer.{LayerNum}.mlp.linear2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, mlpLinear2, $"transformer_layer.{LayerNum}.mlp.linear2.weight", $"transformer_layer.{LayerNum}.mlp.linear2.bias");
       }
 
       if (NormType == NetTransformerDef.NormalizationType.LayerNorm)
