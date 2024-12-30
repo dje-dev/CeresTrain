@@ -153,13 +153,13 @@ namespace CeresTrain.Networks.Transformer
       set;
     }
 
-    public readonly float ClipLevel;
+    public readonly float SoftCapCutoff;
     public readonly bool MonitorMoEActivationStats;
 
     Linear attentionQKV;
     Linear attentionOutput;
 
-    Module<Tensor, Tensor> normNLA;
+    Module<Tensor, Tensor> qkvLN;
     Linear q2, k2, v2;
 
     Linear attentionQKVDual;
@@ -211,7 +211,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="alpha"></param>
     /// <param name="dropoutRate"></param>
     /// <param name="dropoutDuringInference"></param>
-    /// <param name="clipLevel"></param>
+    /// <param name="softCapCutoff"></param>
     /// <param name="monitorCosineSimilarity"></param>
     /// <param name="smolgenPerSquareDim"></param>
     /// <param name="smolgenIntermediateDim"></param>
@@ -225,7 +225,7 @@ namespace CeresTrain.Networks.Transformer
                                       NetTransformerDef.DualAttentionModeType dualAttentionMode,
                                       bool nonlinearAttention,
                                       int ffnMult, NetTransformerDef.ActivationType ffnActivation,
-                                      float alpha, float dropoutRate, bool dropoutDuringInference, float clipLevel,
+                                      float alpha, float dropoutRate, bool dropoutDuringInference, float softCapCutoff,
                                       bool monitorCosineSimilarity,
                                       int smolgenPerSquareDim, int smolgenIntermediateDim, 
                                       int smolgenToHeadDivisor, NetTransformerDef.ActivationType smolgenActivation,  
@@ -252,7 +252,7 @@ namespace CeresTrain.Networks.Transformer
       NonLinearAttention = nonlinearAttention;
       DropoutRate = dropoutRate;
       DropoutDuringInference = dropoutDuringInference;
-      ClipLevel = clipLevel;
+      SoftCapCutoff = softCapCutoff;
       MonitorCosineSimilarity = monitorCosineSimilarity;
       SoftMoEParams = softMoEParams;
       SmolgenPerSquareDim = smolgenPerSquareDim;
@@ -269,7 +269,7 @@ namespace CeresTrain.Networks.Transformer
         {
           throw new NotImplementedException("Non-linear attention currently only supported with RMSNorm");
         }
-        normNLA = new RMSNorm(dim, NORM_EPS);
+        qkvLN = new RMSNorm(dim, NORM_EPS);
 
         q2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
         k2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
@@ -442,10 +442,10 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="Q"></param>
     /// <param name="K"></param>
     /// <param name="V"></param>
-    /// <param name="clipGamma"></param>
+    /// <param name="softCapLevel"></param>
     /// <param name="smolgenLogits"></param>
     /// <returns></returns>
-    Tensor ScaledDotProductAttention(Tensor Q, Tensor K, Tensor V, float clipGamma, Tensor? smolgenLogits)
+    Tensor ScaledDotProductAttention(Tensor Q, Tensor K, Tensor V, float softCapLevel, Tensor? smolgenLogits)
     {
       using (NewDisposeScope())
       {
@@ -459,18 +459,14 @@ namespace CeresTrain.Networks.Transformer
           scores += smolgenLogits;
         }
 
+        if (softCapLevel != 0)
+        {
+          // Softcap logits for enhanced training stability
+          scores = SoftCap(scores, softCapLevel);
+        }
+
         Tensor A = functional.softmax(scores, dim: -1);
 //if (count++ % 29 == 0) DumpTensorStats(A, "scores");
-
-        if (clipGamma != 0)
-        {
-          Debug.Assert(clipGamma < 0);
-          float gamma = clipGamma;
-          float zeta = 1.0f;
-
-          A = A * (zeta - gamma) + gamma;
-          A = clip(A, 0, 1);
-        }
 
         Tensor H = matmul(A, V);
         return H.MoveToOuterDisposeScope();
@@ -644,22 +640,23 @@ namespace CeresTrain.Networks.Transformer
         // "Neural Attention : Enhancing QKV Calculation in Self-Attention Mechanism with Neural Networks" by Muhan Zhang, 2023
 
         qkv = qkv.reshape(batch_size, -1, 3, DimModel * attentionMultiplier);
-        qkv = attentionQKV.forward(qkv);
+        qkv = qkvLN.call(qkv);
         qkv = torch.nn.functional.Mish(qkv);
         Tensor[] unboundQKV = torch.unbind(qkv, dim: -2);
         (attentionQ, attentionK, attentionV)  = (unboundQKV[0], unboundQKV[1], unboundQKV[2]);
-
-        attentionQ = q2.forward(attentionQ).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
-        attentionK = k2.forward(attentionK).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
-        attentionV = v2.forward(attentionV).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+//Console.WriteLine(TorchSharpUtils.ShapeStr(attentionQ.shape));
+        attentionQ = q2.call(attentionQ).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+        attentionK = k2.call(attentionK).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
+        attentionV = v2.call(attentionV).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
       }
 
 
-      float thisClipLevel = ClipLevel != 0 && LayerNum == NumLayers - 1 ? ClipLevel : 0;
       bool monitorThisTime = MonitorCosineSimilarity && MonitoringCurrentInvocation;
 
       Tensor H_cat;
-      if (SmolgenPerSquareDim == 0 && thisClipLevel == 0 && !monitorThisTime)
+      if (SmolgenPerSquareDim == 0 
+       && SoftCapCutoff == 0 
+       && !monitorThisTime)
       {
         H_cat = functional.scaled_dot_product_attention(attentionQ, attentionK, attentionV);
       }
@@ -671,7 +668,7 @@ namespace CeresTrain.Networks.Transformer
           smolgenLogits = SmolgenAttentionCalc(x);
         }
 
-        H_cat = ScaledDotProductAttention(attentionQ, attentionK, attentionV, thisClipLevel, smolgenLogits);
+        H_cat = ScaledDotProductAttention(attentionQ, attentionK, attentionV, SoftCapCutoff, smolgenLogits);
 
 
         if (monitorThisTime)
@@ -738,6 +735,27 @@ namespace CeresTrain.Networks.Transformer
 
     #region Helper methods
 
+    /// <summary>
+    // Function to cap logit scores (as used in grok/gemma models).
+    /// </summary>
+    /// <param name="score"></param>
+    /// <param name="softcap"></param>
+    /// <returns></returns>
+    public static Tensor SoftCap(Tensor score, float softcap)
+    {
+      // score = score / softcap
+      score = score.div(softcap);
+
+      // score = torch.tanh(score)
+      score = tanh(score);
+
+      // score = score * softcap
+      score = score.mul(softcap);
+
+      return score;
+    }
+
+
 
     /// <summary>
     /// Loads weights from a dictionary.
@@ -783,7 +801,7 @@ namespace CeresTrain.Networks.Transformer
 
       if (NonLinearAttention)
       {
-        RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)normNLA, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
+        RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)qkvLN, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
         LinearLoad(weightsSource, weightsLoaded, q2, $"transformer_layer.{LayerNum}.attention.q2.weight", null);
         LinearLoad(weightsSource, weightsLoaded, k2, $"transformer_layer.{LayerNum}.attention.k2.weight", null);
         LinearLoad(weightsSource, weightsLoaded, v2, $"transformer_layer.{LayerNum}.attention.v2.weight", null);

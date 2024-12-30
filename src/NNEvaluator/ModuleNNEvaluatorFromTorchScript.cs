@@ -12,6 +12,7 @@ using CeresTrain.Networks;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using Ceres.Chess.NNEvaluators;
+using Ceres.Base.Misc;
 
 #endregion
 
@@ -67,7 +68,8 @@ namespace CeresTrain.NNEvaluators
     /// <exception cref="Exception"></exception>
     public ModuleNNEvaluatorFromTorchScript(in ConfigNetExecution executionConfig, 
                                             Device device, ScalarType dataType,
-                                            bool useState = true)
+                                            bool useState,
+                                            NetTransformerDef netTransformerDef)
     {
       if (executionConfig.TrackFinalLayerIntrinsicDimensionality && executionConfig.EngineType != NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
@@ -90,9 +92,14 @@ namespace CeresTrain.NNEvaluators
 
       if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript)
       {
-        throw new Exception("Need remediation to push the creation of the network outside this constructor and keep this class pure");
-//        CeresNet = transformerConfig.CreateNetwork(executionConfig);
-//        CeresNet.eval();
+        if (netTransformerDef == default)
+        {
+          throw new NotImplementedException("Need to pass in a NetTransformerDef for CSharpViaTorchscript");  
+        }
+
+        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Need remediation to push the creation of the network outside this constructor and keep this class pure");
+        CeresNet = netTransformerDef.CreateNetwork(executionConfig);
+        CeresNet.eval();
       }
       else if (executionConfig.EngineType == NNEvaluatorInferenceEngineType.TorchViaTorchscript)
       {
@@ -170,7 +177,7 @@ namespace CeresTrain.NNEvaluators
              Tensor qDeviationLower, Tensor qDeviationUpper, Tensor uncertaintyPolicy,
              Tensor actions, Tensor boardState, Tensor actionUncertainty) ret = default;
 
-            bool hasAction;
+            bool hasAction = false;
             bool networkExpectsBoardState = UseState;
             if (module != null)
             {
@@ -220,8 +227,9 @@ namespace CeresTrain.NNEvaluators
             }
             else
             {
-              throw new Exception("Needs remediation for addition of action head and board state");
-              //ret = CeresNet.call((input.squares, input.priorState));
+              //ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Needs remediation for addition of action head and board state");
+              // NOTE: hasAction is hardcoded false above
+              ret = CeresNet.call((input.squares, input.priorState));
             }
 
             // Save the intrinsic dimensionality of the final layer
@@ -233,7 +241,7 @@ namespace CeresTrain.NNEvaluators
 
             return (ret.policy1858.MoveToOuterDisposeScope(),
                     ret.valueWDL.MoveToOuterDisposeScope(),
-                    ret.mlh.MoveToOuterDisposeScope(),
+                    ((object)ret.mlh) == null ? default: ret.mlh.MoveToOuterDisposeScope(),
                     ret.unc.MoveToOuterDisposeScope(),
                     ret.value2.MoveToOuterDisposeScope(),
                     (object)ret.qDeviationLower == null ? null : ret.qDeviationLower.MoveToOuterDisposeScope(),

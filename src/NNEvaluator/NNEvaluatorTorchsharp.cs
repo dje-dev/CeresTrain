@@ -73,7 +73,7 @@ namespace CeresTrain.NNEvaluators
     /// <summary>
     /// Underlying evaluator engine.
     /// </summary>
-    IModuleNNEvaluator PytorchForwardEvaluator;
+    public IModuleNNEvaluator PytorchForwardEvaluator;
 
     /// <summary>
     /// Returns the 
@@ -113,12 +113,13 @@ namespace CeresTrain.NNEvaluators
                                  ConfigNetExecution configNetExec,
                                  Device device, ScalarType dataType,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorOptionsCeres options = default)
+                                 NNEvaluatorOptionsCeres options = default,
+                                 NetTransformerDef netTransformerDef = default)
       : this(engineType, 
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
-                                                 device, dataType, options.UsePriorState),
+                                                 device, dataType, options.UsePriorState, netTransformerDef),
                                                  device, dataType,
-                                                 configNetExec.UseHistory, lastMovePliesEnabled, options)
+                                                 configNetExec.UseHistory, lastMovePliesEnabled, options, netTransformerDef)
     {
       getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
     }
@@ -137,7 +138,8 @@ namespace CeresTrain.NNEvaluators
                                  IModuleNNEvaluator pytorchForwardEvaluator,
                                  Device device, ScalarType dataType, bool includeHistory,
                                  bool lastMovePliesEnabled = false,
-                                 NNEvaluatorOptionsCeres options = default)
+                                 NNEvaluatorOptionsCeres options = default,
+                                 NetTransformerDef netTransformerDef = default)
     {
       OID = DateTime.Now.Ticks.GetHashCode();
 
@@ -666,7 +668,7 @@ namespace CeresTrain.NNEvaluators
         //       for the duration of the block therefore the Spans (which reference underlying Tensor memory at a fixed location)
         //       will be valid for the duration of the block.
         //        ReadOnlySpan<Half> predictionsValue = MemoryMarshal.Cast<byte, Half>(predictionValue.to(ScalarType.Float16).cpu().bytes);
-        ReadOnlySpan<Half> predictionsMLH = MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
+        ReadOnlySpan<Half> predictionsMLH = ((object)predictionMLH) == null ? default: MemoryMarshal.Cast<byte, Half>(predictionMLH.to(ScalarType.Float16).cpu().bytes);
         ReadOnlySpan<Half> predictionsUncertaintyV = MemoryMarshal.Cast<byte, Half>(predictionUNC.to(ScalarType.Float16).cpu().bytes);
 
         ReadOnlySpan<Half> predictionQDeviationLowerCPU = MemoryMarshal.Cast<byte, Half>(predictionQDeviationLower.to(ScalarType.Float16).cpu().bytes);
@@ -729,11 +731,9 @@ namespace CeresTrain.NNEvaluators
             wdlProbabilitiesCPU[i + 2] = (Half)(l / sum);
 #endif
 
-      
 
-
-      //ReadOnlySpan<Half> predictionsPolicy = null;
-      ReadOnlySpan<Half> predictionsPolicyMasked = null;
+        //ReadOnlySpan<Half> predictionsPolicy = null;
+        ReadOnlySpan<Half> predictionsPolicyMasked = null;
         Tensor gatheredLegalMoveProbs = default;
 
         if (legalMovesIndices != null)
@@ -748,9 +748,11 @@ namespace CeresTrain.NNEvaluators
           Tensor indices = tensor(legalMoveIndicesSlice, ScalarType.Int64, predictionPolicy.device)
                                 .reshape([numPositions, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST]);
           gatheredLegalMoveProbs = predictionPolicy.gather(1, indices);
-          
+
+//          ReadOnlySpan<Half> policiesRaw = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
+
           //predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
-          
+
           // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
           predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, Options.PolicyTemperature,
                                                                             predictionQDeviationUpper, Options.PolicyUncertaintyTemperatureScalingFactor);
@@ -864,7 +866,7 @@ namespace CeresTrain.NNEvaluators
         // and therefore will not have been already disposed,
         // do this explicitly now to immediately free up memory.
         predictionValue.Dispose();
-        predictionMLH.Dispose();
+        predictionMLH?.Dispose();
         predictionUNC.Dispose();
         predictionPolicy.Dispose();
 

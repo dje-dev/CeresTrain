@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Linq;
 
 using TorchSharp;
-
 using static TorchSharp.torch.jit;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
@@ -32,10 +31,8 @@ using Ceres.Base.DataTypes;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
-using CeresTrain.TPG;
 using CeresTrain.Trainer;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
-
 
 #endregion
 
@@ -54,6 +51,18 @@ namespace CeresTrain.Networks.Transformer
     public ConfigNetExecution ExecutionConfig;
 
     public ParameterStats ParameterStats => new(this);
+
+
+    /// <summary>
+    /// Debug comparison network against which the output of the DebugCompareLayerName will be compared.
+    /// </summary>
+    public Module DebugComparisonNetwork = default;
+
+    /// <summary>
+    /// Name of the layer in the DebugComparisonNetwork against which the output from this network 
+    /// will be compared (in DebugCompareNetworkOutputs method).
+    /// </summary>
+    public string DebugCompareLayerName;
 
 
     // First layer of heads projects size down from embedding dimension by some factor
@@ -82,7 +91,6 @@ namespace CeresTrain.Networks.Transformer
 
     public string LayerNameToTrackIntrinsicDimensionality = null;
     public FP16[] IntrinsicDimensionalitiesLastBatch = null;
-
 
 
     /// <summary>
@@ -173,6 +181,7 @@ namespace CeresTrain.Networks.Transformer
                       && paramsToLoad.ContainsKey($"transformer_layer.{layerNum}.attention2.qkv.weight"); // sometimes dual only present in certain layers, e.g. every other one
           NetTransformerDef.DualAttentionModeType dualMode = !hasDual ? NetTransformerDef.DualAttentionModeType.None : TransformerConfig.DualAttentionMode;
 
+          int SOFTCAP_CUTOFF = TransformerConfig.NonLinearAttention ? 100 : 0;
           NetTransformerLayerEncoder teCS = new(TransformerConfig.NumLayers, layerNum, TransformerConfig.ModelDim,
                                                 TransformerConfig.NumHeads,  TransformerConfig.PreNorm,
                                                 TransformerConfig.NormType, 
@@ -199,8 +208,8 @@ namespace CeresTrain.Networks.Transformer
 //headSharedLinear.bias[512]
 
         // Head premap
-         headPremap = Linear(TransformerConfig.ModelDim, TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, 
-                             true, ExecutionConfig.Device, ExecutionConfig.DataType);
+        headPremap = Linear(TransformerConfig.ModelDim, TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, 
+                            true, ExecutionConfig.Device, ExecutionConfig.DataType);
         headPremap.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
@@ -420,9 +429,9 @@ namespace CeresTrain.Networks.Transformer
 
     public override (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) forward((Tensor squares, Tensor priorState) input)
     {
-
-      throw new NotImplementedException();
 #if NOT
+      Tensor flow;
+
       const int QBLUNDER_SLICE_BEGIN = 119;
       const int QBLUNDER_SLICE_END = 121;
       qblunders_negative_positive = squares[:, 0, QBLUNDER_SLICE_BEGIN: QBLUNDER_SLICE_END].clone().view(-1, 2)
@@ -430,9 +439,28 @@ namespace CeresTrain.Networks.Transformer
     // insert zeros at the two qblunder slots in the main flow (masked out)
     flow = torch.cat((flow[:, :, :QBLUNDER_SLICE_BEGIN], torch.zeros_like(flow[:, :, QBLUNDER_SLICE_BEGIN: QBLUNDER_SLICE_END]), flow[:, :, QBLUNDER_SLICE_END:]), dim = 2)
 #endif
+      const int QBLUNDER_SLICE_BEGIN = 119;
+      const int QBLUNDER_SLICE_END = 121;
+      
+      // Equivalent to: squares[:, 0, 119:121].clone().view(-1, 2)
+      Tensor qblunders_negative_positive = input.squares.index(
+          new TensorIndex[] { TensorIndex.Colon,  0, TensorIndex.Slice(QBLUNDER_SLICE_BEGIN, QBLUNDER_SLICE_END)  }
+      ).clone().view(-1, 2);
+
+      // Insert zeros at the two qblunder slots in the main flow
+      // flow = torch.cat( (flow[:,:,:119], zeros_like(...), flow[:,:,121:]), dim=2 )
+      Tensor flow = torch.cat([
+            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(null, QBLUNDER_SLICE_BEGIN) }),
+            torch.zeros_like( input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(QBLUNDER_SLICE_BEGIN, QBLUNDER_SLICE_END) })),
+            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(QBLUNDER_SLICE_END, null)})
+        ], 2);
+
 
       Tensor flowCS = layerEmbedding.call(input.squares);
-      Tensor flowState = null;
+
+//      Tensor flowCS = CompareOutput(flow, layerEmbedding.call(flow));
+
+      Tensor flowState = input.priorState;
 
       for (int layerNum = 0; layerNum < TransformerConfig.NumLayers; layerNum++)
       {
@@ -447,18 +475,18 @@ namespace CeresTrain.Networks.Transformer
         }
       }
 
-      flowCS = headPremap.forward(flowCS).reshape([-1, 64 * TransformerConfig.ModelDim/ HEAD_PREMAP_DIVISOR]);
-      flowCS = headSharedLinear.forward(flowCS);
+
+      flowCS = headPremap.call(flowCS);
+
+      flowCS = flowCS.reshape([-1, 64 * TransformerConfig.ModelDim/ HEAD_PREMAP_DIVISOR]);
+      flowCS = headSharedLinear.call(flowCS);
 
       Tensor flowValueHead = layerValueHead.call(flowCS, flowState);
-
-      throw new NotImplementedException();
-      // Tensor value2_input = torch.cat((flattenedSquares, qblunders_negative_positive), -1);
-      //     Tensor flowValue2Head = layerValue2Head.call(value2_input, flowState);
-      Tensor flowValue2Head = default;
+      Tensor value2_input = torch.cat([flowCS, qblunders_negative_positive], -1);
+      Tensor flowValue2Head = layerValue2Head.call(value2_input, flowState);
 
       Tensor flowPolicyHead = layerPolicyHead.call(flowCS, flowState);
-      Tensor flowMLHHead = layerMLHHead.call(flowCS, flowState);
+      Tensor flowMLHHead = layerMLHHead == null ? null : layerMLHHead.call(flowCS, flowState);
       Tensor flowUNCHead = layerUNCHead.call(flowCS, flowState);
 
       Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS, flowState);
@@ -474,10 +502,52 @@ namespace CeresTrain.Networks.Transformer
     }
 
 
+    /// <summary>
+    /// Compare specified output of a layer corresponding to the compareNetworkLayerName,
+    /// by invoking the compareNetwork layer of same name and comparing 
+    /// to the output of the specified output from this class.
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="output"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
+    Tensor DebugCompareNetworkOutputs(Tensor input, Tensor output)
+    {
+      float[] compareOutput = default;
+      foreach ((string name, Module module) layer in DebugComparisonNetwork.named_modules())
+      {
+        if (layer.name == DebugCompareLayerName)
+        {
+          Tensor tsOutput = (Tensor)(layer.module as ScriptModule).to("cuda:0").to(ScalarType.BFloat16).call(input);
+          compareOutput = tsOutput.type(ScalarType.Float32).cpu().data<float>().ToArray();
+        }
+      }
+      if (compareOutput == null)
+      {
+        throw new Exception("no matching ScriptModule layer found for: " + DebugCompareLayerName);
+      }
+
+      float[] thisOutput = output.type(ScalarType.Float32).cpu().data<float>().ToArray();
+      if (thisOutput.Length != compareOutput.Length)
+      {
+        throw new Exception("output length mismatch on " + DebugCompareLayerName);
+      }
+      Console.WriteLine("\r\nNetTransformer : compare values");
+      for (int i = 0; i < 5; i++)
+      {
+        Console.WriteLine(compareOutput[i] - thisOutput[i]);
+      }
+
+      System.Environment.Exit(37);
+      return output;
+    }
+
+
     public override void SetType(ScalarType type)
     {
       this.to(type);
     }
+
 
     public override (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
                      Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper, Tensor policyUncertainty,

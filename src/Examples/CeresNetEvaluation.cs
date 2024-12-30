@@ -276,12 +276,13 @@ namespace CeresTrain.Examples
       }
 
       NNEvaluatorTorchsharp evaluator = new(engineType, execConfig with
-      {
-        DeviceIDs = [deviceID],
+        {
+          DeviceIDs = [deviceID],
+          SaveNetwork1FileName = netFN
+        }, execConfig.Device, execConfig.DataType,
+        options: (NNEvaluatorOptionsCeres)options,
+        netTransformerDef: engineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript ?(NetTransformerDef)netDef : default);
 
-        SaveNetwork1FileName = netFN
-      }, execConfig.Device, execConfig.DataType,
-                                            options: (NNEvaluatorOptionsCeres)options);
       evaluator.UseBestValueMoveUseRepetitionHeuristic = useBestValueRepetitionHeuristic;
       return evaluator;
     }
