@@ -202,11 +202,6 @@ namespace CeresTrain.Networks.Transformer
           register_module($"encoder_layer_{layerNum}", teCS);
         }
 
-//headPremap.weight[32, 512]
-//headPremap.bias[32]
-//headSharedLinear.weight[512, 2048]
-//headSharedLinear.bias[512]
-
         // Head premap
         headPremap = Linear(TransformerConfig.ModelDim, TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, 
                             true, ExecutionConfig.Device, ExecutionConfig.DataType);
@@ -217,8 +212,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         // Head shared linear
-        // TODO: fix the 512 hardcoded below
-        headSharedLinear = Linear(64 * TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, 512,
+        headSharedLinear = Linear(64 * TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, TransformerConfig.ModelDim,
                                   true, ExecutionConfig.Device, ExecutionConfig.DataType);
         headSharedLinear.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
 
@@ -240,21 +234,21 @@ namespace CeresTrain.Networks.Transformer
           }
         }
 
-        layerUNCHead = new NetTransformerLayerHead(this, "unc_head", 512, 128, 1, TransformerConfig.HeadsActivationType, null, false);
+        layerUNCHead = new NetTransformerLayerHead(this, "unc_head", TransformerConfig.ModelDim, 128, 1, TransformerConfig.HeadsActivationType, null, false);
         layerUNCHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerUNCHead.LoadWeights(paramsToLoad, loadedParams, "unc_head");
         }
 
-        layerUncPolicyHead = new NetTransformerLayerHead(this, "unc_policy", 512, 128, 1, TransformerConfig.HeadsActivationType, null, false);
+        layerUncPolicyHead = new NetTransformerLayerHead(this, "unc_policy", TransformerConfig.ModelDim, 128, 1, TransformerConfig.HeadsActivationType, null, false);
         layerUncPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerUncPolicyHead.LoadWeights(paramsToLoad, loadedParams, "unc_policy");
         }
 
-        layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head", 512, 128, 1,
+        layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head", TransformerConfig.ModelDim, 128, 1,
                                                                 TransformerConfig.HeadsActivationType, null, false);
         layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -262,7 +256,7 @@ namespace CeresTrain.Networks.Transformer
           layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qdev_lower"); 
         }
 
-        layerQDeviationUpperHead = new NetTransformerLayerHead(this, "qdev_upper_head", 512, 128, 1,
+        layerQDeviationUpperHead = new NetTransformerLayerHead(this, "qdev_upper_head", TransformerConfig.ModelDim, 128, 1,
                                                                TransformerConfig.HeadsActivationType, null, false);
         layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -277,8 +271,8 @@ namespace CeresTrain.Networks.Transformer
         }
 
         // POLICY HEAD
-        layerPolicyHead = new NetTransformerLayerHead(this, "policy_head", 
-                                                       512, 512, 1858,
+        layerPolicyHead = new NetTransformerLayerHead(this, "policy_head",
+                                                       TransformerConfig.ModelDim, 512, 1858,
                                                       TransformerConfig.HeadsActivationType, null, false);
         layerPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -289,7 +283,7 @@ namespace CeresTrain.Networks.Transformer
         // VALUE HEAD
         const bool SAVE_INTERMEDIATE_FOR_VALUE_HEAD = false;
 
-        layerValueHead = new NetTransformerLayerHead(this, "value_head",  512, 256, 3,
+        layerValueHead = new NetTransformerLayerHead(this, "value_head", TransformerConfig.ModelDim, 256, 3,
                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
         layerValueHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -297,7 +291,7 @@ namespace CeresTrain.Networks.Transformer
           layerValueHead.LoadWeights(paramsToLoad, loadedParams, "value_head");
         }
 
-        layerValue2Head = new NetTransformerLayerHead(this, "value2_head", 512 + 2, 256, 3,
+        layerValue2Head = new NetTransformerLayerHead(this, "value2_head", TransformerConfig.ModelDim + 2, 256, 3,
                                                       TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
         layerValue2Head.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
 
