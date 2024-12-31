@@ -31,6 +31,9 @@ namespace CeresTrain.Networks.Transformer
   /// </summary>
   internal class NetTransformerLayerEmbedding : Module<Tensor, Tensor>
   {
+    /// <summary>
+    /// Type of normalization layer.
+    /// </summary>
     public readonly NetTransformerDef.NormalizationType NormType;
 
     /// <summary>
@@ -38,8 +41,10 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     Linear linear;
 
+    /// <summary>
+    /// Normalization layer.
+    /// </summary>
     RMSNorm norm;  
-
 
 
     /// <summary>
@@ -72,11 +77,8 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="weightsLoaded"></param>
     public void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded)
     {
-      ModuleParamLoadingUtils.LinearLoad(weightsSource, weightsLoaded, linear,
-                                         "embedding_layer.weight", "embedding_layer.bias");
-      ModuleParamLoadingUtils.RMSNormLoad(weightsSource, weightsLoaded,
-                                          norm, $"embedding_norm.scale");
-
+      ModuleParamLoadingUtils.LinearLoad(weightsSource, weightsLoaded, linear, "embedding_layer.weight", "embedding_layer.bias");
+      ModuleParamLoadingUtils.RMSNormLoad(weightsSource, weightsLoaded, norm, $"embedding_norm.scale");
     }
 
 
@@ -85,7 +87,7 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     /// <param name="input"></param>
     /// <returns></returns>
-    public override Tensor forward(Tensor input) => linear.call(input);
+    public override Tensor forward(Tensor input) => norm.call(linear.call(input));
   }
 
 }
