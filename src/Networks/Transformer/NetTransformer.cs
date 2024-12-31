@@ -516,7 +516,7 @@ namespace CeresTrain.Networks.Transformer
       {
         if (layer.name == DebugCompareLayerName)
         {
-          Tensor tsOutput = (Tensor)(layer.module as ScriptModule).to("cuda:0").to(ScalarType.BFloat16).call(input);
+          Tensor tsOutput = (Tensor)(layer.module as ScriptModule).to("cuda:0").to(ScalarType.Float16).call(input);
           compareOutput = tsOutput.type(ScalarType.Float32).cpu().data<float>().ToArray();
         }
       }
@@ -534,14 +534,13 @@ namespace CeresTrain.Networks.Transformer
       for (int i = 0; i < thisOutput.Length; i++)
       {
         float absDiff = Math.Abs(compareOutput[i] - thisOutput[i]); 
-        const float MAX_TOLERANCE = 0.001f;
+        const float MAX_TOLERANCE = 0.002f;
         if (absDiff > MAX_TOLERANCE)
         {
           Console.WriteLine($"OUTPUT DIFFERENCE[{i}] of {absDiff} with values {compareOutput[i]} vs {thisOutput[i]}"); 
         } 
       }
       Console.WriteLine($"NetTransformer : compare values success on {DebugCompareLayerName}.");  
-      System.Environment.Exit(37);
       return output;
     }
 

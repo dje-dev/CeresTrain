@@ -150,9 +150,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         Tensor x1 = Linear1.call(x);
-
-        x1 = TorchSharpUtils.WithActivation(x1, Activation);  
-        //  Tensor x2 = name == "policy_head" ? Parent.DebugCompareNetworkOutputs(x1, Linear2.call(x1))  : Linear2.call(x1);
+        x1 = TorchSharpUtils.WithActivation(x1, Activation);
         Tensor x2 = Linear2.call(x1);
         x1.Dispose();
 

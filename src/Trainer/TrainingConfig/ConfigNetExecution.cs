@@ -161,7 +161,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// If true, include history in the training data.
     /// </summary>
-    public bool UseHistory { get; init; } = false;
+    public bool UseHistory { get; init; } = true;
 
     /// <summary>
     /// If training session should be run under specified host docker launch command.

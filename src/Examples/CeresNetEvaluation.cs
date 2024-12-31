@@ -61,6 +61,7 @@ using Spectre.Console.Rendering;
 using BenchmarkDotNet.Attributes;
 using Ceres.Base.DataTypes;
 using Ceres.MCTS.Evaluators;
+using static TorchSharp.torch;
 
 #endregion 
 
@@ -260,10 +261,16 @@ namespace CeresTrain.Examples
     /// <returns></returns>
     public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
                                              ICeresNeuralNetDef netDef,
+                                             Device device, ScalarType dataType,
                                              int deviceID, in ConfigNetExecution execConfig,
                                              string netFN, bool useBestValueRepetitionHeuristic,
                                              object options)
     {
+      if (dataType == ScalarType.BFloat16)
+      {
+        throw new Exception("BFloat16 not recommended due to low number of mantissa bits, may create inaccuracies");
+      }
+
       // If present, fixup the net filename to include the path to Ceres nets.
       if (netFN != null && !File.Exists(netFN))
       {
@@ -278,8 +285,10 @@ namespace CeresTrain.Examples
       NNEvaluatorTorchsharp evaluator = new(engineType, execConfig with
         {
           DeviceIDs = [deviceID],
-          SaveNetwork1FileName = netFN
-        }, execConfig.Device, execConfig.DataType,
+          SaveNetwork1FileName = netFN,
+          DeviceType  = device.type.ToString(),
+          DataType = dataType,  
+      }, device, dataType,
         options: (NNEvaluatorOptionsCeres)options,
         netTransformerDef: engineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript ?(NetTransformerDef)netDef : default);
 

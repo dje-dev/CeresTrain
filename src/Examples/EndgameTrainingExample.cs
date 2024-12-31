@@ -25,6 +25,7 @@ using CeresTrain.Trainer;
 using CeresTrain.UserSettings;
 using CeresTrain.NNEvaluators;
 using Ceres.Chess.NNEvaluators.Ceres;
+using static TorchSharp.torch;
 
 #endregion 
 
@@ -111,7 +112,9 @@ namespace CeresTrain.Examples
       // Test accuracy of trained network on a set of random endgame positions.
       NNEvaluatorOptionsCeres options = new NNEvaluatorOptionsCeres();
 //      options.UseHistory = false;
-      CeresNetEvaluation.TestAccuracyOnPositions(randPosGenerator, null, CeresNetEvaluation.GetNNEvaluator(engineType, configTransformerDef, 0, in configExec, result.TorchscriptFileName, true, options), null, result);
+      CeresNetEvaluation.TestAccuracyOnPositions(randPosGenerator, null, 
+         CeresNetEvaluation.GetNNEvaluator(engineType, configTransformerDef, new Device("cuda:0"), ScalarType.Float16,
+         0, in configExec, result.TorchscriptFileName, true, options), null, result);
 
       // Run tournaments (value/policy) between the trained network and an LC0 reference network.
       CeresNetEvaluation.RunTournament(engineType, configTransformerDef, in configExec, result.TorchscriptFileName, LCO_NET_ID, "GPU:0", randPosGenerator, SearchLimit.BestValueMove, 50);

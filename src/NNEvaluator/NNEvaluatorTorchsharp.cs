@@ -119,7 +119,7 @@ namespace CeresTrain.NNEvaluators
             new ModuleNNEvaluatorFromTorchScript(configNetExec with { EngineType = engineType},
                                                  device, dataType, options.UsePriorState, netTransformerDef),
                                                  device, dataType,
-                                                 configNetExec.UseHistory, lastMovePliesEnabled, options, netTransformerDef)
+                                                 true, lastMovePliesEnabled, options, netTransformerDef)
     {
       getNumModelParams = () => TorchscriptUtils.NumParameters(configNetExec.SaveNetwork1FileName);
     }
@@ -749,9 +749,7 @@ namespace CeresTrain.NNEvaluators
                                 .reshape([numPositions, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST]);
           gatheredLegalMoveProbs = predictionPolicy.gather(1, indices);
 
-//          ReadOnlySpan<Half> policiesRaw = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
-
-          //predictionsPolicyMasked = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
+//ReadOnlySpan<Half> policiesRaw = MemoryMarshal.Cast<byte, Half>(gatheredLegalMoveProbs.to(ScalarType.Float16).cpu().bytes);
 
           // TODO: possibly someday apply temperature directly here rather than later and more slowly in C#
           predictionsPolicyMasked = ExtractExponentiatedPolicyProbabilities(gatheredLegalMoveProbs, Options.PolicyTemperature,
