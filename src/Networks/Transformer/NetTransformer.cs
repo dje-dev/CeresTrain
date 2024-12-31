@@ -230,9 +230,9 @@ namespace CeresTrain.Networks.Transformer
 
         if (paramsToLoad.ContainsKey("mlh_head.fc.weight"))
         {
-          layerMLHHead = new NetTransformerLayerHead("mlh_head", 
+          layerMLHHead = new NetTransformerLayerHead(this, "mlh_head", 
                                                      512, 128 , 1,
-                                                     TransformerConfig.HeadsActivationType, "RELU", false);
+                                                     TransformerConfig.HeadsActivationType, null, false);
           layerMLHHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
           if (paramsToLoad != null)
           {
@@ -240,30 +240,30 @@ namespace CeresTrain.Networks.Transformer
           }
         }
 
-        layerUNCHead = new NetTransformerLayerHead("unc_head", 512, 128, 1, TransformerConfig.HeadsActivationType, "RELU", false);
+        layerUNCHead = new NetTransformerLayerHead(this, "unc_head", 512, 128, 1, TransformerConfig.HeadsActivationType, null, false);
         layerUNCHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerUNCHead.LoadWeights(paramsToLoad, loadedParams, "unc_head");
         }
 
-        layerUncPolicyHead = new NetTransformerLayerHead("unc_policy", 512, 128, 1, TransformerConfig.HeadsActivationType, "RELU", false);
+        layerUncPolicyHead = new NetTransformerLayerHead(this, "unc_policy", 512, 128, 1, TransformerConfig.HeadsActivationType, null, false);
         layerUncPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerUncPolicyHead.LoadWeights(paramsToLoad, loadedParams, "unc_policy");
         }
 
-        layerQDeviationLowerHead = new NetTransformerLayerHead("qdev_lower_head", 512, 128, 1,
-                                                                TransformerConfig.HeadsActivationType, "RELU", false);
+        layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head", 512, 128, 1,
+                                                                TransformerConfig.HeadsActivationType, null, false);
         layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
           layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qdev_lower"); 
         }
 
-        layerQDeviationUpperHead = new NetTransformerLayerHead("qdev_upper_head", 512, 128, 1,
-                                                               TransformerConfig.HeadsActivationType, "RELU", false);
+        layerQDeviationUpperHead = new NetTransformerLayerHead(this, "qdev_upper_head", 512, 128, 1,
+                                                               TransformerConfig.HeadsActivationType, null, false);
         layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
@@ -277,7 +277,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         // POLICY HEAD
-        layerPolicyHead = new NetTransformerLayerHead("policy_head", 
+        layerPolicyHead = new NetTransformerLayerHead(this, "policy_head", 
                                                        512, 512, 1858,
                                                       TransformerConfig.HeadsActivationType, null, false);
         layerPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
@@ -289,7 +289,7 @@ namespace CeresTrain.Networks.Transformer
         // VALUE HEAD
         const bool SAVE_INTERMEDIATE_FOR_VALUE_HEAD = false;
 
-        layerValueHead = new NetTransformerLayerHead("value_head",  512, 256, 3,
+        layerValueHead = new NetTransformerLayerHead(this, "value_head",  512, 256, 3,
                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
         layerValueHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
@@ -297,7 +297,7 @@ namespace CeresTrain.Networks.Transformer
           layerValueHead.LoadWeights(paramsToLoad, loadedParams, "value_head");
         }
 
-        layerValue2Head = new NetTransformerLayerHead("value2_head", 512 + 2, 256, 3,
+        layerValue2Head = new NetTransformerLayerHead(this, "value2_head", 512 + 2, 256, 3,
                                                       TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
         layerValue2Head.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
 
@@ -441,24 +441,24 @@ namespace CeresTrain.Networks.Transformer
 #endif
       const int QBLUNDER_SLICE_BEGIN = 119;
       const int QBLUNDER_SLICE_END = 121;
-      
+
+      TensorIndex QBLUNDER_SLICE_LEFT = TensorIndex.Slice(null, QBLUNDER_SLICE_BEGIN);
+      TensorIndex QBLUNDER_SLICE = TensorIndex.Slice(QBLUNDER_SLICE_BEGIN, QBLUNDER_SLICE_END);
+      TensorIndex QBLUNDER_SLICE_RIGHT = TensorIndex.Slice(QBLUNDER_SLICE_END, null);
+
       // Equivalent to: squares[:, 0, 119:121].clone().view(-1, 2)
-      Tensor qblunders_negative_positive = input.squares.index(
-          new TensorIndex[] { TensorIndex.Colon,  0, TensorIndex.Slice(QBLUNDER_SLICE_BEGIN, QBLUNDER_SLICE_END)  }
-      ).clone().view(-1, 2);
+      Tensor qblunders_negative_positive = input.squares.index(new TensorIndex[] { TensorIndex.Colon, 0, QBLUNDER_SLICE }).clone().view(-1, 2);
 
       // Insert zeros at the two qblunder slots in the main flow
       // flow = torch.cat( (flow[:,:,:119], zeros_like(...), flow[:,:,121:]), dim=2 )
       Tensor flow = torch.cat([
-            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(null, QBLUNDER_SLICE_BEGIN) }),
-            torch.zeros_like( input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(QBLUNDER_SLICE_BEGIN, QBLUNDER_SLICE_END) })),
-            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, TensorIndex.Slice(QBLUNDER_SLICE_END, null)})
+            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, QBLUNDER_SLICE_LEFT }),
+            zeros_like( input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, QBLUNDER_SLICE })),
+            input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, QBLUNDER_SLICE_RIGHT})
         ], 2);
 
-
-      Tensor flowCS = layerEmbedding.call(input.squares);
-
-//      Tensor flowCS = CompareOutput(flow, layerEmbedding.call(flow));
+      // Tensor flowCS = CompareOutput(flow, layerEmbedding.call(flow));
+      Tensor flowCS = layerEmbedding.call(flow);
 
       Tensor flowState = input.priorState;
 
@@ -470,15 +470,13 @@ namespace CeresTrain.Networks.Transformer
           (Tensor flowCSNext, Tensor globalUpdate) = layersEncodersArray[layerNum].call(flowCS, flowState);
           flowCS.Dispose();
           flowCS = flowCSNext.MoveToOuterDisposeScope();
-
-          // Update state based on the output of the encoder layer. 
         }
       }
 
 
       flowCS = headPremap.call(flowCS);
-
       flowCS = flowCS.reshape([-1, 64 * TransformerConfig.ModelDim/ HEAD_PREMAP_DIVISOR]);
+
       flowCS = headSharedLinear.call(flowCS);
 
       Tensor flowValueHead = layerValueHead.call(flowCS, flowState);
@@ -511,7 +509,7 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="output"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    Tensor DebugCompareNetworkOutputs(Tensor input, Tensor output)
+    internal Tensor DebugCompareNetworkOutputs(Tensor input, Tensor output)
     {
       float[] compareOutput = default;
       foreach ((string name, Module module) layer in DebugComparisonNetwork.named_modules())
@@ -533,11 +531,16 @@ namespace CeresTrain.Networks.Transformer
         throw new Exception("output length mismatch on " + DebugCompareLayerName);
       }
       Console.WriteLine("\r\nNetTransformer : compare values");
-      for (int i = 0; i < 5; i++)
+      for (int i = 0; i < thisOutput.Length; i++)
       {
-        Console.WriteLine(compareOutput[i] - thisOutput[i]);
+        float absDiff = Math.Abs(compareOutput[i] - thisOutput[i]); 
+        const float MAX_TOLERANCE = 0.001f;
+        if (absDiff > MAX_TOLERANCE)
+        {
+          Console.WriteLine($"OUTPUT DIFFERENCE[{i}] of {absDiff} with values {compareOutput[i]} vs {thisOutput[i]}"); 
+        } 
       }
-
+      Console.WriteLine($"NetTransformer : compare values success on {DebugCompareLayerName}.");  
       System.Environment.Exit(37);
       return output;
     }

@@ -36,6 +36,12 @@ namespace CeresTrain.Networks.Transformer
   /// </summary>
   public class NetTransformerLayerHead : Module<Tensor, Tensor, Tensor>
   {
+
+    /// <summary>
+    /// Transformer to which this head belongs.
+    /// </summary>
+    public readonly NetTransformer Parent;
+
     /// <summary>
     /// Input dimension.
     /// </summary>
@@ -81,21 +87,24 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Constructor.
     /// </summary>
+    /// <param name="parent"></param>
     /// <param name="name"></param>
-    /// <param name="modelDim"></param>
+    /// <param name="inputDim"></param>
     /// <param name="dim1"></param>
     /// <param name="dim2"></param>
     /// <param name="activation"></param>
     /// <param name="finalActivation"></param>
     /// <param name="saveIntermediateActivations"></param>
-    /// <exception cref="NotImplementedException"></exception>
-    public NetTransformerLayerHead(string name,
+    /// <exception cref="Exception"></exception>
+    public NetTransformerLayerHead(NetTransformer parent,
+                                   string name,
                                    int inputDim,
                                    int dim1, int dim2,
                                    NetTransformerDef.ActivationType activation,
                                    string finalActivation,
                                    bool saveIntermediateActivations) : base(name)
     {
+      Parent = parent;
       Activation = activation;
       FinalActivation = finalActivation;
       InputDim = inputDim;
@@ -142,7 +151,8 @@ namespace CeresTrain.Networks.Transformer
 
         Tensor x1 = Linear1.call(x);
 
-        x1 = TorchSharpUtils.WithActivation(x1, Activation);
+        x1 = TorchSharpUtils.WithActivation(x1, Activation);  
+        //  Tensor x2 = name == "policy_head" ? Parent.DebugCompareNetworkOutputs(x1, Linear2.call(x1))  : Linear2.call(x1);
         Tensor x2 = Linear2.call(x1);
         x1.Dispose();
 
