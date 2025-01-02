@@ -259,12 +259,12 @@ namespace CeresTrain.Examples
     /// <param name="netFN"></param>
     /// <param name="useBestValueRepetitionHeuristic"></param>
     /// <returns></returns>
-    public static NNEvaluator GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
-                                             ICeresNeuralNetDef netDef,
-                                             Device device, ScalarType dataType,
-                                             int deviceID, in ConfigNetExecution execConfig,
-                                             string netFN, bool useBestValueRepetitionHeuristic,
-                                             object options)
+    public static NNEvaluatorTorchsharp GetNNEvaluator(NNEvaluatorInferenceEngineType engineType,
+                                                       ICeresNeuralNetDef netDef,
+                                                       Device device, ScalarType dataType,
+                                                       int deviceID, in ConfigNetExecution execConfig,
+                                                       string netFN, bool useBestValueRepetitionHeuristic,
+                                                       object options)
     {
       if (dataType == ScalarType.BFloat16)
       {
@@ -287,7 +287,7 @@ namespace CeresTrain.Examples
           DeviceIDs = [deviceID],
           SaveNetwork1FileName = netFN,
           DeviceType  = device.type.ToString(),
-          DataType = dataType,  
+          DataType = dataType,            
       }, device, dataType,
         options: (NNEvaluatorOptionsCeres)options,
         netTransformerDef: engineType == NNEvaluatorInferenceEngineType.CSharpViaTorchscript ?(NetTransformerDef)netDef : default);

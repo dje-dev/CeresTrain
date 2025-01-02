@@ -78,7 +78,7 @@ namespace CeresTrain.Networks.Transformer
     internal Linear headPremap;
     internal Linear headSharedLinear;
 
-    internal NetTransformerLayerHead layerValueHead;
+    public Module<Tensor,Tensor> layerValueHead;
     internal NetTransformerLayerHead layerValue2Head;
     internal NetTransformerLayerHead layerPolicyHead;
     internal NetTransformerLayerHead layerMLHHead;
@@ -288,7 +288,7 @@ namespace CeresTrain.Networks.Transformer
         layerValueHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
-          layerValueHead.LoadWeights(paramsToLoad, loadedParams, "value_head");
+          (layerValueHead as NetTransformerLayerHead).LoadWeights(paramsToLoad, loadedParams, "value_head");
         }
 
         layerValue2Head = new NetTransformerLayerHead(this, "value2_head", TransformerConfig.ModelDim + 2, 256, 3,
@@ -473,16 +473,16 @@ namespace CeresTrain.Networks.Transformer
 
       flowCS = headSharedLinear.call(flowCS);
 
-      Tensor flowValueHead = layerValueHead.call(flowCS, flowState);
+      Tensor flowValueHead = layerValueHead.call(flowCS);
       Tensor value2_input = torch.cat([flowCS, qblunders_negative_positive], -1);
-      Tensor flowValue2Head = layerValue2Head.call(value2_input, flowState);
+      Tensor flowValue2Head = layerValue2Head.call(value2_input);
 
-      Tensor flowPolicyHead = layerPolicyHead.call(flowCS, flowState);
-      Tensor flowMLHHead = layerMLHHead == null ? null : layerMLHHead.call(flowCS, flowState);
-      Tensor flowUNCHead = layerUNCHead.call(flowCS, flowState);
+      Tensor flowPolicyHead = layerPolicyHead.call(flowCS);
+      Tensor flowMLHHead = layerMLHHead == null ? null : layerMLHHead.call(flowCS);
+      Tensor flowUNCHead = layerUNCHead.call(flowCS);
 
-      Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS, flowState);
-      Tensor flowQDeviationUpperHead = layerQDeviationUpperHead.call(flowCS, flowState);
+      Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS);
+      Tensor flowQDeviationUpperHead = layerQDeviationUpperHead.call(flowCS);
       Tensor flowAction = default;
       Tensor flowBoardState = default;
       flowCS.Dispose();

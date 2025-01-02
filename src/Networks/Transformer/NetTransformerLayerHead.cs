@@ -34,7 +34,7 @@ namespace CeresTrain.Networks.Transformer
   /// 
   /// Based on assumption of 3 linear layers, with activation functions after 2 or 3 of them.
   /// </summary>
-  public class NetTransformerLayerHead : Module<Tensor, Tensor, Tensor>
+  public class NetTransformerLayerHead : Module<Tensor, Tensor>
   {
 
     /// <summary>
@@ -138,7 +138,7 @@ namespace CeresTrain.Networks.Transformer
 
 
 
-    public override Tensor forward(Tensor x, Tensor state)
+    public override Tensor forward(Tensor x)
     {
       using (DisposeScope disposeScopeEval = NewDisposeScope())
       {

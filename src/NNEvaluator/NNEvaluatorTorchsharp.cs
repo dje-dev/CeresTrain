@@ -181,6 +181,14 @@ namespace CeresTrain.NNEvaluators
 
     int OID;
 
+
+    public void ReplaceValue1Head(Module<Tensor,Tensor> moduleValueHead)
+    {
+      NetTransformer transformer = (PytorchForwardEvaluator as ModuleNNEvaluatorFromTorchScript).CeresNet as NetTransformer;
+      transformer.layerValueHead = moduleValueHead;
+    }
+
+
     public override bool IsEquivalentTo(NNEvaluator evaluator)
     {
       NNEvaluatorTorchsharp evalTS = evaluator as NNEvaluatorTorchsharp;
@@ -637,7 +645,7 @@ namespace CeresTrain.NNEvaluators
           }
         }
 
-    (predictionPolicy, predictionValue, predictionMLH, predictionUNC, 
+        (predictionPolicy, predictionValue, predictionMLH, predictionUNC, 
         predictionValue2, predictionQDeviationLower, predictionQDeviationUpper, uncertaintyPolicy,
         actions, boardStateOutput, actionUncertainty,
         _, _) = PytorchForwardEvaluator.forwardValuePolicyMLH_UNC((inputSquares, boardStateInput));
