@@ -131,6 +131,20 @@ namespace CeresTrain.Utils
       };
     }
 
+    /// <summary>
+    /// Returns entropy of the specified probabilities.
+    /// </summary>
+    /// <param name="probabilities"></param>
+    /// <returns></returns>
+    public static Tensor Entropy(Tensor probabilities)
+    {
+      float epsilon = 1e-6f;
+      Tensor clippedProbabilities = clamp(probabilities + epsilon, epsilon, 1.0f); // Ensure probabilities are in a valid range
+      Tensor logProbabilities = log(clippedProbabilities); // Log of probabilities
+      Tensor entropy = torch.nn.functional.cross_entropy(logProbabilities, clippedProbabilities); // Entropy as self cross-entropy
+      return entropy;
+    }
+
 
     /// <summary>
     /// Freezes  (disable gradient updates) all layers having names satisfying specified predicate.
