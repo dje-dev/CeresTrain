@@ -167,6 +167,42 @@ namespace CeresTrain.Utils
         }
       }
     }
+
+    /// <summary>
+    /// TorchSharp module that implements TeLU activation function.
+    /// See: "TeLU Activation Function for Fast and Stable Deep Learning" 
+    ///       by Fernandez et. al. (https://arxiv.org/abs/2412.20269).
+    /// </summary>
+    public class TeLU : Module<Tensor, Tensor>
+    {
+      public TeLU() : base("TeLU") { }
+
+      public override Tensor forward(Tensor input)
+      {
+        return input * torch.tanh(torch.exp(input));
+      }
+    }
+
+
+    /// <summary>
+    /// TorchSharp module to reshape a tensor.
+    /// Useful to include as part of a Sequential module.
+    /// </summary>
+    public class Reshape : Module<Tensor, Tensor>
+    {
+      private readonly long[] _shape;
+
+      public Reshape(params long[] shape) : base("Reshape")
+      {
+        _shape = shape;
+      }
+
+      public override Tensor forward(Tensor input)
+      {
+        return input.view(_shape);
+      }
+    }
+
   }
 
 }
