@@ -172,13 +172,16 @@ namespace CeresTrain.TPGDatasets
         pValues.CopyTo(policyValuesTemp.AsSpan().Slice(policyBaseIndex, TPGRecord.MAX_MOVES));
       });
 
-      Tensor mlhOutputTensors = tensor(bytesMLHOutput, DataType, Device);
-      Tensor uncOutputTensors = tensor(bytesUNCOutput, DataType, Device);
+      // NOTE: from_array is used everywhere below instead of "tensor" static constructor
+      // because faster, only the former has the internal "clone" argument set false
+
+      Tensor mlhOutputTensors = from_array(bytesMLHOutput, DataType, Device);
+      Tensor uncOutputTensors = from_array(bytesUNCOutput, DataType, Device);
 
       Tensor policyOutputTensors = default;
       using (var _ = NewDisposeScope())
       {
-        Tensor tensorIndices = tensor(policyIndicesTemp, ScalarType.Int16, Device).to(ScalarType.Int64).reshape(BatchSize, TPGRecord.MAX_MOVES);
+        Tensor tensorIndices = from_array(policyIndicesTemp, ScalarType.Int16, Device).to(ScalarType.Int64).reshape(BatchSize, TPGRecord.MAX_MOVES);
 #if DEBUG
         for (int i = 0; i < BatchSize * TPGRecord.MAX_MOVES; i++)
         {
@@ -188,18 +191,18 @@ namespace CeresTrain.TPGDatasets
           }
         }
 #endif
-        Tensor tensorProbs = tensor(policyValuesTemp, DataType, Device).reshape(BatchSize, TPGRecord.MAX_MOVES);
+        Tensor tensorProbs = from_array(policyValuesTemp, DataType, Device).reshape(BatchSize, TPGRecord.MAX_MOVES);
 
         // Create target policy probability array, and scatter in values from index/value pairs above.
         policyOutputTensors = zeros([BatchSize, 1858], DataType, Device);
         policyOutputTensors = policyOutputTensors.scatter_(1, tensorIndices, tensorProbs).DetachFromDisposeScope();
       }
 
-      Tensor valueWDLOutputTensors = tensor(bytesValueWDLOutput, DataType, Device).reshape([BatchSize, 3]);
-      Tensor value2WDLOutputTensors = tensor(bytesValue2WDLOutput, DataType, Device).reshape([BatchSize, 3]);
+      Tensor valueWDLOutputTensors = from_array(bytesValueWDLOutput, DataType, Device).reshape([BatchSize, 3]);
+      Tensor value2WDLOutputTensors = from_array(bytesValue2WDLOutput, DataType, Device).reshape([BatchSize, 3]);
 
-      Tensor qDeviationLowerOutputTensors = tensor(bytesQDeviationLowerOutputTensors, DataType, Device);
-      Tensor qDeviationUpperOutputTensors = tensor(bytesQDeviationUpperOutputTensors, DataType, Device);
+      Tensor qDeviationLowerOutputTensors = from_array(bytesQDeviationLowerOutputTensors, DataType, Device);
+      Tensor qDeviationUpperOutputTensors = from_array(bytesQDeviationUpperOutputTensors, DataType, Device);
 
       if (WDLLabelSmoothing > 0)
       {
@@ -217,18 +220,17 @@ namespace CeresTrain.TPGDatasets
         }
       }
 
-      Tensor valueWDLQOutputTensors = tensor(bytesValueWDLQOutput, DataType, Device).reshape([BatchSize, 3]);
+      Tensor valueWDLQOutputTensors = from_array(bytesValueWDLQOutput, DataType, Device).reshape([BatchSize, 3]);
 
       // For efficiency (reduce bandwidth requirement), copy to device as bytes.
-      Tensor squaresBytes = tensor(bytesSquares, ScalarType.Byte, Device).reshape([BatchSize, NUM_SQUARES * TPGRecord.BYTES_PER_SQUARE_RECORD]);
+      Tensor squaresValues = from_array(bytesSquares, ScalarType.Byte, Device).to(DataType).reshape([BatchSize, NUM_SQUARES * TPGRecord.BYTES_PER_SQUARE_RECORD]);
 
       // Convert to final type and divide to undo the upscaled representation as byte back to true values.
-      Tensor squaresValues = squaresBytes.to(Device).to(DataType);
       squaresValues = squaresValues.div_(ByteScaled.SCALING_FACTOR);
 
       Dictionary<string, Tensor> dict = new()
       {
-        {"moves_squares", squaresBytes.reshape(BatchSize, NUM_SQUARES, -1) },
+        {"squares",       squaresValues },
         {"mlh",           mlhOutputTensors },
         {"unc",           uncOutputTensors },
         {"wdl",           valueWDLOutputTensors },

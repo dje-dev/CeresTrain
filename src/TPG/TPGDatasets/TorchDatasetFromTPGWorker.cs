@@ -192,7 +192,7 @@ namespace CeresTrain.TPGDatasets
         }
 
         TPGFileReader reader = new TPGFileReader(thisFN, dictConverter.BatchSize);
-        currentFileEnumerator = reader.Enumerator;
+        currentFileEnumerator = reader.GetEnumerator();
       }
     }
 
@@ -229,7 +229,8 @@ namespace CeresTrain.TPGDatasets
     }
 
 
-    const int NUM_DICTS_PRELOAD = 1; // larger values require more GPU memory
+    // Use at least 2 to insure overlapping. Larger values require more GPU memory.
+    const int NUM_DICTS_PRELOAD = 2; 
 
     void TaskPreloadDicts()
     {
