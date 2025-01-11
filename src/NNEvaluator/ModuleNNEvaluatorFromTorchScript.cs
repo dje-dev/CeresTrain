@@ -85,7 +85,7 @@ namespace CeresTrain.NNEvaluators
 
       Console.WriteLine("LOAD OF TORCHSCRIPT MODEL **********");
       Console.WriteLine("  " + executionConfig.SaveNetwork1FileName);
-      if (executionConfig.SaveNetwork1FileName != null)
+      if (executionConfig.SaveNetwork2FileName != null)
       {
         Console.WriteLine("  " + executionConfig.SaveNetwork2FileName);
       }

@@ -16,6 +16,9 @@ using TorchSharp;
 using static TorchSharp.torch;
 
 using Ceres.Base.DataType;
+using Ceres.Base.Misc;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using Ceres.Chess.NNEvaluators.Ceres;
 using Ceres.Chess.LC0.Batches;
 using Ceres.Chess.NNEvaluators;
 using Ceres.Chess.NetEvaluation.Batch;
@@ -26,14 +29,11 @@ using Ceres.Chess.MoveGen.Converters;
 using Ceres.Chess.EncodedPositions.Basic;
 using Ceres.Chess.NNEvaluators.LC0DLL;
 
-using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using CeresTrain.Trainer;
 using CeresTrain.TrainCommands;
 using CeresTrain.Utils;
-using Ceres.Base.Misc;
-using Ceres.Chess.NNEvaluators.Ceres.TPG;
-using Ceres.Chess.NNEvaluators.Ceres;
+
 using static TorchSharp.torch.nn;
 
 #endregion
@@ -88,10 +88,11 @@ namespace CeresTrain.NNEvaluators
       get => (NNEvaluatorOptionsCeres)Options;
     }
 
+    /// <summary>
+    /// Returns information about the evaluator.
+    /// </summary>
+    public override EvaluatorInfo Info =>  getNumModelParams == null ? null : new EvaluatorInfo(getNumModelParams());  
 
-
-    public override EvaluatorInfo Info => 
-      getNumModelParams == null ? null : new EvaluatorInfo(getNumModelParams());  
 
     /// <summary>
     /// Function to get the number of model parameters.
@@ -588,12 +589,7 @@ namespace CeresTrain.NNEvaluators
       using (no_grad())
       {
         // Move Tensor to the desired device and data type.
-        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
-
-        // *** NOTE: The following alternate methods should be faster, but actually much slower!
-        // best:  Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
-        //        Tensor inputSquares = tensor(squareBytesAll, [numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD], DataType, Device);
-        //.copy_(squareBytesAll, 0, 0, numPositions * 64 * TPGRecord.BYTES_PER_SQUARE_RECORD);
+        Tensor inputSquares = from_array(squareBytesAll, DataType, Device).reshape([numPositions, 64, TPGRecord.BYTES_PER_SQUARE_RECORD]);
 
         // Apply scaling factor to TPG square inputs.
         inputSquares = inputSquares.div_(ByteScaled.SCALING_FACTOR);
@@ -635,7 +631,7 @@ namespace CeresTrain.NNEvaluators
           }
 
           // Set boardState to a tensor created from allStates
-          boardStateInput = tensor(allStates, [numPositions, stateLength], device: Device, dtype: DataType);
+          boardStateInput = from_array(allStates, DataType, Device).reshape([numPositions, stateLength]);
         }
         else
         {
@@ -753,7 +749,7 @@ namespace CeresTrain.NNEvaluators
           // TODO: this is inefficent, ideally want a Torchsharp API 
           short[] legalMoveIndicesSlice = new short[numPositions * TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST];
           Array.Copy(legalMovesIndices, legalMoveIndicesSlice, legalMoveIndicesSlice.Length);
-          Tensor indices = tensor(legalMoveIndicesSlice, ScalarType.Int64, predictionPolicy.device)
+          Tensor indices = from_array(legalMoveIndicesSlice, ScalarType.Int64, predictionPolicy.device)
                                 .reshape([numPositions, TPGRecordMovesExtractor.NUM_MOVE_SLOTS_PER_REQUEST]);
           gatheredLegalMoveProbs = predictionPolicy.gather(1, indices);
 
