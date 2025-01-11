@@ -14,6 +14,7 @@
 #region Using directives
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -26,8 +27,8 @@ using Zstandard.Net;
 using Ceres.Base.DataType;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
-
 #endregion
+
 
 namespace CeresTrain.TPG
 {
@@ -38,7 +39,7 @@ namespace CeresTrain.TPG
   /// A single background thread is launched to continually read ahead 
   /// so enumeration requests can be satisfied immediately.
   /// </summary>
-  public class TPGFileReader
+  public class TPGFileReader : IEnumerable<TPGRecord[]>
   {
     /// <summary>
     /// Name of the TPG file being read.
@@ -55,10 +56,9 @@ namespace CeresTrain.TPG
     /// </summary>
     public bool shouldShutdown = false;
 
+    // Single-pass enumerator
+    private IEnumerator<TPGRecord[]> enumerator;
 
-    IEnumerator<TPGRecord[]> enumerator;
-
-    // Alternate between multiple readahead buffers
     const int READAHEAD_COUNT = 8;
 
     /// <summary>
@@ -69,66 +69,35 @@ namespace CeresTrain.TPG
     public TPGFileReader(string tpgFileName, int batchSize)
     {
       ArgumentNullException.ThrowIfNull(tpgFileName);
-
       TPGFileName = tpgFileName;
       BatchSize = batchSize;
 
+      // Create the single-pass enumerator
       enumerator = TPGBatchEnumerator(tpgFileName, batchSize).GetEnumerator();
     }
-
-
-    /// <summary>
-    /// Enumerator that returns batches of records from the TPG file.
-    /// </summary>
-    public IEnumerator<TPGRecord[]> Enumerator { get => enumerator; }
-
-
-    /// <summary>
-    /// Returns IEnumerable that enumerates batches of records from the TPG file.
-    /// </summary>
-    public IEnumerable<TPGRecord[]> Enumerable
-    {
-      get
-      {
-        while (enumerator.MoveNext())
-        {
-          yield return enumerator.Current;
-        }
-      }
-    }
-
-
 
     /// <summary>
     /// Signals the reader to stop reading.
     /// </summary>
     public void Shutdown() => shouldShutdown = true;
 
-
     /// <summary>
     /// Returns the next batch of records from the TPG file.
     /// </summary>
-    /// <returns></returns>
-    /// <exception cref="Exception"></exception>
     public TPGRecord[] NextBatch()
     {
       if (!enumerator.MoveNext())
       {
-        Console.WriteLine($"No more data data in TPG file {TPGFileName}");
+        Console.WriteLine($"No more data in TPG file {TPGFileName}");
         return null;
       }
-
       return enumerator.Current;
     }
 
-
     /// <summary>
-    /// Worker method that reads batches of records from the TPG file,
-    /// including a background thread that reads ahead.
+    /// The main enumerator logic that yields batches (TPGRecord[]).
+    /// Runs a background thread to fill a queue of batches.
     /// </summary>
-    /// <param name="fileName"></param>
-    /// <param name="batchSize"></param>
-    /// <returns></returns>
     IEnumerable<TPGRecord[]> TPGBatchEnumerator(string fileName, int batchSize)
     {
       DateTime startTime = DateTime.Now;
@@ -149,12 +118,12 @@ namespace CeresTrain.TPG
         catch (Exception e)
         {
           Console.WriteLine("Exception in BackgroundFillWorker decompressing/processing TPG records from " + fileName, e);
-          
+
           // Abruptly shutdown so this messages does not get overwritten by other output which may refresh/repaint Console.
           System.Environment.Exit(3);
         }
       }
-      
+
       void BackgroundFillWorker()
       {
         TPGRecord[] readBuffer = new TPGRecord[batchSize];
@@ -164,7 +133,12 @@ namespace CeresTrain.TPG
         {
           if (pendingBatches.Count < READAHEAD_COUNT)
           {
-            int numRead = StreamUtils.ReadFromStream(decompressionStream, bufferBackgroundThread, ref readBuffer, batchSize);
+            int numRead = StreamUtils.ReadFromStream(
+                decompressionStream,
+                bufferBackgroundThread,
+                ref readBuffer,
+                batchSize
+            );
 
             totNumRead += numRead;
             if (numRead != batchSize)
@@ -173,7 +147,7 @@ namespace CeresTrain.TPG
             }
             else
             {
-              // Make a copy and enqueue.
+              // Copy so we don't overwrite readBuffer
               TPGRecord[] copy = new TPGRecord[batchSize];
               Array.Copy(readBuffer, copy, batchSize);
               pendingBatches.Enqueue(copy);
@@ -186,14 +160,14 @@ namespace CeresTrain.TPG
         }
       }
 
+      // Launch the background fill
       Task.Run(BackgroundFillWithExceptionHandler);
 
-      decompressionStream = new ZstandardStream(es, CompressionMode.Decompress);
       using (decompressionStream)
       {
         while (true)
         {
-          TPGRecord[] ret = default;
+          TPGRecord[] ret = null;
           while (!pendingBatches.TryDequeue(out ret))
           {
             if (allDone)
@@ -211,5 +185,51 @@ namespace CeresTrain.TPG
       }
     }
 
+
+    #region IEnumerable<TPGRecord[]> 
+
+    /// <summary>
+    /// The generic GetEnumerator() is required by IEnumerable<T>.
+    /// This yields from our single-pass enumerator.
+    /// </summary>
+    public IEnumerator<TPGRecord[]> GetEnumerator()
+    {
+      // Single pass: once enumerator is exhausted, 
+      // subsequent calls return an empty sequence.
+      while (enumerator.MoveNext())
+      {
+        yield return enumerator.Current;
+      }
+    }
+
+    /// <summary>
+    /// Returns an IEnumerable of individual TPGRecords by flattening the batch enumerator.
+    /// </summary>
+    public IEnumerable<TPGRecord> Records
+    {
+      get
+      {
+        foreach (TPGRecord[] batch in this)
+        {
+          if (batch == null)
+          {
+            yield break;
+          }
+
+          foreach (TPGRecord record in batch)
+          {
+            yield return record;
+          }
+        }
+      }
+    }
+
+
+    /// <summary>
+    /// Non-generic version of GetEnumerator(), required by IEnumerable.
+    /// </summary>
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    #endregion
   }
 }
