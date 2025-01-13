@@ -24,6 +24,8 @@ using static TorchSharp.torch.nn;
 using Ceres.Base.OperatingSystem;
 using CeresTrain.Networks.Transformer;
 using static TorchSharp.torch;
+using System.Linq;
+using System.Collections.Generic;
 
 #endregion
 
@@ -167,6 +169,93 @@ namespace CeresTrain.Utils
         }
       }
     }
+
+
+    #region Extracting parameters for Modules
+
+    /// <summary>
+    /// Extracts weights and biases from all Linear layers in the module.
+    /// 
+    /// NOTE: it is assumed that the provided layers are of the same number and 
+    ///       in the same order as an enumeration of the module will provide.
+    /// </summary>
+    /// <param name="module"></param>
+    /// <param name="linearLayers"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    public static Dictionary<string, (float[] weights, float[] bias)> 
+      ExtractWeightsFromLinearLayers(Module<Tensor, Tensor> module, params (string name, bool transpose)[] linearLayers)
+    {
+      int nextNameIndex = 0;
+
+      Dictionary<string, (float[] weights, float[] bias)> ret = new();
+      foreach ((string name, Module module) nn in module.named_modules())
+      {
+        if (nn.module.GetType() == typeof(Linear))
+        {
+          if (nextNameIndex >= linearLayers.Length)
+          {
+            throw new Exception("More Linear layers found than were provided in layers argument.");
+          }
+
+          (float[] weights, float[] bias) = ExtractWeightsAndBiasesFromModule(nn.module, linearLayers[nextNameIndex].transpose);
+          ret[linearLayers[nextNameIndex++].name] = (weights, bias);
+        }
+        else if (nn.module.named_parameters().Count() > 0)
+        {
+          throw new ArgumentException("Found Module with parameters but not Linear, not supported.");
+        }
+      }
+
+      return ret;
+    }
+
+
+    /// <summary>
+    /// Extracts weights and biases from a module.
+    /// 
+    /// NOTE: currently only supports Linear layers.
+    /// </summary>
+    /// <param name="module"></param>
+    /// <param name="transpose"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    public static (float[] weights, float[] bias) ExtractWeightsAndBiasesFromModule(Module module, bool transpose)
+    {
+      if (module.GetType() != typeof(Linear))
+      {
+        throw new ArgumentException("Module must be a Linear layer.");
+      }
+
+      Parameter weightsParam = module.named_parameters().FirstOrDefault(np => np.name.Contains("weight")).parameter;
+      Parameter biasParam = module.named_parameters().FirstOrDefault(np => np.name.Contains("bias")).parameter;
+
+      // Move to CPU, convert to float[], etc.
+      float[] weights = weightsParam.cpu().to(ScalarType.Float32).data<float>().ToArray();
+      float[] bias = biasParam.cpu().to(ScalarType.Float32).data<float>().ToArray();
+
+      if (transpose)
+      {
+        int rows = (int)weightsParam.shape[0];
+        int cols = (int)weightsParam.shape[1];
+
+        float[] weightsTranspose = new float[rows * cols];
+        for (int row = 0; row < rows; row++)
+        {
+          for (int col = 0; col < cols; col++)
+          {
+            weightsTranspose[col * rows + row] = weights[row * cols + col];
+          }
+        }
+        weights = weightsTranspose;
+      }
+
+
+      return (weights, bias);
+    }
+
+    #endregion
+
 
     /// <summary>
     /// TorchSharp module that implements TeLU activation function.
