@@ -59,7 +59,7 @@ namespace CeresTrain.Trainer
     {
       ref readonly ConfigTraining trainer = ref TrainerC.TrainingConfig;
 
-      NNEvaluatorFactory.Custom2Factory = (netID, gpuID, referenceEvaluator, options) => tsEval;
+      NNEvaluatorFactory.Custom2Factory = (netID, gpuID, referenceEvaluator, options, optionsDict) => tsEval;
       GameEngineDef ged1 = new GameEngineDefCeres("TrainNet", trainingEvaluatorDef, null); // TODO: eliminate need to specify a valid network ID here
       EnginePlayerDef ceresEngineDef1 = new EnginePlayerDef(ged1, trainer.MonitoringConfig.TestSuiteSearchLimit);
       SuiteTestDef def = new SuiteTestDef("Test1", trainer.MonitoringConfig.TestSuiteFileName, ceresEngineDef1);
