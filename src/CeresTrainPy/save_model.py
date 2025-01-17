@@ -120,7 +120,7 @@ def save_model(NAME : str,
       except Exception as e:
         print(f"Warning: torchscript save failed, skipping. Exception details: {e}")
     
-    SAVE_TS = False
+    SAVE_TS = True
     SAVE_FULL_NAME = os.path.join(OUTPUTS_DIR, 'nets', NAME + ".ts_" + num_pos)
     if SAVE_TS and fabric.is_global_zero:
       try:
