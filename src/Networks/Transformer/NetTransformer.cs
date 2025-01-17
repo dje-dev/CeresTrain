@@ -222,7 +222,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
 
-        if (paramsToLoad.ContainsKey("mlh_head.fc.weight"))
+        if (paramsToLoad != null && paramsToLoad.ContainsKey("mlh_head.fc.weight"))
         {
           layerMLHHead = new NetTransformerLayerHead(this, "mlh_head", 
                                                      512, 128 , 1,
@@ -480,6 +480,7 @@ namespace CeresTrain.Networks.Transformer
       Tensor flowPolicyHead = layerPolicyHead.call(flowCS);
       Tensor flowMLHHead = layerMLHHead == null ? null : layerMLHHead.call(flowCS);
       Tensor flowUNCHead = layerUNCHead.call(flowCS);
+      Tensor flowUNCPolicyHead = layerUncPolicyHead.call(flowCS);
 
       Tensor flowQDeviationLowerHead = layerQDeviationLowerHead.call(flowCS);
       Tensor flowQDeviationUpperHead = layerQDeviationUpperHead.call(flowCS);
@@ -489,7 +490,7 @@ namespace CeresTrain.Networks.Transformer
 
       // TODO: implement policy uncertainty, action uncertainty
       return (flowPolicyHead, flowValueHead, flowMLHHead, flowUNCHead, flowValue2Head, 
-              flowQDeviationLowerHead, flowQDeviationUpperHead, default,
+              flowQDeviationLowerHead, flowQDeviationUpperHead, flowUNCPolicyHead,
               flowAction, flowBoardState, default);
     }
 
@@ -553,7 +554,7 @@ namespace CeresTrain.Networks.Transformer
     {
       (Tensor p, Tensor v, Tensor m, Tensor u, Tensor v2, Tensor qL, Tensor qU, Tensor pU, Tensor bs, Tensor a, Tensor aU) = forward((input.squares.to(ExecutionConfig.DataType), input.priorState));
 
-      return (v, p, m, u, v2, qL, qU, pU, bs, a, aU, null, null);
+      return (p, v, m, u, v2, qL, qU, pU, bs, a, aU, null, null);
     }
   }
 }

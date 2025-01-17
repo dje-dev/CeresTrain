@@ -31,13 +31,12 @@ using static TorchSharp.torch.utils.data;
 
 using Ceres.Base.Benchmarking;
 using Ceres.Base.DataTypes;
-using Ceres.Base.DataType;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 using CeresTrain.NNEvaluators;
 using CeresTrain.Utils;
 using CeresTrain.Utils.Tensorboard;
 using CeresTrain.TrainData.TPGDatasets;
-using CeresTrain.TPG;
 using CeresTrain.TPGDatasets;
 using CeresTrain.Networks;
 using CeresTrain.Networks.MiscModules;
@@ -46,7 +45,6 @@ using CeresTrain.TPG.TPGGenerator;
 using CeresTrain.Networks.SoftMoE;
 
 using CeresTrain.TrainCommands;
-using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
@@ -74,6 +72,7 @@ namespace CeresTrain.Trainer
 
     Tensor mlhTarget;
     Tensor uncTarget;
+    Tensor uncPolicyTarget;
     Tensor valueTarget;
     Tensor policyTarget;
     Tensor maskedPolicyForLoss;
@@ -85,6 +84,7 @@ namespace CeresTrain.Trainer
     Tensor lossPolicyBatch;
     Tensor lossMLHBatch;
     Tensor lossUNCBatch;
+    Tensor lossUNCPolicy;
 
     Tensor lossValue2Batch;
     Tensor lossValueDBatch;
@@ -92,6 +92,7 @@ namespace CeresTrain.Trainer
     Tensor lossAction2DBatch;
     Tensor lossQDevLowerBatch;
     Tensor lossQDevUpperBatch;
+    Tensor lossUNCPolicyBatch;
 
     Tensor lossTotal;
 
@@ -129,6 +130,7 @@ namespace CeresTrain.Trainer
                        Loss<Tensor, Tensor, Tensor> lossPolicy,
                        Loss<Tensor, Tensor, Tensor> lossMLH,
                        Loss<Tensor, Tensor, Tensor> lossUNC,
+                       Loss<Tensor, Tensor, Tensor> lossUNCPolicy,
                        Loss<Tensor, Tensor, Tensor> lossValue2,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationLower,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationUpper,
@@ -171,9 +173,10 @@ namespace CeresTrain.Trainer
 
           model.train();
 
-          Tensor inputSquares = batch["moves_squares"].reshape(OptimizationBatchSizeForward, TPGRecord.NUM_SQUARES, TPGRecord.BYTES_PER_SQUARE_RECORD);
-          mlhTarget = batch["mlh"].reshape(OptimizationBatchSizeForward, 1);
+          Tensor inputSquares = batch["squares"].reshape(OptimizationBatchSizeForward, TPGRecord.NUM_SQUARES, TPGRecord.BYTES_PER_SQUARE_RECORD);
+          mlhTarget = batch.ContainsKey("mlh") ? batch["mlh"].reshape(OptimizationBatchSizeForward, 1) : default;
           uncTarget = batch["unc"].reshape(OptimizationBatchSizeForward, 1);
+          uncPolicyTarget = batch["unc_policy"].reshape(OptimizationBatchSizeForward, 1); 
           valueTarget = batch["wdl"].reshape(OptimizationBatchSizeForward, 3);
           policyTarget = batch["policy"].reshape(OptimizationBatchSizeForward, 1858);
 
@@ -231,7 +234,7 @@ namespace CeresTrain.Trainer
           {
             IModuleNNEvaluator evaluator = model as IModuleNNEvaluator;
 
-            inputSquares = inputSquares.to(TrainingConfig.ExecConfig.DataType).div(ByteScaled.SCALING_FACTOR);
+            // already scaled inputSquares = inputSquares.to(TrainingConfig.ExecConfig.DataType).div(ByteScaled.SCALING_FACTOR);
 
             (policy, value, mlh, unc, value2, qDeviationLower, qDeviationUpper, uncertaintyPolicy,
              action, boardState, actionUncertainty, extraStats0, extraStats1) = evaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
@@ -249,6 +252,7 @@ namespace CeresTrain.Trainer
 #endif
           }
 
+          bool USE_4BOARD = (object)action != null;
 
           // Mask illegal moves out of the policy vector.
           const float MASK_POLICY_VALUE = -1E5f;
@@ -256,25 +260,52 @@ namespace CeresTrain.Trainer
           Tensor illegalMaskValue = zeros_like(policy) + MASK_POLICY_VALUE;
           maskedPolicyForLoss = where(legalMoves, policy, illegalMaskValue);
 
+          const float QDEV_LOSS_POST_SCALE = 10.0f;
+          const float MLH_LOSS_POST_SCALE = 5.0f;
+          const float UNC_POLICY_LOSS_POST_SCALE = 10.0f;
+          const float UNC_VALUE_LOSS_POST_SCALE = 150.0f;
+
           // TODO: Someday short circuit evaluation if weight is zero.
           lossValueBatch = lossValue.call(value, valueTarget);
           lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
-          lossMLHBatch = lossMLH.call(mlh, mlhTarget);
-          lossUNCBatch = lossUNC.call(unc, uncTarget);
+          lossMLHBatch = (object)mlh == null ? zeros_like(unc) : lossMLH.call(mlh, mlhTarget) * MLH_LOSS_POST_SCALE;
+          lossUNCBatch = lossUNC.call(unc, uncTarget) * UNC_VALUE_LOSS_POST_SCALE;
+          lossUNCPolicyBatch = lossUNCPolicy.call(uncertaintyPolicy, uncPolicyTarget) * UNC_POLICY_LOSS_POST_SCALE;
           lossValue2Batch = lossValue2.call(value2, value2Target);
 
-          const float QDEV_LOSS_SCALE = 10.0f;
-          lossValueDBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
-          lossValue2DBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
-// lossAction2DBatch = lossAction.call()
+          // Subtract entropy from some of th losses
+          lossValueBatch = lossValueBatch - TorchSharpUtils.Entropy(valueTarget);
+          lossValue2Batch = lossValue2Batch - TorchSharpUtils.Entropy(value2Target);
+          lossPolicyBatch = lossPolicyBatch - TorchSharpUtils.Entropy(policyTarget);
+//          lossActionBatch = lossActionBatch - TorchSharpUtils.Entropy(actionTarget);
+
+
+          //          lossValueDBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
+          //          lossValue2DBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
+
+          lossQDevLowerBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_POST_SCALE;
+          lossQDevUpperBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_POST_SCALE;
+
+          // lossAction2DBatch = lossAction.call()
           lossTotal = lossPolicyBatch * TrainingConfig.OptConfig.LossPolicyMultiplier
                     + lossValueBatch * TrainingConfig.OptConfig.LossValueMultiplier
-                    + lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
-                    + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier
                     + lossValue2Batch * TrainingConfig.OptConfig.LossValue2Multiplier
-                    + lossValueDBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
-                    + lossValue2DBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
+                    + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier
+                    + lossUNCPolicyBatch * TrainingConfig.OptConfig.LossUncertaintyPolicyMultiplier
+                    + lossQDevLowerBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
+                    + lossQDevUpperBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
 
+          if ((object)mlh is not null)
+          {
+            throw new NotImplementedException();
+//            +lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
+
+          }
+          if (USE_4BOARD)
+          {
+            throw new Exception("Incomplete, need losses for others like lossValueDBatch, lossValue2DBatch");
+//            lossTotal = lossTotal + lossAction2DBatch * TrainingConfig.OptConfig.LossActionMultiplier;
+          }
 
           lossTotal.backward();
           if ((batchAccumulationCounter + 1) % numBatchesGradientAccumulate == 0)
@@ -493,6 +524,7 @@ namespace CeresTrain.Trainer
 
     long numPositionsReadFromTraining = 0;
 
+    
     internal void TrainingLoop(string tag, CeresNeuralNet model,
                                string startingCheckpointFN, long startingCheckpointLastNumPos,
                                DataLoader train, Dataset tpgDataset,
@@ -584,10 +616,12 @@ namespace CeresTrain.Trainer
       CrossEntropyLoss valueLoss = CrossEntropyLoss();
       CrossEntropyLoss value2Loss = CrossEntropyLoss();
       CrossEntropyLoss policyLoss = CrossEntropyLoss();
-      var mlhLoss = new HuberLossScaled<Tensor, Tensor, Tensor>(Reduction.Mean, 0.5f, 5);
-      var uncLoss = new HuberLossScaled<Tensor, Tensor, Tensor>(Reduction.Mean, 0.5f, 150);
-      MSELoss qDeviationLowerLoss = new MSELoss();
-      MSELoss qDeviationUpperLoss = new MSELoss();
+
+      HuberLoss mlhLoss = new(0.5f, Reduction.Mean);
+      HuberLoss uncLoss = new(0.5f, Reduction.Mean);
+      MSELoss uncPolicyLoss = new ();
+      MSELoss qDeviationLowerLoss = new ();
+      MSELoss qDeviationUpperLoss = new ();
 
       CeresTrainInitialization.PrepareToUseDevice(TrainingConfig.ExecConfig.Device);
 
@@ -599,7 +633,7 @@ namespace CeresTrain.Trainer
 
         consoleStatusTable.RunTraining(
           () => Train(TrainingConfig.ExecConfig.ID, model, optimizer, valueLoss,
-                      policyLoss, mlhLoss, uncLoss, 
+                      policyLoss, mlhLoss, uncLoss, uncPolicyLoss,
                       value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
                       null, null, // TO DO: Fill in value difference tensors
                       train,

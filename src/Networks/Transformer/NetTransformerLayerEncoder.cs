@@ -37,7 +37,7 @@ namespace CeresTrain.Networks.Transformer
   /// <summary>
   /// Encoder layer used in CeresTransformerEncoder.
   /// </summary>
-  internal class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>, IModuleReceivesMonitoringStatusInfo
+  public class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>, IModuleReceivesMonitoringStatusInfo
   {
     /// <summary>
     /// Epsilon used for normalization. 

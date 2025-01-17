@@ -24,10 +24,6 @@ using Ceres.Base.DataType;
 using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using TorchSharp;
-using CeresTrain.Utils;
-using System.Linq;
-using Ceres.Chess.EncodedPositions;
-using Ceres.Base.Math;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 
@@ -73,6 +69,7 @@ namespace CeresTrain.TPGDatasets
     byte[] bytesSquares;
     float[] bytesMLHOutput;
     float[] bytesUNCOutput;
+    float[] bytesUNCPolicyOutput;
 
     static short[] policyIndicesTemp;
     static Half[] policyValuesTemp;
@@ -102,6 +99,7 @@ namespace CeresTrain.TPGDatasets
       bytesSquares = new byte[BatchSize * NUM_SQUARES * TPGRecord.BYTES_PER_SQUARE_RECORD];
       bytesMLHOutput = new float[BatchSize];
       bytesUNCOutput = new float[BatchSize];
+      bytesUNCPolicyOutput = new float[BatchSize];      
 
       bytesQDeviationLowerOutputTensors = new float[BatchSize];
       bytesQDeviationUpperOutputTensors = new float[BatchSize];
@@ -137,6 +135,7 @@ namespace CeresTrain.TPGDatasets
         bytesMLHOutput[i] = rawMLH / NetTransformer.MLH_DIVISOR;
 
         bytesUNCOutput[i] = MathF.Abs(thisTPG.DeltaQVersusV);
+        bytesUNCPolicyOutput[i] = MathF.Abs(thisTPG.KLDPolicy);
 
         bytesQDeviationLowerOutputTensors[i] = (float)thisTPG.QDeviationLower;
         bytesQDeviationUpperOutputTensors[i] = (float)thisTPG.QDeviationUpper;
@@ -154,15 +153,28 @@ namespace CeresTrain.TPGDatasets
         bytesValueWDLQOutput[i * 3 + 1] = thisTPG.WDLQ[1];
         bytesValueWDLQOutput[i * 3 + 2] = thisTPG.WDLQ[2];
 
+
         if (FractionQ > 0)
         {
+          // Value 1
           float w1 = 1.0f - FractionQ;
           float w2 = FractionQ;
-
           bytesValueWDLOutput[i * 3 + 0] = w1 * thisTPG.WDLResultDeblundered[0] + w2 * thisTPG.WDLQ[0];
           bytesValueWDLOutput[i * 3 + 1] = w1 * thisTPG.WDLResultDeblundered[1] + w2 * thisTPG.WDLQ[1];
           bytesValueWDLOutput[i * 3 + 2] = w1 * thisTPG.WDLResultDeblundered[2] + w2 * thisTPG.WDLQ[2];
         }
+
+        // Value 2
+        // Possibly create a blended value target for Value2.
+        // The intention is to slightly soften the noisy and hard wdl_nondeblundered target.
+        // wdl_blend = (wdl_nondeblundered * 0.70 + wdl_deblundered * 0.15 + wdl_q * 0.15)
+        const float W1 = 0.70f;
+        const float W2 = 0.15f;
+        const float W3 = 0.15f;
+        bytesValue2WDLOutput[i * 3 + 0] = W1 * thisTPG.WDLResultNonDeblundered[0] + W2 * thisTPG.WDLResultDeblundered[0] + W3 * thisTPG.WDLQ[0];
+        bytesValue2WDLOutput[i * 3 + 1] = W1 * thisTPG.WDLResultNonDeblundered[1] + W2 * thisTPG.WDLResultDeblundered[1] + W3 * thisTPG.WDLQ[1];
+        bytesValue2WDLOutput[i * 3 + 2] = W1 * thisTPG.WDLResultNonDeblundered[2] + W2 * thisTPG.WDLResultDeblundered[2] + W3 * thisTPG.WDLQ[2];
+        
 
         // Copy the policy indices and values into the temporary array for all records in the batch
         int policyBaseIndex = i * TPGRecord.MAX_MOVES;
@@ -177,7 +189,8 @@ namespace CeresTrain.TPGDatasets
 
       Tensor mlhOutputTensors = from_array(bytesMLHOutput, DataType, Device);
       Tensor uncOutputTensors = from_array(bytesUNCOutput, DataType, Device);
-
+      Tensor uncPolicyOutputTensors = from_array(bytesUNCPolicyOutput, DataType, Device);
+      
       Tensor policyOutputTensors = default;
       using (var _ = NewDisposeScope())
       {
@@ -233,6 +246,7 @@ namespace CeresTrain.TPGDatasets
         {"squares",       squaresValues },
         {"mlh",           mlhOutputTensors },
         {"unc",           uncOutputTensors },
+        {"unc_policy",    uncPolicyOutputTensors },
         {"wdl",           valueWDLOutputTensors },
         {"wdlq",          valueWDLQOutputTensors },
         {"policy",        policyOutputTensors },

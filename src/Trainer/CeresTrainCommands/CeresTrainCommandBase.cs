@@ -35,7 +35,7 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Training configuration to be used by commands.
     /// </summary>
-    public readonly ConfigTraining TrainingConfig;
+    public ConfigTraining TrainingConfig;
 
     /// <summary>
     /// Neural network model being used.
