@@ -25,6 +25,7 @@ using CeresTrain.TPG;
 using CeresTrain.Networks.Transformer;
 using TorchSharp;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
+using Ceres.Chess.EncodedPositions;
 
 
 #endregion
