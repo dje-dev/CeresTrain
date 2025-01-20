@@ -13,8 +13,10 @@
 
 #region Using directives
 
+using System.Collections;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
-
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 using CeresTrain.PositionGenerators;
 
 #endregion
@@ -30,7 +32,8 @@ namespace CeresTrain.Trainer
     {
       PreprocessedFromTAR,
       DirectFromTPG,
-      DirectFromPositionGenerator
+      DirectFromPositionGenerator,
+      DirectFromTPGFixedSet,
     }
 
 
@@ -70,6 +73,12 @@ namespace CeresTrain.Trainer
     public readonly DataSourceType SourceType { get; init; } = DataSourceType.DirectFromPositionGenerator;
 
     /// <summary>
+    /// List of TPG records to be used for training 
+    /// (if SourceType is TPGFixedSet).
+    /// </summary>
+    public readonly IList<TPGRecord> TPGFixedSet { get; init; }
+
+    /// <summary>
     /// The generator function used when SourceType == DirectFromPositionGenerator.
     /// </summary>
     [JsonIgnore]
@@ -91,9 +100,9 @@ namespace CeresTrain.Trainer
     /// Number of positions to skip between selected training positions 
     /// when generating TPG data from TAR files.
     /// Note that consecutively selected positions are typically spread 
-    /// across multiple processor threads and sent to different target files, ehancing shuffling).
+    /// across multiple processor threads and sent to different target files, enhancing shuffling).
     /// </summary>
-    public readonly int TARPositionSkipCount { get; init; } = 20;
+    public readonly int TARPositionSkipCount { get; init; } = 30;
 
     /// <summary>
     /// Fraction of the WDL (value) targets that are taken from the Q (search at root).

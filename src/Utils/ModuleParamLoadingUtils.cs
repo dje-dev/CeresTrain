@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using static TorchSharp.torch;
 using TorchSharp.Modules;
 using CeresTrain.Networks.MiscModules;
+using static TorchSharp.torch.nn;
 
 #endregion
 
@@ -54,8 +55,9 @@ namespace CeresTrain.Utils
     /// <param name="linear"></param>
     /// <param name="weightsName"></param>
     /// <param name="biasesName"></param>
-    public static void LinearLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, Linear linear, string weightsName, string biasesName)
+    public static void LinearLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, Module<Tensor,Tensor> linearModule, string weightsName, string biasesName)
     {
+      Linear linear = linearModule as Linear;
       Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(linear.weight.device).to(linear.weight.dtype);
       //Console.WriteLine(weightsName + " " + weightsNew.shape[0] + " " + weightsNew.shape[1] + "  Linear: " + linear.weight.shape[0] + " " + linear.weight.shape[1]);
       CheckSizesSame(weightsName, linear.weight, weightsNew);

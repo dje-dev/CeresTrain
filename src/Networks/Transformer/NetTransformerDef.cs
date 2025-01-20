@@ -213,6 +213,13 @@ namespace CeresTrain.Networks.Transformer
     public readonly int NumHeads { get; init; } = 8;
 
     /// <summary>
+    /// The divisor applied to width of Linear layers for LoRA adaptation
+    /// (default is zero to disable LoRA).
+    /// </summary>
+    public readonly int LoRARankDivisor { get; init; } = 0;
+
+
+    /// <summary>
     /// Type of dual attention (if any).
     /// </summary>
     public readonly DualAttentionModeType DualAttentionMode { get; init; } = DualAttentionModeType.None;

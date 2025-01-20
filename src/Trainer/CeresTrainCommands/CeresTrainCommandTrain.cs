@@ -31,6 +31,11 @@ using static TorchSharp.torch.utils.data;
 
 using Ceres.Base.Benchmarking;
 using Ceres.Base.DataTypes;
+using Ceres.Base.Math;
+
+using Ceres.Chess.Positions;
+using Ceres.Chess.NNEvaluators.Ceres;
+using Ceres.Chess.NetEvaluation.Batch;
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 using CeresTrain.NNEvaluators;
@@ -45,6 +50,7 @@ using CeresTrain.TPG.TPGGenerator;
 using CeresTrain.Networks.SoftMoE;
 
 using CeresTrain.TrainCommands;
+using CeresTrain.Networks.Transformer;
 
 #endregion
 
@@ -84,7 +90,6 @@ namespace CeresTrain.Trainer
     Tensor lossPolicyBatch;
     Tensor lossMLHBatch;
     Tensor lossUNCBatch;
-    Tensor lossUNCPolicy;
 
     Tensor lossValue2Batch;
     Tensor lossValueDBatch;
@@ -109,6 +114,7 @@ namespace CeresTrain.Trainer
     CeresTrainerMonitor monitor;
 
     int numBatchesProcessed;
+
 
     public CeresTrainCommandTrain(in ConfigTraining config, string description, TrainingStatusTable statusTable) : base(in config)
     {
@@ -317,6 +323,28 @@ namespace CeresTrain.Trainer
 
             scheduler?.step();
             optimizer.step();
+
+            if (TEST_EVAL_FROM_CSHARP)
+            {
+              Console.WriteLine();
+              Console.WriteLine();
+              DumpTestEvalStats();
+            }
+
+#if NOT
+              foreach ((string name, Parameter param) in model.named_parameters())
+              {
+                if (param.requires_grad && param.grad is not null)
+                {
+                  float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                  float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                  Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
+                  break;
+                }
+              }
+#endif
+
+
             optimizer.zero_grad();
           }
 
@@ -420,6 +448,13 @@ namespace CeresTrain.Trainer
         Model.load(TrainingConfig.OptConfig.CheckpointResumeFromFileName);
       }
 
+      if (TEST_EVAL_FROM_CSHARP)
+      {
+        evaluatorCeres = new(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, Model,
+                             TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType, true, false,
+                             options: new NNEvaluatorOptionsCeres());
+        Console.WriteLine("baseline eval: " + evaluatorCeres.Evaluate(Ceres.Chess.Position.StartPosition));
+      }
 
       // Set up validation evaluator and buffer.
       // Create new evaluator from this model (note that never set to FP16).
@@ -462,9 +497,15 @@ namespace CeresTrain.Trainer
       Dataset tpgDataset;
       switch (TrainingConfig.DataConfig.SourceType)
       {
+        case ConfigData.DataSourceType.DirectFromTPGFixedSet:
         case ConfigData.DataSourceType.PreprocessedFromTAR:
         case ConfigData.DataSourceType.DirectFromTPG:
           {
+
+            // Using larger parallelism will:
+            //   - improve shuffling of data seen by neural network while training
+            //   - require more GPU memory
+            int NUM_PARALLEL_DATASET = 4;
 
             IEnumerator<TPGRecord[]> enumerator = null;
             if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.PreprocessedFromTAR)
@@ -480,11 +521,11 @@ namespace CeresTrain.Trainer
                                                                                              verbose: true,
                                                                                              skipCount: skipCount);
             }
-
-            // Using larger parallelism will:
-            //   - improve shuffling of data seen by neural network while training
-            //   - require more GPU memory
-            int NUM_PARALLEL_DATASET = 4;
+            else if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.DirectFromTPGFixedSet)
+            {
+              NUM_PARALLEL_DATASET = 1;
+              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSet, 128, 4).GetEnumerator();
+            }
 
             //TPGTorchDatasetCombo tpgDataset = new (TPGRecord.NUM_SQUARES, TPG_DIR, 0, 0, NetConfig.FractionQ, device, NetConfig.BATCH_SIZE, enumerator);
             tpgDataset = new TorchDatasetFromTPG(TrainingConfig.DataConfig.TrainingFilesDirectory, TrainingConfig.DataConfig.FractionQ,
@@ -683,6 +724,10 @@ namespace CeresTrain.Trainer
           {
             noDecay.Add(fullParamName);
           }
+          else if (fullParamName.ToLower().Contains("lora"))
+          {
+            noDecay.Add(fullParamName);
+          }
           else if (paramName.ToLower().EndsWith("bias"))
           {
             noDecay.Add(fullParamName);
@@ -721,6 +766,7 @@ namespace CeresTrain.Trainer
       return [pgNoWD, pgWD];
     }
 
+
     public void Dispose()
     {
       Model.Dispose();
@@ -735,6 +781,7 @@ namespace CeresTrain.Trainer
       qDeviationUpperTarget?.Dispose();
       lossValueBatch?.Dispose();
       lossPolicyBatch?.Dispose();
+      lossUNCPolicyBatch?.Dispose();  
       lossMLHBatch?.Dispose();
       lossUNCBatch?.Dispose();
       lossValue2Batch?.Dispose();
@@ -743,6 +790,44 @@ namespace CeresTrain.Trainer
       lossTotal?.Dispose();
     }
 
+
+    #region Training Monitoring
+
+    /// <summary>
+    /// Experimental code for monitoring progress while training via NNEvaluator.
+    /// </summary>
+    const bool TEST_EVAL_FROM_CSHARP = false;
+    NNEvaluatorTorchsharp evaluatorCeres = null;
+    public static PositionWithHistory TEST_PWH;
+
+
+    public void DumpTestEvalStats()
+    {
+      List<float> qBaseline = new();
+      List<float> qLoRA = new();
+      List<float> qTPG = new();
+      foreach (TPGRecord tpg in TrainingConfig.DataConfig.TPGFixedSet)
+      {
+        Console.WriteLine();
+        Console.WriteLine(tpg.SearchQ + " " + tpg.PolicyVector + " " + tpg.FinalPosition.FEN);
+        NetTransformer transformer = (NetTransformer)Model;
+        transformer.LoRAEnabled = false;
+        NNEvaluatorResult resultBaseline = evaluatorCeres.Evaluate(tpg.ToPositionWithHistory());
+        transformer.LoRAEnabled = true;
+        NNEvaluatorResult lora = evaluatorCeres.Evaluate(tpg.ToPositionWithHistory());
+        Console.WriteLine("Baseline : " + resultBaseline);
+        Console.WriteLine("Ceres    : " + lora);
+
+        qBaseline.Add(resultBaseline.V);
+        qLoRA.Add(lora.V);
+        qTPG.Add(tpg.SearchQ);
+      }
+      Console.WriteLine(StatUtils.RankCorrelation(qTPG.ToArray(), qBaseline.ToArray()) + " --> " +
+                        StatUtils.RankCorrelation(qTPG.ToArray(), qLoRA.ToArray()));
+      Console.WriteLine();
+    }
+
+    #endregion
 
   }
 }

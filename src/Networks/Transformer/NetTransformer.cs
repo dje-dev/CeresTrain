@@ -27,12 +27,12 @@ using TorchSharp.Modules;
 
 using Ceres.Base.Misc;
 using Ceres.Base.DataTypes;
+using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.Trainer;
-using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
 
@@ -49,6 +49,8 @@ namespace CeresTrain.Networks.Transformer
 
     public NetTransformerDef TransformerConfig;
     public ConfigNetExecution ExecutionConfig;
+
+    public bool LoRAEnabled;
 
     public ParameterStats ParameterStats => new(this);
 
@@ -192,7 +194,9 @@ namespace CeresTrain.Networks.Transformer
                                                 0, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
                                                 TransformerConfig.SmolgenDimPerSquare, TransformerConfig.SmolgenDim,
                                                 TransformerConfig.SmolgenToHeadDivisor, TransformerConfig.SmolgenActivationType,
-                                                TransformerConfig.SoftMoEConfig, ExecutionConfig.MonitorActivationStats, ref smLinearShared);
+                                                TransformerConfig.SoftMoEConfig, ExecutionConfig.MonitorActivationStats, ref smLinearShared,
+                                                TransformerConfig.LoRARankDivisor,
+                                                () => LoRAEnabled);
           teCS = teCS.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
           if (paramsToLoad != null)
           {
@@ -399,6 +403,41 @@ namespace CeresTrain.Networks.Transformer
           monitor?.SetSupplementalLayerStat($"encoder_layer_{i}", ExecutionConfig.SupplementaryStat);
         }
       }
+
+      if (TransformerConfig.LoRARankDivisor > 0)
+      {
+        PrepareForLoRATraining();
+      }
+    }
+
+
+
+    /// <summary>
+    /// Prepare for LoRA training by freezing all parameters except those with "lora" in their name.
+    /// </summary>
+    void PrepareForLoRATraining()
+    {
+      ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Wrapping for LoRA training (all other parameters frozen");
+
+      TorchSharpUtils.FreezeLayers(this, l=>true, false);
+
+      long numNotFrozenParams = 0;
+      long nunNotFrozenLayers = 0;
+      foreach (var (name, param) in this.named_parameters())
+      {
+        if (name.ToUpper().Contains("LORA"))
+        {
+          param.requires_grad = true;
+          numNotFrozenParams += param.numel();
+          nunNotFrozenLayers++;
+          Console.WriteLine("  not frozen: " + name);
+        }        
+      }
+
+      Console.WriteLine("Total number of non-frozen layers/parameters:  " + nunNotFrozenLayers + "/" +  numNotFrozenParams);
+      Console.WriteLine();
+
+      LoRAEnabled = true;
     }
 
 

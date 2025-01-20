@@ -56,11 +56,12 @@ namespace CeresTrain.TPGDatasets
                                int countParallel = 3)
     {
       // Throw if tpgDirectory does not exist
-      if (!System.IO.Directory.Exists(tpgOrTARSourceDirectory))
+      if (tpgOrTARSourceDirectory != null && !System.IO.Directory.Exists(tpgOrTARSourceDirectory))
       {
         throw new System.IO.DirectoryNotFoundException($"Directory {tpgOrTARSourceDirectory} does not exist");
       }
 
+#if NOT
       int numSourceFiles = overrideRecordEnumerator == null ? System.IO.Directory.GetFiles(tpgOrTARSourceDirectory, "*.zst").Length 
                                                             : System.IO.Directory.GetFiles(tpgOrTARSourceDirectory, "*.tar").Length;
       // Verify that there are some files in the directory.
@@ -78,6 +79,7 @@ namespace CeresTrain.TPGDatasets
       {
         countParallel = numSourceFiles / 2;
       }
+#endif
 
  countParallel = 1; // Dataset can't be parallelized due to CUDA overlap operations (?)
 

@@ -37,7 +37,8 @@ namespace CeresTrain.Networks.Transformer
   /// <summary>
   /// Encoder layer used in CeresTransformerEncoder.
   /// </summary>
-  public class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>, IModuleReceivesMonitoringStatusInfo
+  public class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>,
+                                            IModuleReceivesMonitoringStatusInfo                                             
   {
     /// <summary>
     /// Epsilon used for normalization. 
@@ -153,6 +154,11 @@ namespace CeresTrain.Networks.Transformer
       set;
     }
 
+    public readonly int LoRARankDivisor;
+
+    public Func<bool> LoRAEnabledFunc;
+
+
     public readonly float SoftCapCutoff;
     public readonly bool MonitorMoEActivationStats;
 
@@ -160,14 +166,14 @@ namespace CeresTrain.Networks.Transformer
     Linear attentionOutput;
 
     Module<Tensor, Tensor> qkvLN;
-    Linear q2, k2, v2;
+    Module<Tensor, Tensor> q2, k2, v2;
 
     Linear attentionQKVDual;
     Linear attentionOutputDual;
 
-    Linear mlpLinear1;
-    Linear mlpLinear2;
-    Linear mlpLinear3;
+    Module<Tensor, Tensor> mlpLinear1;
+    Module<Tensor, Tensor> mlpLinear2;
+    Module<Tensor, Tensor> mlpLinear3;
 
     Linear mlpLinearDual1;
     Linear mlpLinearDual2;
@@ -229,7 +235,10 @@ namespace CeresTrain.Networks.Transformer
                                       bool monitorCosineSimilarity,
                                       int smolgenPerSquareDim, int smolgenIntermediateDim, 
                                       int smolgenToHeadDivisor, NetTransformerDef.ActivationType smolgenActivation,  
-                                      SoftMoEParams softMoEParams, bool monitorMoEActivationStats, ref Linear smLinearShared)
+                                      SoftMoEParams softMoEParams, bool monitorMoEActivationStats, 
+                                      ref Linear smLinearShared,
+                                      int loraRankDivisor,
+                                      Func<bool> loRAEnabledFunc)
       : base($"transformer_layer.{layerNum}")
     {
       if (dim % numHeads != 0)
@@ -241,6 +250,7 @@ namespace CeresTrain.Networks.Transformer
       LayerNum = layerNum;
       DimModel = dim;
       NumHeads = numHeads;
+      LoRAEnabledFunc = loRAEnabledFunc;
 
       Alpha = alpha;
       FFNMult = ffnMult;
@@ -261,6 +271,8 @@ namespace CeresTrain.Networks.Transformer
       SmolgenActivation = smolgenActivation;
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
+      LoRARankDivisor = loraRankDivisor;
+
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
 
       if (NonLinearAttention)
@@ -272,7 +284,11 @@ namespace CeresTrain.Networks.Transformer
         qkvLN = new RMSNorm(dim, NORM_EPS);
 
         q2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+        q2 = LoRALinear.PossiblyLoRAWrappedModule(q2, loraRankDivisor, () => LoRAEnabledFunc());
+
         k2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+        k2 = LoRALinear.PossiblyLoRAWrappedModule(k2, loraRankDivisor, () => LoRAEnabledFunc());
+
         v2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
       }
 
@@ -305,17 +321,21 @@ namespace CeresTrain.Networks.Transformer
       if (!useSoftMoE || softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
         mlpLinear1 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
+        mlpLinear1 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear1, loraRankDivisor, () => LoRAEnabledFunc());
+
       }
 
       if (!useSoftMoE || softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear &&
                           softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinearSecondLayer)
       {
         mlpLinear2 = Linear(dim * ffnMult, dim, hasBias: USE_FFN_BIAS);
+        mlpLinear2 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear2, loraRankDivisor, () => LoRAEnabledFunc());
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
       {
         mlpLinear3 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
+        // TODO: possibly apply LoRA here?
       }
 
       norm1 = MakeNormalizationLayer(DimModel);
@@ -644,7 +664,6 @@ namespace CeresTrain.Networks.Transformer
         qkv = torch.nn.functional.Mish(qkv);
         Tensor[] unboundQKV = torch.unbind(qkv, dim: -2);
         (attentionQ, attentionK, attentionV)  = (unboundQKV[0], unboundQKV[1], unboundQKV[2]);
-//Console.WriteLine(TorchSharpUtils.ShapeStr(attentionQ.shape));
         attentionQ = q2.call(attentionQ).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
         attentionK = k2.call(attentionK).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
         attentionV = v2.call(attentionV).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
@@ -799,29 +818,34 @@ namespace CeresTrain.Networks.Transformer
       LinearLoad(weightsSource, weightsLoaded, attentionQKV, $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
       LinearLoad(weightsSource, weightsLoaded, attentionOutput, $"transformer_layer.{LayerNum}.attention.W_h.weight", $"transformer_layer.{LayerNum}.attention.W_h.bias");
 
+      static Module<Tensor, Tensor> BaseLinear(Module<Tensor,Tensor> module)
+      {
+        return (module is Linear) ? module : (module as LoRALinear).WrapppedLinear;
+      }
+
       if (NonLinearAttention)
       {
         RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)qkvLN, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
-        LinearLoad(weightsSource, weightsLoaded, q2, $"transformer_layer.{LayerNum}.attention.q2.weight", null);
-        LinearLoad(weightsSource, weightsLoaded, k2, $"transformer_layer.{LayerNum}.attention.k2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, BaseLinear(q2), $"transformer_layer.{LayerNum}.attention.q2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, BaseLinear(k2), $"transformer_layer.{LayerNum}.attention.k2.weight", null);
         LinearLoad(weightsSource, weightsLoaded, v2, $"transformer_layer.{LayerNum}.attention.v2.weight", null);
       }
 
       if (SoftMoEParams.NumExperts == 0 || SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
-        LinearLoad(weightsSource, weightsLoaded, mlpLinear1, $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
+        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear1), $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
       {
-        LinearLoad(weightsSource, weightsLoaded, mlpLinear3, $"transformer_layer.{LayerNum}.mlp.linear3.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear3), $"transformer_layer.{LayerNum}.mlp.linear3.weight", null);
       }
 
       if (SoftMoEParams.NumExperts == 0
       || (SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinearSecondLayer
        && SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear))
       {
-        LinearLoad(weightsSource, weightsLoaded, mlpLinear2, $"transformer_layer.{LayerNum}.mlp.linear2.weight", $"transformer_layer.{LayerNum}.mlp.linear2.bias");
+        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear2), $"transformer_layer.{LayerNum}.mlp.linear2.weight", $"transformer_layer.{LayerNum}.mlp.linear2.bias");
       }
 
       if (NormType == NetTransformerDef.NormalizationType.LayerNorm)
