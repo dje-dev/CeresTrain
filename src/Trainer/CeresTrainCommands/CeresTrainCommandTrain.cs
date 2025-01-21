@@ -441,8 +441,6 @@ namespace CeresTrain.Trainer
         //        model = model.to(device, TrainingConfig.TransformerConfig.DataType);
       }
 
-      //new ModelLinearCeres("model", device, NetConfig.INCLUDE_POLICY);
-
       if (TrainingConfig.OptConfig.CheckpointResumeFromFileName != null)
       {
         Model.load(TrainingConfig.OptConfig.CheckpointResumeFromFileName);
@@ -481,7 +479,7 @@ namespace CeresTrain.Trainer
                                             0, 0  /* TODO: actionLossRunning*/);
 
       tpgDataset.Dispose();
-      Dispose();
+//      Dispose();
 
       return new TrainingResultSummary(Environment.MachineName, Environment.MachineName, TrainingConfig.ExecConfig.ID,
                                        DateTime.Now, "SUCCESS", NumParameters, DateTime.Now - timeStartTraining,
@@ -524,7 +522,7 @@ namespace CeresTrain.Trainer
             else if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.DirectFromTPGFixedSet)
             {
               NUM_PARALLEL_DATASET = 1;
-              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSet, 128, 4).GetEnumerator();
+              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSet, TrainingConfig.OptConfig.BatchSizeForwardPass).GetEnumerator();
             }
 
             //TPGTorchDatasetCombo tpgDataset = new (TPGRecord.NUM_SQUARES, TPG_DIR, 0, 0, NetConfig.FractionQ, device, NetConfig.BATCH_SIZE, enumerator);
@@ -549,14 +547,13 @@ namespace CeresTrain.Trainer
       return tpgDataset;
     }
 
-    const float WARMUP_LR_SCALING = 0.10f;
 
     public AdamW.Options AdamWOptionsWithWD(float wd)
     {
       return new AdamW.Options()
       {
         LearningRate = TrainingConfig.OptConfig.LearningRateBase,
-        InitialLearningRate = TrainingConfig.OptConfig.LearningRateBase * WARMUP_LR_SCALING,
+        InitialLearningRate = TrainingConfig.OptConfig.LearningRateBase * TrainingConfig.OptConfig.LRWarmupPhaseMultiplier,
         weight_decay = wd,
         beta1 = TrainingConfig.OptConfig.Beta1,
         beta2 = TrainingConfig.OptConfig.Beta2
@@ -582,8 +579,13 @@ namespace CeresTrain.Trainer
 
       if (TrainingConfig.OptConfig.Optimizer == OptimizerType.SGD)
       {
-        // N.B. Not yet implemented is per-parameter weight decay, etc.
-        optimizer = SGD(model.parameters(), TrainingConfig.OptConfig.LearningRateBase, weight_decay: TrainingConfig.OptConfig.WeightDecay);
+        // TODO: Not yet implemented is per-parameter weight decay, etc.
+        //       Settings (such as momentum) probably not synced up with PyTorch implementation.
+        optimizer = SGD(model.parameters(), 
+                        TrainingConfig.OptConfig.LearningRateBase,
+//                        momentum: 0.9, 
+//                        nesterov: true,
+                        weight_decay: TrainingConfig.OptConfig.WeightDecay);
       }
       else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.AdamW)
       {
@@ -592,7 +594,7 @@ namespace CeresTrain.Trainer
       }
       else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.NAdamW)
       {
-        // TODO: Retrun NAdam after TorchSharp bug noted here is fixed: https://github.com/dotnet/TorchSharp/pull/1155
+        // TODO: Rerun NAdam after TorchSharp bug noted here is fixed: https://github.com/dotnet/TorchSharp/pull/1155
         // This looked very promising. But doesn't seem work with weight decay, need "NadamW" ?
         // Also try this PyTorch version of NadamW. Note that it flags one line in the code which
         // is the difference from the official PyTorch version. It may be best
@@ -631,7 +633,7 @@ namespace CeresTrain.Trainer
                                      if (numPositionsReadFromTraining < 20_000_000 && (fractionComplete < 0.02 
                                                                                   || numPositionsReadFromTraining < 500_000))
                                      {
-                                       lrScale = WARMUP_LR_SCALING;
+                                       lrScale = TrainingConfig.OptConfig.LRWarmupPhaseMultiplier;
                                      }
                                      else if (fractionComplete < FRAC_START_DECAY)
                                      {
