@@ -115,7 +115,7 @@ namespace CeresTrain.Networks.MiscModules
 
       // Compute the LoRA update and scale it by alpha/sqrt(r)
       // (see "A Rank Stabilization Scaling Factor for Fine-Tuning with LoRA" by Kalajdzievski)
-      float alpha = 0.1f * (Rank / MathF.Sqrt(Rank));
+      float alpha = (Rank / MathF.Sqrt(Rank));
       LoraAlpha = Parameter(tensor(alpha));  // Note that we make this trainable, different from most implementations
       LoraAlpha.name = "lora_Alpha_";
       LoraAlpha.requires_grad = true;

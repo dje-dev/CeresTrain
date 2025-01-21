@@ -274,6 +274,14 @@ namespace CeresTrain.Networks.Transformer
     public readonly bool NonLinearAttention { get; init; } = true;
 
     /// <summary>
+    /// Threshold for soft-capping the attention output (just prior to softmax).
+    /// NOTE:
+    ///   - this feature only used starting with introduction of NLA (found necessary for stability).
+    ///   - at inference time, often "nc" (no capping) versions of the ONNX are created with this turned off (0).
+    /// </summary>
+    public readonly int SoftCapThreshold { get; init; } = 100;
+
+    /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).
     /// NOTE: the deepnorm implementation may be incomplete (weight initialization possibly missing).
     /// See: "DeepNet: Scaling Transformers to 1,000 Layers" (2022) by Wang et. al. (https://arxiv.org/abs/2203.00555).

@@ -161,6 +161,12 @@ namespace CeresTrain.Trainer
     public readonly float LRBeginDecayAtFractionComplete { get; init; } = 0.6f;
 
     /// <summary>
+    /// Multiplier applied to learning rate base during the warmup phase.
+    /// TODO: Currently PyTorch version does not respect this, and uses a different warmup shape.
+    /// </summary>
+    public readonly float LRWarmupPhaseMultiplier { get; init; } = 0.1f;
+
+    /// <summary>
     /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
     /// </summary>
     public readonly float Beta1 { get; init; } = 0.90f;

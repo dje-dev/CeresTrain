@@ -183,7 +183,6 @@ namespace CeresTrain.Networks.Transformer
                       && paramsToLoad.ContainsKey($"transformer_layer.{layerNum}.attention2.qkv.weight"); // sometimes dual only present in certain layers, e.g. every other one
           NetTransformerDef.DualAttentionModeType dualMode = !hasDual ? NetTransformerDef.DualAttentionModeType.None : TransformerConfig.DualAttentionMode;
 
-          int SOFTCAP_CUTOFF = TransformerConfig.NonLinearAttention ? 100 : 0;
           NetTransformerLayerEncoder teCS = new(TransformerConfig.NumLayers, layerNum, TransformerConfig.ModelDim,
                                                 TransformerConfig.NumHeads,  TransformerConfig.PreNorm,
                                                 TransformerConfig.NormType, 
@@ -191,7 +190,7 @@ namespace CeresTrain.Networks.Transformer
                                                 TransformerConfig.NonLinearAttention,
                                                 TransformerConfig.FFNMultiplier, TransformerConfig.FFNActivationType,
                                                 alpha, ExecutionConfig.DropoutRate, ExecutionConfig.DropoutDuringInference,
-                                                0, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
+                                                TransformerConfig.SoftCapThreshold, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
                                                 TransformerConfig.SmolgenDimPerSquare, TransformerConfig.SmolgenDim,
                                                 TransformerConfig.SmolgenToHeadDivisor, TransformerConfig.SmolgenActivationType,
                                                 TransformerConfig.SoftMoEConfig, ExecutionConfig.MonitorActivationStats, ref smLinearShared,
@@ -253,7 +252,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head", TransformerConfig.ModelDim, 128, 1,
-                                                                TransformerConfig.HeadsActivationType, null, false);
+                                                               TransformerConfig.HeadsActivationType, null, false);
         layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
         if (paramsToLoad != null)
         {
@@ -423,14 +422,13 @@ namespace CeresTrain.Networks.Transformer
 
       long numNotFrozenParams = 0;
       long nunNotFrozenLayers = 0;
-      foreach (var (name, param) in this.named_parameters())
+      foreach ((string name, Parameter param) in this.named_parameters())
       {
         if (name.ToUpper().Contains("LORA"))
         {
           param.requires_grad = true;
           numNotFrozenParams += param.numel();
           nunNotFrozenLayers++;
-          Console.WriteLine("  not frozen: " + name);
         }        
       }
 
