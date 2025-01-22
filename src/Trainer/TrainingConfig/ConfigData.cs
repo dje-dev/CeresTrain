@@ -72,11 +72,26 @@ namespace CeresTrain.Trainer
     /// </summary>
     public readonly DataSourceType SourceType { get; init; } = DataSourceType.DirectFromPositionGenerator;
 
+    #region TPGFixedSet support 
+
     /// <summary>
-    /// List of TPG records to be used for training 
+    /// List of TPG records to be used for training (set 1)
     /// (if SourceType is TPGFixedSet).
     /// </summary>
-    public readonly IList<TPGRecord> TPGFixedSet { get; init; }
+    public readonly IList<TPGRecord> TPGFixedSetPrimary { get; init; }
+
+    /// <summary>
+    /// List of TPG records to be used for training (set 2)
+    /// (if SourceType is TPGFixedSet).
+    /// </summary>
+    public readonly IList<TPGRecord> TPGFixedSetSecondary { get; init; }
+
+    /// <summary>
+    /// Number of batches from TPGFixedSetPrimary to produce before yielding a batch from TPGFixedSetSecondary.
+    /// </summary>
+    public readonly int NumTPGFixedPrimarySetBatchesReturnedForEachSecondary { get; init; } = 0;
+
+    #endregion
 
     /// <summary>
     /// The generator function used when SourceType == DirectFromPositionGenerator.

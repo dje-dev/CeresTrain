@@ -63,7 +63,7 @@ namespace CeresTrain.Trainer
     CeresTransformer
   };
 
- 
+
 
   public partial class CeresTrainCommandTrain : CeresTrainCommandBase, IDisposable
   {
@@ -130,14 +130,17 @@ namespace CeresTrain.Trainer
     }
 
 
+
     private void Train(string modelTag,
-                       CeresNeuralNet model, Optimizer optimizer,
-                       Loss<Tensor, Tensor, Tensor> lossValue,
+                       CeresNeuralNet model,
+                       IModuleNNEvaluator anchorEvaluator,
+                       Optimizer optimizer,
                        Loss<Tensor, Tensor, Tensor> lossPolicy,
+                       Loss<Tensor, Tensor, Tensor> lossValue,
+                       Loss<Tensor, Tensor, Tensor> lossValue2,
                        Loss<Tensor, Tensor, Tensor> lossMLH,
                        Loss<Tensor, Tensor, Tensor> lossUNC,
                        Loss<Tensor, Tensor, Tensor> lossUNCPolicy,
-                       Loss<Tensor, Tensor, Tensor> lossValue2,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationLower,
                        Loss<Tensor, Tensor, Tensor> lossQDeviationUpper,
                        Loss<Tensor, Tensor, Tensor> lossValueD,
@@ -152,6 +155,15 @@ namespace CeresTrain.Trainer
       MaxPositions = maxPositions;
       predictionWinLoss = new float[OptimizationBatchSizeForward];
       numRead = 0;
+
+      // Make special versions of CrossEntropy losses for use only with the anchor evaluator
+      // because regular cross entropy expects probabilities on the right, but 
+      // the anchor probabilities will already be in logit space.
+      // TODO: This makes implicit assumption that these 3 losses passed into this function
+      //       are CrossEntropy. Instead rework to pass the following 3 into the function.
+      Loss<Tensor, Tensor, Tensor> lossPolicyTwoLogits = new CrossEntropyLossTwoLogits(false);
+      Loss<Tensor, Tensor, Tensor> lossValueTwoLogits = new CrossEntropyLossTwoLogits(false);
+      Loss<Tensor, Tensor, Tensor> lossValue2TwoLogits = new CrossEntropyLossTwoLogits(false);
 
       int batchSizeData = TrainingConfig.OptConfig.BatchSizeForwardPass;
       int batchSizeOptimization = TrainingConfig.OptConfig.BatchSizeBackwardPass;
@@ -182,13 +194,14 @@ namespace CeresTrain.Trainer
           Tensor inputSquares = batch["squares"].reshape(OptimizationBatchSizeForward, TPGRecord.NUM_SQUARES, TPGRecord.BYTES_PER_SQUARE_RECORD);
           mlhTarget = batch.ContainsKey("mlh") ? batch["mlh"].reshape(OptimizationBatchSizeForward, 1) : default;
           uncTarget = batch["unc"].reshape(OptimizationBatchSizeForward, 1);
-          uncPolicyTarget = batch["unc_policy"].reshape(OptimizationBatchSizeForward, 1); 
+          uncPolicyTarget = batch["unc_policy"].reshape(OptimizationBatchSizeForward, 1);
           valueTarget = batch["wdl"].reshape(OptimizationBatchSizeForward, 3);
           policyTarget = batch["policy"].reshape(OptimizationBatchSizeForward, 1858);
 
           value2Target = batch["wdl2"].reshape(OptimizationBatchSizeForward, 3);
           qDeviationLowerTarget = batch["q_deviation_lower"].reshape(OptimizationBatchSizeForward, 1);
           qDeviationUpperTarget = batch["q_deviation_upper"].reshape(OptimizationBatchSizeForward, 1);
+          bool isPrimaryBatch = batch.ContainsKey("is_primary");
 
           const bool RUN_INFERENCE_BENCHMARK = false;
           if (RUN_INFERENCE_BENCHMARK)
@@ -271,29 +284,63 @@ namespace CeresTrain.Trainer
           const float UNC_POLICY_LOSS_POST_SCALE = 10.0f;
           const float UNC_VALUE_LOSS_POST_SCALE = 150.0f;
 
+          // .......................................................
+          // TODO: have better way of identifying which to use anchor on than the modulus check here ******
+          bool USE_ANCHOR = anchorEvaluator != null && !isPrimaryBatch;
+          if (USE_ANCHOR)
+          {
+            (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
+             Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
+             Tensor uncertaintyPolicy, Tensor action, Tensor boardState, Tensor actionUncertainty,
+             FP16[] extraStats0, FP16[] extraStats1) anchorOutput = default;
+
+            anchorOutput = anchorEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+
+            valueTarget = anchorOutput.value;
+            policyTarget = where(legalMoves, anchorOutput.policy, illegalMaskValue); 
+            mlhTarget = anchorOutput.mlh;
+            uncTarget = anchorOutput.unc;
+            uncPolicyTarget = anchorOutput.uncertaintyPolicy;
+            value2Target = anchorOutput.value2;
+            qDeviationLowerTarget = anchorOutput.qDeviationLower;
+            qDeviationUpperTarget = anchorOutput.qDeviationUpper;
+          }
+          // .......................................................
+
+
           // TODO: Someday short circuit evaluation if weight is zero.
-          lossValueBatch = lossValue.call(value, valueTarget);
-          lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
+          if (USE_ANCHOR)
+          {
+            lossPolicyBatch = lossPolicyTwoLogits.call(maskedPolicyForLoss, policyTarget);
+            lossValueBatch = lossValueTwoLogits.call(value, valueTarget);
+            lossValue2Batch = lossValue2TwoLogits.call(value2, value2Target);
+          }
+          else
+          {
+            lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
+            lossValueBatch = lossValue.call(value, valueTarget);
+            lossValue2Batch = lossValue2.call(value2, value2Target);
+
+            // Subtract entropy from some of the losses
+            lossValueBatch = lossValueBatch - TorchSharpUtils.Entropy(valueTarget);
+            lossValue2Batch = lossValue2Batch - TorchSharpUtils.Entropy(value2Target);
+            lossPolicyBatch = lossPolicyBatch - TorchSharpUtils.Entropy(policyTarget);
+          }
+
           lossMLHBatch = (object)mlh == null ? zeros_like(unc) : lossMLH.call(mlh, mlhTarget) * MLH_LOSS_POST_SCALE;
           lossUNCBatch = lossUNC.call(unc, uncTarget) * UNC_VALUE_LOSS_POST_SCALE;
           lossUNCPolicyBatch = lossUNCPolicy.call(uncertaintyPolicy, uncPolicyTarget) * UNC_POLICY_LOSS_POST_SCALE;
-          lossValue2Batch = lossValue2.call(value2, value2Target);
 
-          // Subtract entropy from some of th losses
-          lossValueBatch = lossValueBatch - TorchSharpUtils.Entropy(valueTarget);
-          lossValue2Batch = lossValue2Batch - TorchSharpUtils.Entropy(value2Target);
-          lossPolicyBatch = lossPolicyBatch - TorchSharpUtils.Entropy(policyTarget);
-//          lossActionBatch = lossActionBatch - TorchSharpUtils.Entropy(actionTarget);
-
-
-          //          lossValueDBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
-          //          lossValue2DBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
+          // lossActionBatch = lossActionBatch - TorchSharpUtils.Entropy(actionTarget);
+          // lossValueDBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_SCALE;
+          // lossValue2DBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_SCALE;
 
           lossQDevLowerBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_POST_SCALE;
           lossQDevUpperBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_POST_SCALE;
 
           // lossAction2DBatch = lossAction.call()
-          lossTotal = lossPolicyBatch * TrainingConfig.OptConfig.LossPolicyMultiplier
+          lossTotal = 
+                      lossPolicyBatch * TrainingConfig.OptConfig.LossPolicyMultiplier
                     + lossValueBatch * TrainingConfig.OptConfig.LossValueMultiplier
                     + lossValue2Batch * TrainingConfig.OptConfig.LossValue2Multiplier
                     + lossUNCBatch * TrainingConfig.OptConfig.LossUNCMultiplier
@@ -304,13 +351,13 @@ namespace CeresTrain.Trainer
           if ((object)mlh is not null)
           {
             throw new NotImplementedException();
-//            +lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
+            //            +lossMLHBatch * TrainingConfig.OptConfig.LossMLHMultiplier
 
           }
           if (USE_4BOARD)
           {
             throw new Exception("Incomplete, need losses for others like lossValueDBatch, lossValue2DBatch");
-//            lossTotal = lossTotal + lossAction2DBatch * TrainingConfig.OptConfig.LossActionMultiplier;
+            //            lossTotal = lossTotal + lossAction2DBatch * TrainingConfig.OptConfig.LossActionMultiplier;
           }
 
           lossTotal.backward();
@@ -322,6 +369,25 @@ namespace CeresTrain.Trainer
             }
 
             scheduler?.step();
+
+            if (false)
+            foreach ((string name, Parameter param) in model.named_parameters())
+            {
+              if (param.requires_grad && param.grad is not null)
+              {
+                float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                bool gradsZero = grads.All(x => x == 0);
+                if (!gradsZero)
+                {
+                  Console.WriteLine(grads[0] + " grad found before optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
+                }
+                else
+                {
+                  Console.WriteLine("Grad zero " + name);
+                }  
+              }
+            }
+
             optimizer.step();
 
             if (TEST_EVAL_FROM_CSHARP)
@@ -331,19 +397,18 @@ namespace CeresTrain.Trainer
               DumpTestEvalStats();
             }
 
-#if NOT
-              foreach ((string name, Parameter param) in model.named_parameters())
+            int outCount = 0;
+            Console.WriteLine();
+            foreach ((string name, Parameter param) in model.named_parameters())
+            {
+              if (param.requires_grad && param.grad is not null)
               {
-                if (param.requires_grad && param.grad is not null)
-                {
-                  float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                  float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                  Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
-                  break;
-                }
+                float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
+                if (outCount++ > 10) break;
               }
-#endif
-
+            }
 
             optimizer.zero_grad();
           }
@@ -421,7 +486,7 @@ namespace CeresTrain.Trainer
 
 
 
-    public TrainingResultSummary DoTrain(string trainingSessionDescription)
+    public TrainingResultSummary DoTrain(string trainingSessionDescription, IModuleNNEvaluator anchorEvaluator = null)
     {
       PrepareTrainer();
 
@@ -463,14 +528,14 @@ namespace CeresTrain.Trainer
 
       using (DataLoader dataLoader = new DataLoader(tpgDataset, 1, device: TrainingConfig.ExecConfig.Device))
       {
-        TrainingLoop(TrainingConfig.ExecConfig.ID, Model,
-                     TrainingConfig.OptConfig.CheckpointResumeFromFileName, 
+        TrainingLoop(TrainingConfig.ExecConfig.ID, Model, anchorEvaluator,
+                     TrainingConfig.OptConfig.CheckpointResumeFromFileName,
                      0, // unknown StartingCheckpointLastPosNum,
                      dataLoader, tpgDataset, trainingSessionDescription);
         // TODO: tpgDataset should be a  member of class, not passed explicitly
       }
 
-      TrainingLossSummary lossSummary = new(thisLossAdjRunning, lossValueAdjRunning, valueAccAdjRunning, 
+      TrainingLossSummary lossSummary = new(thisLossAdjRunning, lossValueAdjRunning, valueAccAdjRunning,
                                             lossPolicyAdjRunning, policyAccAdjRunning,
                                             lossMLHAdjRunning, lossUNCAdjRunning,
                                             lossValue2AdjRunning,
@@ -479,12 +544,21 @@ namespace CeresTrain.Trainer
                                             0, 0  /* TODO: actionLossRunning*/);
 
       tpgDataset.Dispose();
-//      Dispose();
+      //      Dispose();
 
       return new TrainingResultSummary(Environment.MachineName, Environment.MachineName, TrainingConfig.ExecConfig.ID,
                                        DateTime.Now, "SUCCESS", NumParameters, DateTime.Now - timeStartTraining,
                                        numPositionsReadFromTraining, lossSummary, null,
                                        SaveNetFileName(false, false), SaveNetFileName(true, false));
+    }
+
+
+    public static IEnumerator<(TPGRecord[], bool)> EnumeratorAddTrue(IEnumerator<TPGRecord[]> source)
+    {
+      while (source.MoveNext())
+      {
+        yield return (source.Current, true);
+      }
     }
 
 
@@ -505,12 +579,12 @@ namespace CeresTrain.Trainer
             //   - require more GPU memory
             int NUM_PARALLEL_DATASET = 4;
 
-            IEnumerator<TPGRecord[]> enumerator = null;
+            IEnumerator<(TPGRecord[], bool)> enumerator = null;
             if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.PreprocessedFromTAR)
             {
               TPGGeneratorOptions.DeblunderType DEBLUNDER_TYPE = TPGGeneratorOptions.DeblunderType.PositionQ;
 
-              enumerator = TPGTorchDatasetComboHelpers.GeneratorTPGRecordsViaGeneratorFromV6(TrainingConfig.DataConfig.TrainingFilesDirectory, null,
+              IEnumerator<TPGRecord[]> enumeratorBase = TPGTorchDatasetComboHelpers.GeneratorTPGRecordsViaGeneratorFromV6(TrainingConfig.DataConfig.TrainingFilesDirectory, null,
                                                                                              long.MaxValue, TrainingConfig.OptConfig.BatchSizeForwardPass,
                                                                                              DEBLUNDER_TYPE,
                                                                                              allowFilterOutRepeatedPositions: false,
@@ -518,11 +592,15 @@ namespace CeresTrain.Trainer
                                                                                              partiallyFilterObviousDrawsAndWins: false,
                                                                                              verbose: true,
                                                                                              skipCount: skipCount);
+              enumerator = EnumeratorAddTrue(enumeratorBase);
             }
             else if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.DirectFromTPGFixedSet)
             {
-              NUM_PARALLEL_DATASET = 1;
-              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSet, TrainingConfig.OptConfig.BatchSizeForwardPass).GetEnumerator();
+              NUM_PARALLEL_DATASET = 1; // parallelism probably not properly supported by TPGRecordBatchProvider
+              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSetPrimary, TrainingConfig.DataConfig.TPGFixedSetSecondary,
+                                                      TrainingConfig.OptConfig.BatchSizeForwardPass,
+                                                      TrainingConfig.DataConfig.NumTPGFixedPrimarySetBatchesReturnedForEachSecondary
+                                                      ).GetEnumerator();
             }
 
             //TPGTorchDatasetCombo tpgDataset = new (TPGRecord.NUM_SQUARES, TPG_DIR, 0, 0, NetConfig.FractionQ, device, NetConfig.BATCH_SIZE, enumerator);
@@ -562,8 +640,8 @@ namespace CeresTrain.Trainer
 
     long numPositionsReadFromTraining = 0;
 
-    
-    internal void TrainingLoop(string tag, CeresNeuralNet model,
+
+    internal void TrainingLoop(string tag, CeresNeuralNet model, IModuleNNEvaluator anchorEvaluator,
                                string startingCheckpointFN, long startingCheckpointLastNumPos,
                                DataLoader train, Dataset tpgDataset,
                                string trainingSessionDescription)
@@ -581,10 +659,10 @@ namespace CeresTrain.Trainer
       {
         // TODO: Not yet implemented is per-parameter weight decay, etc.
         //       Settings (such as momentum) probably not synced up with PyTorch implementation.
-        optimizer = SGD(model.parameters(), 
+        optimizer = SGD(model.parameters(),
                         TrainingConfig.OptConfig.LearningRateBase,
-//                        momentum: 0.9, 
-//                        nesterov: true,
+                        //                        momentum: 0.9, 
+                        //                        nesterov: true,
                         weight_decay: TrainingConfig.OptConfig.WeightDecay);
       }
       else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.AdamW)
@@ -613,13 +691,14 @@ namespace CeresTrain.Trainer
         throw new NotImplementedException(TrainingConfig.OptConfig.Optimizer.ToString());
       }
 
+
       if (startingCheckpointFN != null)
       {
         throw new NotImplementedException("Restore from checkpoint not yet implemented in C# backend (especially reloading optimizer)");
         Console.WriteLine("Loading model weights " + startingCheckpointFN);
         model.load(startingCheckpointFN);//
-//        optimizer.load(startingCheckpointFN.Replace("_model", "_opt"));
-//        currentPosNum = startingCheckpointLastNumPos;
+                                         //        optimizer.load(startingCheckpointFN.Replace("_model", "_opt"));
+                                         //        currentPosNum = startingCheckpointLastNumPos;
       }
 
 
@@ -630,7 +709,7 @@ namespace CeresTrain.Trainer
                                      float FRAC_START_DECAY = TrainingConfig.OptConfig.LRBeginDecayAtFractionComplete;
 
                                      float lrScale;
-                                     if (numPositionsReadFromTraining < 20_000_000 && (fractionComplete < 0.02 
+                                     if (numPositionsReadFromTraining < 20_000_000 && (fractionComplete < 0.02
                                                                                   || numPositionsReadFromTraining < 500_000))
                                      {
                                        lrScale = TrainingConfig.OptConfig.LRWarmupPhaseMultiplier;
@@ -662,9 +741,9 @@ namespace CeresTrain.Trainer
 
       HuberLoss mlhLoss = new(0.5f, Reduction.Mean);
       HuberLoss uncLoss = new(0.5f, Reduction.Mean);
-      MSELoss uncPolicyLoss = new ();
-      MSELoss qDeviationLowerLoss = new ();
-      MSELoss qDeviationUpperLoss = new ();
+      MSELoss uncPolicyLoss = new();
+      MSELoss qDeviationLowerLoss = new();
+      MSELoss qDeviationUpperLoss = new();
 
       CeresTrainInitialization.PrepareToUseDevice(TrainingConfig.ExecConfig.Device);
 
@@ -672,12 +751,13 @@ namespace CeresTrain.Trainer
       {
         scheduler.step();
 
-        consoleStatusTable = new (TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions, false);
+        consoleStatusTable = new(TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions, false);
 
         consoleStatusTable.RunTraining(
-          () => Train(TrainingConfig.ExecConfig.ID, model, optimizer, valueLoss,
-                      policyLoss, mlhLoss, uncLoss, uncPolicyLoss,
-                      value2Loss, qDeviationLowerLoss, qDeviationUpperLoss,
+          () => Train(TrainingConfig.ExecConfig.ID, model, anchorEvaluator, optimizer, 
+                      policyLoss, valueLoss, value2Loss,
+                      mlhLoss, uncLoss, uncPolicyLoss,
+                      qDeviationLowerLoss, qDeviationUpperLoss,
                       null, null, // TO DO: Fill in value difference tensors
                       train,
                       tpgDataset, scheduler, tbWriter,
@@ -762,9 +842,9 @@ namespace CeresTrain.Trainer
       AdamW.ParamGroup pgWD = new(decay.Select(pn => paramDict[pn]), AdamWOptionsWithWD(TrainingConfig.OptConfig.WeightDecay));
       AdamW.ParamGroup pgNoWD = new(noDecay.Select(pn => paramDict[pn]), AdamWOptionsWithWD(0));
 
-//      Console.WriteLine("Partitioned parameters into decay/no_decay sets:");
-//      Console.WriteLine($"  decay: {pgWD.Parameters.Count()}");
-//      Console.WriteLine($"  no_decay: {pgNoWD.Parameters.Count()}");
+      //      Console.WriteLine("Partitioned parameters into decay/no_decay sets:");
+      //      Console.WriteLine($"  decay: {pgWD.Parameters.Count()}");
+      //      Console.WriteLine($"  no_decay: {pgNoWD.Parameters.Count()}");
       return [pgNoWD, pgWD];
     }
 
@@ -783,7 +863,7 @@ namespace CeresTrain.Trainer
       qDeviationUpperTarget?.Dispose();
       lossValueBatch?.Dispose();
       lossPolicyBatch?.Dispose();
-      lossUNCPolicyBatch?.Dispose();  
+      lossUNCPolicyBatch?.Dispose();
       lossMLHBatch?.Dispose();
       lossUNCBatch?.Dispose();
       lossValue2Batch?.Dispose();
@@ -808,7 +888,7 @@ namespace CeresTrain.Trainer
       List<float> qBaseline = new();
       List<float> qLoRA = new();
       List<float> qTPG = new();
-      foreach (TPGRecord tpg in TrainingConfig.DataConfig.TPGFixedSet)
+      foreach (TPGRecord tpg in TrainingConfig.DataConfig.TPGFixedSetPrimary)
       {
         Console.WriteLine();
         Console.WriteLine(tpg.SearchQ + " " + tpg.PolicyVector + " " + tpg.FinalPosition.FEN);
@@ -831,5 +911,72 @@ namespace CeresTrain.Trainer
 
     #endregion
 
+    /// <summary>
+    /// Computes cross-entropy between two distributions, each specified by logits.
+    /// The shapes of logitsLeft and logitsRight should match, e.g. [batchSize, numClasses].
+    /// Returns a scalar Tensor (the mean cross-entropy over the batch).
+    /// </summary>
+    public static Tensor CrossEntropyTwoLogits(Tensor inputs, Tensor targets)
+    {
+      // 1) Convert "left" logits to probabilities via softmax
+      Tensor pLeft = softmax(inputs, dim: -1);
+
+      // 2) Convert "right" logits to log probabilities
+      Tensor logPRight = torch.nn.functional.log_softmax(targets, dim: -1);
+
+      // 3) Compute cross-entropy: - sum_i [ p_left[i] * log_p_right[i] ]
+      //    sum along the classes dimension (dim = -1), result is [batch], then average
+      Tensor crossEntropyPerSample = pLeft.mul(logPRight).sum(dim: -1).neg();
+      Tensor loss = crossEntropyPerSample.mean();
+
+      return loss;
+    }
   }
+
+
+  /// <summary>
+  /// Version of CrossEntropyLoss that expects logits on the left and right.
+  /// </summary>
+  public sealed class CrossEntropyLossTwoLogits : Loss<Tensor, Tensor, Tensor>
+  {
+    public readonly bool SubtractEntropy;
+
+    public CrossEntropyLossTwoLogits(bool subtractEntropy, Reduction reduction = Reduction.Mean)
+        : base(reduction)
+    {
+      SubtractEntropy = subtractEntropy;
+    }
+
+    public override Tensor forward(Tensor predLogits, Tensor targetLogits)
+    {
+      // N.B. The logit calculations are highly numerically sensitive and require 64-bit precision.
+      const ScalarType TYPE_COMPUTE = ScalarType.Float64;
+      ScalarType sourceType = predLogits.dtype;
+
+      predLogits = predLogits.to(TYPE_COMPUTE);
+      targetLogits = targetLogits.to(TYPE_COMPUTE);
+
+      using (torch.NewDisposeScope())
+      {
+        // Convert target logits to probabilities via softmax
+        Tensor pTarget = softmax(targetLogits, dim: -1);
+
+        // Convert model logits to log probabilities
+        Tensor logPPred = torch.nn.functional.log_softmax(predLogits, dim: -1);
+
+        // Cross-entropy: - sum_i [ p_target[i] * log p_pred[i] ]
+        // summed over classes => shape [batch], then average
+        Tensor crossEntropyPerSample = pTarget.mul(logPPred).sum(dim: -1).neg();
+        Tensor loss = crossEntropyPerSample.mean();
+
+        if (SubtractEntropy)
+        {
+          loss = loss - TorchSharpUtils.Entropy(targetLogits);
+        } 
+
+        return loss.to(sourceType).MoveToOuterDisposeScope();
+      }
+    }
+  }
+
 }

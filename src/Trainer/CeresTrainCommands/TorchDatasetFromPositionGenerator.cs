@@ -123,7 +123,7 @@ namespace CeresTrain.Trainer
     public override Dictionary<string, Tensor> GetTensor(long index)
     {
       TPGRecord[] batch = GetBatch();
-      Dictionary<string, Tensor> ret = dictConverter.BuildTensorDictFromTPGRecords(batch);
+      Dictionary<string, Tensor> ret = dictConverter.BuildTensorDictFromTPGRecords(batch, true);
       return ret;
     }
   }

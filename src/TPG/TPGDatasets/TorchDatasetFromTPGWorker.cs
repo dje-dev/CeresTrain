@@ -66,7 +66,7 @@ namespace CeresTrain.TPGDatasets
 
     TPGBatchToTensorDictConverter dictConverter;
 
-    IEnumerator<TPGRecord[]> overrideRecordEnumerator;
+    IEnumerator<(TPGRecord[], bool)> overrideRecordEnumerator;
 
     int numBatchesRequested;
     int totalNumReaders;
@@ -100,7 +100,7 @@ namespace CeresTrain.TPGDatasets
                                      float fractionQ,
                                      Device device, ScalarType dataType, int batchSize,
                                      float wdlLabelSmoothing,
-                                     IEnumerator<TPGRecord[]> overrideRecordEnumerator)
+                                     IEnumerator<(TPGRecord[], bool)> overrideRecordEnumerator)
     {
       if (totalNumReaders == 0)
       {
@@ -165,7 +165,7 @@ namespace CeresTrain.TPGDatasets
     }
 
 
-    IEnumerator<TPGRecord[]> currentFileEnumerator = null;
+    IEnumerator<(TPGRecord[], bool)> currentFileEnumerator = null;
     ConcurrentQueue<string> availableFiles = null;
 
     /// <summary>
@@ -192,10 +192,17 @@ namespace CeresTrain.TPGDatasets
         }
 
         TPGFileReader reader = new TPGFileReader(thisFN, dictConverter.BatchSize);
-        currentFileEnumerator = reader.GetEnumerator();
+        currentFileEnumerator = EnumeratorAddBoolean(reader.GetEnumerator());
       }
     }
 
+    public static IEnumerator<(TPGRecord[], bool)> EnumeratorAddBoolean(IEnumerator<TPGRecord[]> source)
+    {
+      while (source.MoveNext())
+      {
+        yield return (source.Current, true);
+      }
+    }
 
 
     /// <summary>
@@ -236,7 +243,7 @@ namespace CeresTrain.TPGDatasets
     {
       while (true)
       {
-        TPGRecord[] theseRecords = null;
+        (TPGRecord[] theseRecords, bool isPrimary) thisRet = default;
         if (bagPendingDicts.Count >= NUM_DICTS_PRELOAD)
         {
           // Queue already full enough, wait a short while.
@@ -247,7 +254,7 @@ namespace CeresTrain.TPGDatasets
           if (overrideRecordEnumerator != null)
           {
             overrideRecordEnumerator.MoveNext();
-            theseRecords = overrideRecordEnumerator.Current;
+            thisRet = overrideRecordEnumerator.Current;
           }
           else
           {
@@ -264,14 +271,14 @@ namespace CeresTrain.TPGDatasets
               }
             }
 
-            theseRecords = currentFileEnumerator.Current;
+            thisRet = currentFileEnumerator.Current;
           }
 
         }
 
-        if (theseRecords != null)
+        if (thisRet != default)
         {
-          bagPendingDicts.Enqueue((dictConverter.BuildTensorDictFromTPGRecords(theseRecords), theseRecords));
+          bagPendingDicts.Enqueue((dictConverter.BuildTensorDictFromTPGRecords(thisRet.theseRecords, thisRet.isPrimary), thisRet.theseRecords));
         }
       }
     }

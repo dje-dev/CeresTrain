@@ -52,7 +52,7 @@ namespace CeresTrain.TPGDatasets
                                float fractionQ,
                                Device device, ScalarType dataType, int batchSize,
                                float wdlLabelSmoothing,
-                               IEnumerator<TPGRecord[]> overrideRecordEnumerator,
+                               IEnumerator<(TPGRecord[], bool)> overrideRecordEnumerator,
                                int countParallel = 3)
     {
       // Throw if tpgDirectory does not exist

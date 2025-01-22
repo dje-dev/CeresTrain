@@ -71,28 +71,31 @@ namespace CeresTrain.Trainer
     /// <exception cref="Exception"></exception>
     public void PrepareTrainer()
     {
-      Console.WriteLine(" PyTorch version  : " + __version__);
-      Console.WriteLine("  Training device : " + TrainingConfig.ExecConfig.Device);
-
-      // Console.WriteLine("EXPORT model as described here https://github.com/microsoft/Windows-Machine-Learning/blob/65a3ce340d34e7d9a6629ccab4a6da4a1722c258/Samples/Tutorial%20Samples/PyTorch%20Data%20Analysis/PyTorch%20Training%20-%20Data%20Analysis/DataClassifier.py#L63");
-
-      // Possibly load initial weights.
-      string fnStartWeights = null;
-      Dictionary<string, Tensor> weightsStart = null;
-      if (fnStartWeights != null)
+      if (Model == null) // if not already prepared
       {
-        var transformerTS = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>
-          (TrainingConfig.ExecConfig.SaveNetwork1FileName, TrainingConfig.ExecConfig.SaveNetwork1FileName,
-           TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType);
+        Console.WriteLine(" PyTorch version  : " + __version__);
+        Console.WriteLine("  Training device : " + TrainingConfig.ExecConfig.Device);
 
-        weightsStart = new();
-        transformerTS.named_parameters().ToList().ForEach(p => weightsStart.Add(p.name, p.parameter.AsParameter().detach()));
-      }
+        // Console.WriteLine("EXPORT model as described here https://github.com/microsoft/Windows-Machine-Learning/blob/65a3ce340d34e7d9a6629ccab4a6da4a1722c258/Samples/Tutorial%20Samples/PyTorch%20Data%20Analysis/PyTorch%20Training%20-%20Data%20Analysis/DataClassifier.py#L63");
 
-      Model = TrainingConfig.NetDefConfig.CreateNetwork(TrainingConfig.ExecConfig);
-      if (weightsStart != null)
-      {
-        throw new Exception("Not yet implemented: passing in weights");
+        // Possibly load initial weights.
+        string fnStartWeights = null;
+        Dictionary<string, Tensor> weightsStart = null;
+        if (fnStartWeights != null)
+        {
+          var transformerTS = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>
+            (TrainingConfig.ExecConfig.SaveNetwork1FileName, TrainingConfig.ExecConfig.SaveNetwork1FileName,
+             TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType);
+
+          weightsStart = new();
+          transformerTS.named_parameters().ToList().ForEach(p => weightsStart.Add(p.name, p.parameter.AsParameter().detach()));
+        }
+
+        Model = TrainingConfig.NetDefConfig.CreateNetwork(TrainingConfig.ExecConfig);
+        if (weightsStart != null)
+        {
+          throw new Exception("Not yet implemented: passing in weights");
+        }
       }
     }
 
