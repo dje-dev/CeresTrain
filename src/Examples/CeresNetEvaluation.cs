@@ -388,7 +388,7 @@ namespace CeresTrain.Examples
 
       IEnumerable<PositionWithHistory> positionSourceEnum = sourceEPDOrPGN == null
                                             ? generator.AsPositionWithHistoryEnumerable()
-                                            : PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGN, numPos, p => generator.PositionMatches(in p)).AsEnumerable();
+                                            : PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGN, numPos, null, p => generator.PositionMatches(in p)).AsEnumerable();
       IEnumerator<PositionWithHistory> posEnumerator = positionSourceEnum.AsEnumerable().GetEnumerator();
 
       PositionWithHistory[] positions = new PositionWithHistory[numPos];
@@ -590,7 +590,7 @@ namespace CeresTrain.Examples
 
       IEnumerable<Position> positionSourceEnum = epdOrPGNFileName == null
                                             ? generator.AsPositionEnumerable()
-                                            : PositionsWithHistory.FromEPDOrPGNFile(epdOrPGNFileName, numPositionsToTest, p => generator.PositionMatches(in p)).Select(s => s.FinalPosition).AsEnumerable();
+                                            : PositionsWithHistory.FromEPDOrPGNFile(epdOrPGNFileName, numPositionsToTest, null, p => generator.PositionMatches(in p)).Select(s => s.FinalPosition).AsEnumerable();
       IEnumerator<Position> posEnumerator = positionSourceEnum.AsEnumerable().GetEnumerator();
 
       int numCorrectValue = 0;

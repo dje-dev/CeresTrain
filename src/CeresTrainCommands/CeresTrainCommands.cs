@@ -318,7 +318,7 @@ namespace CeresTrain.TrainCommands
 
           PositionGenerator posGeneratorForTournament =
             sourceEPDOrPGNFileName == null ? new PositionGeneratorFromIEnumerable(piecesStr, pos => generator.PositionMatches(in pos), generator.AsPositionEnumerable())
-                                           : new PositionGeneratorFromIEnumerable(piecesStr+"_file", pos => generator.PositionMatches(in pos), PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGNFileName, (int)numPos, p => generator.PositionMatches(in p))); 
+                                           : new PositionGeneratorFromIEnumerable(piecesStr+"_file", pos => generator.PositionMatches(in pos), PositionsWithHistory.FromEPDOrPGNFile(sourceEPDOrPGNFileName, (int)numPos, null, p => generator.PositionMatches(in p))); 
 
           TournamentResultStats tournResults = CeresNetEvaluation.RunTournament(NNEvaluatorInferenceEngineType.CSharpViaTorchscript, netDefConfig, execConfig, netFileName,
                                                                                 compareLC0NetSpec, "GPU:0", posGeneratorForTournament, searchLimit, (int)numPos, verbose,
