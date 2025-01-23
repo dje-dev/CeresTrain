@@ -244,25 +244,7 @@ namespace CeresTrain.TrainingDataGenerator
 
       if (searchLimit.Type == SearchLimitType.NodesPerMove && searchLimit.Value == 1)
       {
-        NNEvaluatorResult evalResult = CeresEngine.Evaluators.Evaluator1.Evaluate(posWithHistory);
-        sumAbsoluteValueDiffsCeres += Math.Abs(trainingQ - evalResult.V);
-
-        float[] policyHeadOutputs = evalResult.Policy.Mirrored.DecodedAndNormalized;
-        float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, policyHeadOutputs);
-
-        // Subtract off entropy of target policy to focus on error part.
-        float targetEntropy = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, targetProbabilitiesMirrored);
-        thisPolicyErrorSearch -= targetEntropy;
-
-        sumCrossEntropyErrorCeres += thisPolicyErrorSearch;
-
-        bool topMoveMatches = evalResult.Policy.TopMove(posWithHistory.FinalPosition) == ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(infoTraining.BestMove, posWithHistory.FinalPosition.ToMGPosition); 
-        sumTopMoveAgree += topMoveMatches ? 1 : 0;
-
-        if (LastSFSearchResult != null)
-        {
-          sumAbsoluteValueDiffsSF += MathF.Abs(trainingQ - LastSFSearchResult.ScoreQ);
-        }
+        DoEvaluationBySingleEval(posWithHistory, trainingQ, targetProbabilitiesMirrored, infoTraining);
       }
       else
       {
@@ -274,6 +256,29 @@ namespace CeresTrain.TrainingDataGenerator
       return true;
     }
 
+
+    private void DoEvaluationBySingleEval(PositionWithHistory posWithHistory, float trainingQ, float[] targetProbabilitiesMirrored, EncodedPositionEvalMiscInfoV6 infoTraining)
+    {
+      NNEvaluatorResult evalResult = CeresEngine.Evaluators.Evaluator1.Evaluate(posWithHistory);
+      sumAbsoluteValueDiffsCeres += Math.Abs(trainingQ - evalResult.V);
+
+      float[] policyHeadOutputs = evalResult.Policy.Mirrored.DecodedAndNormalized;
+      float thisPolicyErrorSearch = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, policyHeadOutputs);
+
+      // Subtract off entropy of target policy to focus on error part.
+      float targetEntropy = StatUtils.SoftmaxCrossEntropy(targetProbabilitiesMirrored, targetProbabilitiesMirrored);
+      thisPolicyErrorSearch -= targetEntropy;
+
+      sumCrossEntropyErrorCeres += thisPolicyErrorSearch;
+
+      bool topMoveMatches = evalResult.Policy.TopMove(posWithHistory.FinalPosition) == ConverterMGMoveEncodedMove.EncodedMoveToMGChessMove(infoTraining.BestMove, posWithHistory.FinalPosition.ToMGPosition);
+      sumTopMoveAgree += topMoveMatches ? 1 : 0;
+
+      if (LastSFSearchResult != null)
+      {
+        sumAbsoluteValueDiffsSF += MathF.Abs(trainingQ - LastSFSearchResult.ScoreQ);
+      }
+    }
 
     private void DoEvaluationBySearch(PositionWithHistory posWithHistory, SearchLimit searchLimit, SearchLimit searchLimitSF, float trainingQ, float[] targetProbabilitiesMirrored)
     {
