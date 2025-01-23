@@ -162,7 +162,7 @@ namespace CeresTrain.Networks.Transformer
     public readonly float SoftCapCutoff;
     public readonly bool MonitorMoEActivationStats;
 
-    Linear attentionQKV;
+    Module<Tensor, Tensor> attentionQKV;
     Linear attentionOutput;
 
     Module<Tensor, Tensor> qkvLN;
@@ -274,6 +274,7 @@ namespace CeresTrain.Networks.Transformer
       LoRARankDivisor = loraRankDivisor;
 
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
+      attentionQKV = LoRALinear.PossiblyLoRAWrappedModule(attentionQKV, loraRankDivisor, () => LoRAEnabledFunc());
 
       if (NonLinearAttention)
       {
@@ -621,7 +622,7 @@ namespace CeresTrain.Networks.Transformer
 
     private Tensor Attention(Tensor x, bool isEval, int batch_size, Tensor attentionInput,
                              int attentionMultiplier,
-                             Linear attKQV, bool useSmolgen, Linear attnOutput)
+                             Module<Tensor, Tensor> attKQV, bool useSmolgen, Linear attnOutput)
     {
       Tensor qkv = attKQV.call(attentionInput);
 
@@ -715,6 +716,7 @@ namespace CeresTrain.Networks.Transformer
 
       return attn_output;
     }
+
 
     private Tensor AttentionTranspose(Tensor attentionInput, bool isEval, int batch_size, int numHeads)
     {
@@ -815,7 +817,7 @@ namespace CeresTrain.Networks.Transformer
       }
 
 
-      LinearLoad(weightsSource, weightsLoaded, attentionQKV, $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
+      LinearLoad(weightsSource, weightsLoaded, BaseLinear(attentionQKV), $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
       LinearLoad(weightsSource, weightsLoaded, attentionOutput, $"transformer_layer.{LayerNum}.attention.W_h.weight", $"transformer_layer.{LayerNum}.attention.W_h.bias");
 
       static Module<Tensor, Tensor> BaseLinear(Module<Tensor,Tensor> module)
