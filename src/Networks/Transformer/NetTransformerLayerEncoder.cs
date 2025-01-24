@@ -46,6 +46,12 @@ namespace CeresTrain.Networks.Transformer
     const float NORM_EPS = 1e-6f;
 
     /// <summary>
+    /// Parent network to which this layer belongs.
+    /// Stored as an object (despite being NetTransformer) so that is not automatically registered.
+    /// </summary>
+    public readonly NetTransformer[] Parent;
+
+    /// <summary>
     /// Index of this layer within the stack.
     /// </summary>
     public readonly int LayerNum;
@@ -207,6 +213,7 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// Constructor.
     /// </summary>
+    /// <param name="parent"></param>
     /// <param name="numLayers"></param>
     /// <param name="layerNum"></param>
     /// <param name="dim"></param>
@@ -225,7 +232,8 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="monitorMoEActivationStats"></param>
     /// <param name="smLinearShared"></param>
     /// <exception cref="ArgumentException"></exception>
-    public NetTransformerLayerEncoder(int numLayers, int layerNum, int dim, int numHeads, bool preNorm,
+    public NetTransformerLayerEncoder(NetTransformer parent,
+                                      int numLayers, int layerNum, int dim, int numHeads, bool preNorm,
                                       NetTransformerDef.NormalizationType normType,
                                       int attentionMultiplier, 
                                       NetTransformerDef.DualAttentionModeType dualAttentionMode,
@@ -246,6 +254,7 @@ namespace CeresTrain.Networks.Transformer
         throw new ArgumentException($"dim ({dim}) must be divisible by numHeads ({numHeads})");
       }
 
+      Parent = [parent];
       NumLayers = numLayers;
       LayerNum = layerNum;
       DimModel = dim;

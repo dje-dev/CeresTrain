@@ -191,6 +191,7 @@ namespace CeresTrain.Networks.Transformer
             : TransformerConfig.DualAttentionMode;
 
         NetTransformerLayerEncoder teCS = new(
+            this,
             TransformerConfig.NumLayers,
             layerNum,
             TransformerConfig.ModelDim,
@@ -540,7 +541,6 @@ namespace CeresTrain.Networks.Transformer
             input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, QBLUNDER_SLICE_RIGHT})
         ], 2);
 
-      //Tensor flowCS = DebugCompareNetworkOutputs(flow, layerEmbedding.call(flow));
       Tensor flowCS = layerEmbedding.call(flow);
 
 
@@ -561,6 +561,7 @@ namespace CeresTrain.Networks.Transformer
       flowCS = headPremap.call(flowCS);
       flowCS = flowCS.reshape([-1, 64 * TransformerConfig.ModelDim/ HEAD_PREMAP_DIVISOR]);
 
+//      flowCS = DebugCompareNetworkOutputs(flowCS, headSharedLinear.call(flowCS));
       flowCS = headSharedLinear.call(flowCS);
 
       Tensor flowValueHead = layerValueHead.call(flowCS);
@@ -622,7 +623,11 @@ namespace CeresTrain.Networks.Transformer
       }
       if (compareOutput == null)
       {
-        throw new Exception("no matching ScriptModule layer found for: " + DebugCompareLayerName);
+        foreach ((string name, Module module) layer in DebugComparisonNetwork.named_modules())
+        {
+          Console.WriteLine(layer.name);
+        }
+        throw new Exception("no matching ScriptModule layer found from above for: " + DebugCompareLayerName);
       }
 
       float[] thisOutput = output.type(ScalarType.Float32).cpu().data<float>().ToArray();
