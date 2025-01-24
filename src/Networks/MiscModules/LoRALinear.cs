@@ -52,7 +52,7 @@ namespace CeresTrain.Networks.MiscModules
     /// <summary>
     /// The original layer to be adapted with LoRA.
     /// </summary>
-    public readonly Module<Tensor, Tensor> WrapppedLinear;
+    public readonly Module<Tensor, Tensor> WrappedLinear;
 
     /// <summary>
     /// Rank of the low-rank decomposition.
@@ -82,7 +82,7 @@ namespace CeresTrain.Networks.MiscModules
 
     static int counter = 0;
 
-
+    int in_features;
 
     /// <summary>
     /// Constructor.
@@ -94,50 +94,78 @@ namespace CeresTrain.Networks.MiscModules
       : base("LoRALinear")
     {
       LoRAEnabledFunc = loRAEnabledFunc;
-      WrapppedLinear = originalLayer;
+      WrappedLinear = originalLayer;
 
       int out_features = (int)(originalLayer as Linear).weight.shape[0];
-      int in_features = (int)(originalLayer as Linear).weight.shape[1];
+      in_features = (int)(originalLayer as Linear).weight.shape[1];
 
       const int MinRank = 4;
       Rank = Math.Max(MinRank, in_features / rankDivisor);
       Rank = Math.Min(out_features, Rank); // Ensure rank <= output size
 
-      Tensor std_dev = 1 / torch.sqrt(torch.tensor(Rank));
-
-      LoraA = torch.nn.Parameter(torch.randn(in_features, Rank) * std_dev);
+      LoraA = torch.nn.Parameter(torch.empty(in_features, Rank));
       LoraA.name = "lora_A_";
       LoraA.requires_grad = true;
 
-      LoraB = torch.nn.Parameter(torch.zeros(Rank, out_features));
+      LoraB = torch.nn.Parameter(torch.empty(Rank, out_features));
       LoraB.name = "lora_B_";
       LoraB.requires_grad = true;
 
       // Compute the LoRA update and scale it by alpha/sqrt(r)
       // (see "A Rank Stabilization Scaling Factor for Fine-Tuning with LoRA" by Kalajdzievski)
-      float alpha = (Rank / MathF.Sqrt(Rank));
-      LoraAlpha = Parameter(tensor(alpha));  // Note that we make this trainable, different from most implementations
+      LoraAlpha = Parameter(torch.empty(1));  // Note that we make this trainable, different from most implementations
       LoraAlpha.name = "lora_Alpha_";
       LoraAlpha.requires_grad = true;
+
+      InitializeParameterValues();
 
       RegisterComponents();
     }
 
 
+    /// <summary>
+    /// Overwrites the contents of LoraA, LoraB, LoraAlpha in-place 
+    /// with the usual LoRA initialization logic.
+    /// </summary>
+    public int InitializeParameterValues()
+    {
+      using (torch.no_grad())
+      {
+        // Standard deviation for random init
+        var std_dev = 1 / torch.sqrt(torch.tensor(Rank));
+
+        // LoraA: random ~ N(0, std_dev^2)
+        LoraA.copy_(torch.randn(in_features, Rank).mul_(std_dev));
+
+        // LoraB: zero initialization
+        LoraB.zero_();
+
+        // LoraAlpha: alpha = rank / sqrt(rank)
+        float alpha = Rank / MathF.Sqrt(Rank);
+        LoraAlpha.fill_(alpha);
+
+        return 3;
+      }
+    }
+
     public override Tensor forward(Tensor x)
     {
       if (LoRAEnabledFunc == null || LoRAEnabledFunc())
       {
-        // Compute LoRA update
-        Tensor loraUpdate = LoraA.matmul(LoraB);
+        using (NewDisposeScope())
+        {
+          // Compute LoRA update
+          Tensor loraUpdate = LoraA.matmul(LoraB);
 
-        // Apply LoRA
-        Tensor original = WrapppedLinear.forward(x);
-        return original + LoraAlpha * (x.matmul(LoraA).matmul(LoraB));
+          // Apply LoRA
+          Tensor original = WrappedLinear.forward(x);
+          Tensor ret = original + LoraAlpha * (x.matmul(LoraA).matmul(LoraB));
+          return ret.MoveToOuterDisposeScope();
+        }
       }
       else
       {
-        return WrapppedLinear.forward(x);
+        return WrappedLinear.forward(x);
       }
     }
 
@@ -183,7 +211,7 @@ namespace CeresTrain.Networks.MiscModules
         }
         else if (layer is LoRALinear loraLinear)
         {
-          if (loraLinear.WrapppedLinear is Linear originalLinear)
+          if (loraLinear.WrappedLinear is Linear originalLinear)
           {
             originalLinear.weight.set_(torch.tensor(weights, dtype: dtype, device: device));
             originalLinear.bias.set_(torch.tensor(bias, dtype: dtype, device: device));

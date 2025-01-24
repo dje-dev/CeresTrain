@@ -822,7 +822,7 @@ namespace CeresTrain.Networks.Transformer
 
       static Module<Tensor, Tensor> BaseLinear(Module<Tensor,Tensor> module)
       {
-        return (module is Linear) ? module : (module as LoRALinear).WrapppedLinear;
+        return (module is Linear) ? module : (module as LoRALinear).WrappedLinear;
       }
 
       if (NonLinearAttention)

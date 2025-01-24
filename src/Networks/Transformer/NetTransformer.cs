@@ -155,7 +155,8 @@ namespace CeresTrain.Networks.Transformer
         // EMBEDDING
         int embeddingWidth = TransformerConfig.ModelDim;
         layerEmbedding = new NetTransformerLayerEmbedding("embedding", TPGRecord.BYTES_PER_SQUARE_RECORD, embeddingWidth, transformerNetDef.NormType);
-        layerEmbedding.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
+        layerEmbedding = layerEmbedding.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
         if (paramsToLoad != null)
         {
           layerEmbedding.LoadWeights(paramsToLoad, loadedParams);
@@ -488,8 +489,9 @@ namespace CeresTrain.Networks.Transformer
             input.squares.index(new TensorIndex[] { TensorIndex.Colon, TensorIndex.Colon, QBLUNDER_SLICE_RIGHT})
         ], 2);
 
-      // Tensor flowCS = CompareOutput(flow, layerEmbedding.call(flow));
+      //Tensor flowCS = DebugCompareNetworkOutputs(flow, layerEmbedding.call(flow));
       Tensor flowCS = layerEmbedding.call(flow);
+
 
       Tensor flowState = input.priorState;
 
@@ -543,12 +545,27 @@ namespace CeresTrain.Networks.Transformer
     /// <exception cref="Exception"></exception>
     internal Tensor DebugCompareNetworkOutputs(Tensor input, Tensor output)
     {
+      if (DebugComparisonNetwork == null)
+      {
+        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "NOTE NetTransformer.DebugComparisonNetwork is null, not dumping");
+        return output;
+      } 
+
       float[] compareOutput = default;
       foreach ((string name, Module module) layer in DebugComparisonNetwork.named_modules())
       {
         if (layer.name == DebugCompareLayerName)
         {
-          Tensor tsOutput = (Tensor)(layer.module as ScriptModule).to("cuda:0").to(ScalarType.Float16).call(input);
+          Tensor tsOutput;
+
+          if (layer.module is ScriptModule)
+          {
+            tsOutput = (Tensor)(layer.module as ScriptModule).to("cuda:0").to(ScalarType.Float16).call(input);
+          }
+          else
+          {
+            tsOutput = (layer.module as Module<Tensor, Tensor>).call(input);
+          }
           compareOutput = tsOutput.type(ScalarType.Float32).cpu().data<float>().ToArray();
         }
       }
