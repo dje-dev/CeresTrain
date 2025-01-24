@@ -58,16 +58,16 @@ namespace CeresTrain.Utils
     public static void LinearLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, Module<Tensor,Tensor> linearModule, string weightsName, string biasesName)
     {
       Linear linear = linearModule as Linear;
-      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(linear.weight.device).to(linear.weight.dtype);
-      //Console.WriteLine(weightsName + " " + weightsNew.shape[0] + " " + weightsNew.shape[1] + "  Linear: " + linear.weight.shape[0] + " " + linear.weight.shape[1]);
+      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(linear.weight.dtype, linear.weight.device);
+      
       CheckSizesSame(weightsName, linear.weight, weightsNew);
-      linear.weight = nn.Parameter(weightsNew);
+      linear.weight.copy_(weightsNew);
 
       if (biasesName is not null)
       {
-        Tensor biasesNew = GetParams(paramsSource, paramsLoaded, biasesName).to(linear.bias.device).to(linear.bias.dtype);
+        Tensor biasesNew = GetParams(paramsSource, paramsLoaded, biasesName).to(linear.bias.dtype, linear.bias.device);
         CheckSizesSame(weightsName, linear.bias, biasesNew);
-        linear.bias = nn.Parameter(biasesNew);
+        linear.bias.copy_(biasesNew);
       }
     }
 
@@ -100,18 +100,19 @@ namespace CeresTrain.Utils
     /// <param name="biasesName"></param>
     public static void LayerNormLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, LayerNorm layerNorm, string weightsName, string biasesName)
     {
-      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(layerNorm.weight.device).to(layerNorm.weight.dtype);
+      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(layerNorm.weight.dtype, layerNorm.weight.device);
       CheckSizesSame(weightsName, layerNorm.weight, weightsNew);
-      layerNorm.weight = nn.Parameter(weightsNew);
+      layerNorm.weight.copy_(weightsNew);
 
       if (biasesName is not null)
       {
-        Tensor biasesNew = GetParams(paramsSource, paramsLoaded, biasesName).to(layerNorm.bias.device).to(layerNorm.bias.dtype);
+        Tensor biasesNew = GetParams(paramsSource, paramsLoaded, biasesName).to(layerNorm.bias.dtype, layerNorm.bias.device);
 
         CheckSizesSame(weightsName, layerNorm.bias, biasesNew);
-        layerNorm.bias = nn.Parameter(biasesNew);
+        layerNorm.bias.copy_(biasesNew);
       }
     }
+
 
     /// <summary>
     /// Loads weights from a dictionary of weights into a RMSNormLoad layer.
@@ -123,9 +124,9 @@ namespace CeresTrain.Utils
     /// <param name="biasesName"></param>
     public static void RMSNormLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, RMSNorm rmsNorm, string weightsName)
     {
-      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(rmsNorm.Scale.device).to(rmsNorm.Scale.dtype);
+      Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(rmsNorm.Scale.dtype, rmsNorm.Scale.device);
       CheckSizesSame(weightsName, rmsNorm.Scale, weightsNew);
-      rmsNorm.Scale = nn.Parameter(weightsNew);
+      rmsNorm.Scale.copy_(weightsNew);
     }
 
 

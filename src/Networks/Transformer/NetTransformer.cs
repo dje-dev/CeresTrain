@@ -103,235 +103,205 @@ namespace CeresTrain.Networks.Transformer
     /// <param name="overrideWeights"></param>
     public NetTransformer(ConfigNetExecution executionConfig,
                           NetTransformerDef transformerNetDef,
-                          Dictionary<string, Tensor> overrideWeights = null) : base("CeresTransformer")
+                          Dictionary<string, Tensor> overrideWeights = null)
+        : base("CeresTransformer")
     {
       TransformerConfig = transformerNetDef;
       ExecutionConfig = executionConfig;
 
       if (TransformerConfig.TrainOn4BoardSequences)
-      {
         throw new NotImplementedException("TrainOn4BoardSequences not implemented");
-      }
 
       float alpha = transformerNetDef.DeepNorm ? MathF.Pow(2 * TransformerConfig.NumLayers, 0.25f) : 1;
 
       if (DUMP_INFO_TO_CONSOLE)
       {
-        Console.WriteLine("LOADING TORCHSCRIPT MODEL  " + executionConfig.SaveNetwork1FileName + " " + executionConfig.SaveNetwork2FileName);
+        Console.WriteLine("LOADING TORCHSCRIPT MODEL  "
+                          + executionConfig.SaveNetwork1FileName + " "
+                          + executionConfig.SaveNetwork2FileName);
       }
 
-      using (torch.no_grad())
+      // 1) Figure out paramsToLoad from overrideWeights or from .ts file (if needed)
+      Dictionary<string, Tensor> paramsToLoad = null;
+
+      if (overrideWeights != null)
       {
-        Dictionary<string, Tensor> paramsToLoad = null;
+        paramsToLoad = overrideWeights;
+      }
+      else if (ExecutionConfig.SaveNetwork1FileName != null &&
+              (!ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts") &&
+               !ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".dat")))
+      {
+        throw new Exception("Specified ExecutionConfig.SaveNetwork1FileName must end with either .ts or .dat, instead see: "
+                            + ExecutionConfig.SaveNetwork1FileName);
+      }
+      else if (ExecutionConfig.SaveNetwork1FileName != null &&
+               !File.Exists(ExecutionConfig.SaveNetwork1FileName))
+      {
+        throw new Exception("Specified ExecutionConfig.SaveNetwork1FileName does not exist: "
+                            + ExecutionConfig.SaveNetwork1FileName);
+      }
+      else if (ExecutionConfig.SaveNetwork1FileName != null &&
+               ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts"))
+      {
+        // Load averaged TorchScript
+        ScriptModule<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)> transformerTS
+            = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>(
+                ExecutionConfig.SaveNetwork1FileName,
+                ExecutionConfig.SaveNetwork2FileName,
+                ExecutionConfig.Device,
+                ExecutionConfig.DataType);
 
-        // Potentially load weights (do here if Torchscript file, otherwise if C# dat file, do at end of constructor).
-        if (overrideWeights != null)
-        {
-          paramsToLoad = overrideWeights;
-        }
-        else if (ExecutionConfig.SaveNetwork1FileName != null &&
-                (!ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts") &&
-                 !ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".dat")))
-        {
-          throw new Exception("Specified ExecutionConfig.SaveNetwork1FileName must end with either .ts or .dat, instead see: " + ExecutionConfig.SaveNetwork1FileName);
-        }
-        else if (ExecutionConfig.SaveNetwork1FileName != null && !File.Exists(ExecutionConfig.SaveNetwork1FileName))
-        {
-          throw new Exception("Specified ExecutionConfig.SaveNetwork1FileName does not exist: " + ExecutionConfig.SaveNetwork1FileName);
-        }
-        else if (ExecutionConfig.SaveNetwork1FileName != null &&
-                 ExecutionConfig.SaveNetwork1FileName.ToLower().EndsWith(".ts"))
-        {
-          ScriptModule<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)> transformerTS
-            = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>(ExecutionConfig.SaveNetwork1FileName,
-                                                                                                          ExecutionConfig.SaveNetwork2FileName,
-                                                                                                          ExecutionConfig.Device, ExecutionConfig.DataType);
-          paramsToLoad = new();
-          transformerTS.named_parameters().ToList().ForEach(p => paramsToLoad.Add(p.name, p.parameter));
-        }
-
-        HashSet<string> loadedParams = new();
-
-        // EMBEDDING
-        int embeddingWidth = TransformerConfig.ModelDim;
-        layerEmbedding = new NetTransformerLayerEmbedding("embedding", TPGRecord.BYTES_PER_SQUARE_RECORD, embeddingWidth, transformerNetDef.NormType);
-        layerEmbedding = layerEmbedding.to(ExecutionConfig.Device, ExecutionConfig.DataType);
-
-        if (paramsToLoad != null)
-        {
-          layerEmbedding.LoadWeights(paramsToLoad, loadedParams);
-        }
-
-        // DENSEFORMER (not yet supported)
-        if (TransformerConfig.DenseFormer)
-        {
-          throw new NotImplementedException("DenseFormer not implemented");
-        }
-
-        if (TransformerConfig.SmolgenDimPerSquare > 0)
-        {
-          smLinearShared = Linear(TransformerConfig.SmolgenDim / TransformerConfig.SmolgenToHeadDivisor, 
-                                  64 * 64, true, ExecutionConfig.Device, ExecutionConfig.DataType);
-        }
-
-
-        // ENCODER LAYERS
-        layersEncodersArray = new NetTransformerLayerEncoder[TransformerConfig.NumLayers];
-
-        for (int layerNum = 0; layerNum < TransformerConfig.NumLayers; layerNum++)
-        {
-          bool hasDual = TransformerConfig.DualAttentionMode != NetTransformerDef.DualAttentionModeType.None 
-                      && paramsToLoad.ContainsKey($"transformer_layer.{layerNum}.attention2.qkv.weight"); // sometimes dual only present in certain layers, e.g. every other one
-          NetTransformerDef.DualAttentionModeType dualMode = !hasDual ? NetTransformerDef.DualAttentionModeType.None : TransformerConfig.DualAttentionMode;
-
-          NetTransformerLayerEncoder teCS = new(TransformerConfig.NumLayers, layerNum, TransformerConfig.ModelDim,
-                                                TransformerConfig.NumHeads,  TransformerConfig.PreNorm,
-                                                TransformerConfig.NormType, 
-                                                TransformerConfig.AttentionMultiplier, dualMode,
-                                                TransformerConfig.NonLinearAttention,
-                                                TransformerConfig.FFNMultiplier, TransformerConfig.FFNActivationType,
-                                                alpha, ExecutionConfig.DropoutRate, ExecutionConfig.DropoutDuringInference,
-                                                TransformerConfig.SoftCapThreshold, ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
-                                                TransformerConfig.SmolgenDimPerSquare, TransformerConfig.SmolgenDim,
-                                                TransformerConfig.SmolgenToHeadDivisor, TransformerConfig.SmolgenActivationType,
-                                                TransformerConfig.SoftMoEConfig, ExecutionConfig.MonitorActivationStats, ref smLinearShared,
-                                                TransformerConfig.LoRARankDivisor,
-                                                () => LoRAEnabled);
-          teCS = teCS.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-          if (paramsToLoad != null)
-          {
-            teCS.LoadWeights(paramsToLoad, loadedParams);
-          }
-          layersEncodersArray[layerNum] = teCS;
-          register_module($"encoder_layer_{layerNum}", teCS);
-        }
-
-        // Head premap
-        headPremap = Linear(TransformerConfig.ModelDim, TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, 
-                            true, ExecutionConfig.Device, ExecutionConfig.DataType);
-        headPremap.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          LinearLoad(paramsToLoad, loadedParams, headPremap, "headPremap.weight", "headPremap.bias");
-        }
-
-        // Head shared linear
-        headSharedLinear = Linear(64 * TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR, TransformerConfig.ModelDim,
-                                  true, ExecutionConfig.Device, ExecutionConfig.DataType);
-        headSharedLinear.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-
-        if (paramsToLoad != null)
-        {
-          LinearLoad(paramsToLoad, loadedParams, headSharedLinear, "headSharedLinear.weight", "headSharedLinear.bias");
-        }
-
-
-        if (paramsToLoad != null && paramsToLoad.ContainsKey("mlh_head.fc.weight"))
-        {
-          layerMLHHead = new NetTransformerLayerHead(this, "mlh_head", 
-                                                     512, 128 , 1,
-                                                     TransformerConfig.HeadsActivationType, null, false);
-          layerMLHHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-          if (paramsToLoad != null)
-          {
-            layerMLHHead.LoadWeights(paramsToLoad, loadedParams, "mlh_head");
-          }
-        }
-
-        layerUNCHead = new NetTransformerLayerHead(this, "unc_head", TransformerConfig.ModelDim, 128, 1, TransformerConfig.HeadsActivationType, null, false);
-        layerUNCHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          layerUNCHead.LoadWeights(paramsToLoad, loadedParams, "unc_head");
-        }
-
-        layerUncPolicyHead = new NetTransformerLayerHead(this, "unc_policy", TransformerConfig.ModelDim, 128, 1, TransformerConfig.HeadsActivationType, null, false);
-        layerUncPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          layerUncPolicyHead.LoadWeights(paramsToLoad, loadedParams, "unc_policy");
-        }
-
-        layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head", TransformerConfig.ModelDim, 128, 1,
-                                                               TransformerConfig.HeadsActivationType, null, false);
-        layerQDeviationLowerHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qdev_lower"); 
-        }
-
-        layerQDeviationUpperHead = new NetTransformerLayerHead(this, "qdev_upper_head", TransformerConfig.ModelDim, 128, 1,
-                                                               TransformerConfig.HeadsActivationType, null, false);
-        layerQDeviationUpperHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          layerQDeviationUpperHead.LoadWeights(paramsToLoad, loadedParams, "qdev_upper");
-        }
-
-
-        if (paramsToLoad != null && TransformerConfig.SmolgenDimPerSquare > 0)
-        {
-          LinearLoad(paramsToLoad, loadedParams, smLinearShared, "smolgenPrepLayer.weight", "smolgenPrepLayer.bias");
-        }
-
-        // POLICY HEAD
-        layerPolicyHead = new NetTransformerLayerHead(this, "policy_head",
-                                                       TransformerConfig.ModelDim, 512, 1858,
-                                                      TransformerConfig.HeadsActivationType, null, false);
-        layerPolicyHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          layerPolicyHead.LoadWeights(paramsToLoad, loadedParams, "policy_head");
-        }
-
-        // VALUE HEAD
-        const bool SAVE_INTERMEDIATE_FOR_VALUE_HEAD = false;
-
-        layerValueHead = new NetTransformerLayerHead(this, "value_head", TransformerConfig.ModelDim, 256, 3,
-                                                     TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
-        layerValueHead.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-        if (paramsToLoad != null)
-        {
-          (layerValueHead as NetTransformerLayerHead).LoadWeights(paramsToLoad, loadedParams, "value_head");
-        }
-
-        layerValue2Head = new NetTransformerLayerHead(this, "value2_head", TransformerConfig.ModelDim + 2, 256, 3,
-                                                      TransformerConfig.HeadsActivationType, null, SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
-        layerValue2Head.to(ExecutionConfig.DataType).to(ExecutionConfig.Device);
-
-        if (paramsToLoad != null)
-        {
-          layerValue2Head.LoadWeights(paramsToLoad, loadedParams,"value2_head");
-        }
-
-        if (paramsToLoad != null)
-        {
-          bool foundMissing = false;
-          foreach (KeyValuePair<string, Tensor> paramDefined in paramsToLoad)
-          {
-            if (!loadedParams.Contains(paramDefined.Key))
-            {
-              foundMissing = true;
-              Console.WriteLine("Parameter not loaded: " + paramDefined);
-            }
-          }
-
-          if (foundMissing)
-          {
-            Console.WriteLine(paramsToLoad.Count + " parameters defined");
-            Console.WriteLine(loadedParams.Count + " parameters loaded");
-            ConsoleUtils.WriteLineColored(ConsoleColor.Red, "SERIOUS WARNING: parameters not loaded, indicating C# inference code is not up to date wrt. training code.");
-            Console.WriteLine();
-          }
-
-        }
+        paramsToLoad = new Dictionary<string, Tensor>();
+        transformerTS.named_parameters().ToList().ForEach(p => paramsToLoad.Add(p.name, p.parameter));
       }
 
+      // 2) Build modules
+      // EMBEDDING
+      int embeddingWidth = TransformerConfig.ModelDim;
+      layerEmbedding = new NetTransformerLayerEmbedding("embedding",
+                                                        TPGRecord.BYTES_PER_SQUARE_RECORD,
+                                                        embeddingWidth,
+                                                        transformerNetDef.NormType);
+      layerEmbedding = layerEmbedding.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // DENSEFORMER (not yet supported)
+      if (TransformerConfig.DenseFormer)
+        throw new NotImplementedException("DenseFormer not implemented");
+
+      if (TransformerConfig.SmolgenDimPerSquare > 0)
+      {
+        smLinearShared = Linear(TransformerConfig.SmolgenDim / TransformerConfig.SmolgenToHeadDivisor,
+                                64 * 64,
+                                true,
+                                ExecutionConfig.Device,
+                                ExecutionConfig.DataType);
+      }
+
+      // ENCODER LAYERS
+      layersEncodersArray = new NetTransformerLayerEncoder[TransformerConfig.NumLayers];
+
+      for (int layerNum = 0; layerNum < TransformerConfig.NumLayers; layerNum++)
+      {
+        bool hasDual = TransformerConfig.DualAttentionMode != NetTransformerDef.DualAttentionModeType.None
+                       && paramsToLoad != null
+                       && paramsToLoad.ContainsKey($"transformer_layer.{layerNum}.attention2.qkv.weight");// sometimes dual only present in certain layers, e.g. every other one
+        NetTransformerDef.DualAttentionModeType dualMode = !hasDual
+            ? NetTransformerDef.DualAttentionModeType.None
+            : TransformerConfig.DualAttentionMode;
+
+        NetTransformerLayerEncoder teCS = new(
+            TransformerConfig.NumLayers,
+            layerNum,
+            TransformerConfig.ModelDim,
+            TransformerConfig.NumHeads,
+            TransformerConfig.PreNorm,
+            TransformerConfig.NormType,
+            TransformerConfig.AttentionMultiplier,
+            dualMode,
+            TransformerConfig.NonLinearAttention,
+            TransformerConfig.FFNMultiplier,
+            TransformerConfig.FFNActivationType,
+            alpha,
+            ExecutionConfig.DropoutRate,
+            ExecutionConfig.DropoutDuringInference,
+            TransformerConfig.SoftCapThreshold,
+            ExecutionConfig.SupplementaryStat == NNLayerMonitor.SupplementaryStatType.AverageCosineSimilarity,
+            TransformerConfig.SmolgenDimPerSquare,
+            TransformerConfig.SmolgenDim,
+            TransformerConfig.SmolgenToHeadDivisor,
+            TransformerConfig.SmolgenActivationType,
+            TransformerConfig.SoftMoEConfig,
+            ExecutionConfig.MonitorActivationStats,
+            ref smLinearShared,
+            TransformerConfig.LoRARankDivisor,
+            () => LoRAEnabled
+        );
+        teCS = teCS.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+        layersEncodersArray[layerNum] = teCS;
+        register_module($"encoder_layer_{layerNum}", teCS);
+      }
+
+      // Head premap
+      headPremap = Linear(TransformerConfig.ModelDim,
+                          TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR,
+                          true,
+                          ExecutionConfig.Device,
+                          ExecutionConfig.DataType);
+      headPremap.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // Head shared linear
+      headSharedLinear = Linear(64 * TransformerConfig.ModelDim / HEAD_PREMAP_DIVISOR,
+                                TransformerConfig.ModelDim,
+                                true,
+                                ExecutionConfig.Device,
+                                ExecutionConfig.DataType);
+      headSharedLinear.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // Optional MLH head
+      if (paramsToLoad != null && paramsToLoad.ContainsKey("mlh_head.fc.weight"))
+      {
+        layerMLHHead = new NetTransformerLayerHead(this, "mlh_head", 512, 128, 1,
+                                                   TransformerConfig.HeadsActivationType,
+                                                   null, false);
+        layerMLHHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+      }
+
+      // UNC head
+      layerUNCHead = new NetTransformerLayerHead(this, "unc_head",
+                                                 TransformerConfig.ModelDim, 128, 1,
+                                                 TransformerConfig.HeadsActivationType, null, false);
+      layerUNCHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // UNC policy
+      layerUncPolicyHead = new NetTransformerLayerHead(this, "unc_policy",
+                                                       TransformerConfig.ModelDim, 128, 1,
+                                                       TransformerConfig.HeadsActivationType, null, false);
+      layerUncPolicyHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // QDev heads
+      layerQDeviationLowerHead = new NetTransformerLayerHead(this, "qdev_lower_head",
+                                                             TransformerConfig.ModelDim, 128, 1,
+                                                             TransformerConfig.HeadsActivationType, null, false);
+      layerQDeviationLowerHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      layerQDeviationUpperHead = new NetTransformerLayerHead(this, "qdev_upper_head",
+                                                             TransformerConfig.ModelDim, 128, 1,
+                                                             TransformerConfig.HeadsActivationType, null, false);
+      layerQDeviationUpperHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // POLICY HEAD
+      layerPolicyHead = new NetTransformerLayerHead(this, "policy_head",
+                                                    TransformerConfig.ModelDim, 512, 1858,
+                                                    TransformerConfig.HeadsActivationType, null, false);
+      layerPolicyHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // VALUE HEAD
+      const bool SAVE_INTERMEDIATE_FOR_VALUE_HEAD = false;
+      layerValueHead = new NetTransformerLayerHead(this, "value_head",
+                                                   TransformerConfig.ModelDim, 256, 3,
+                                                   TransformerConfig.HeadsActivationType, null,
+                                                   SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
+      layerValueHead.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      layerValue2Head = new NetTransformerLayerHead(this, "value2_head",
+                                                    TransformerConfig.ModelDim + 2, 256, 3,
+                                                    TransformerConfig.HeadsActivationType, null,
+                                                    SAVE_INTERMEDIATE_FOR_VALUE_HEAD);
+      layerValue2Head.to(ExecutionConfig.Device, ExecutionConfig.DataType);
+
+      // 3) Register everything
       RegisterComponents();
 
-      if (overrideWeights == null
-        && ExecutionConfig.SaveNetwork1FileName != null
-        && executionConfig.SaveNetwork1FileName.ToLower().EndsWith(".dat"))
+      // 4) Now load all dictionary-based weights (if any) in a separate method
+      LoadWeightsIfApplicable(paramsToLoad);
+
+
+
+      // 5) If there's a .dat file, load it via the TorchSharp model loader
+      if (overrideWeights == null &&
+          ExecutionConfig.SaveNetwork1FileName != null &&
+          executionConfig.SaveNetwork1FileName.ToLower().EndsWith(".dat"))
       {
         this.to(ExecutionConfig.Device, ExecutionConfig.DataType);
         try
@@ -345,16 +315,15 @@ namespace CeresTrain.Networks.Transformer
           {
             Console.WriteLine("  " + node);
           }
-
           Console.WriteLine();
-          ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Error loading Torchscript model, " 
-                                     + "possible mismatch of C# model definition and saved model: " + ExecutionConfig.SaveNetwork1FileName
-                                     + " or alternately possibly specified config does not match config used when net was trained.");
+          ConsoleUtils.WriteLineColored(ConsoleColor.Red,
+              "Error loading Torchscript model, possible mismatch of C# model definition and saved model: "
+              + ExecutionConfig.SaveNetwork1FileName
+              + " or alternately possibly specified config does not match config used when net was trained.");
           Console.WriteLine($"See list above of expected {named_parameters().Count()} named parameters in Torchscript file based on this C# model");
           throw;
         }
       }
-
 
       // Default mode is evaluation (inference).
       eval();
@@ -377,8 +346,8 @@ namespace CeresTrain.Networks.Transformer
         {
           if (LayerNameToTrackIntrinsicDimensionality == node.name)
           {
-            // Set up the hook to monitor the layer.  
-            node.module.register_forward_hook((module, input, output) =>
+            // Hook to monitor the layer
+            node.module.register_forward_hook((mod, input, output) =>
             {
               IntrinsicDimensionalitiesLastBatch = FP16.ToFP16(IntrinsicDimensionality.TwoNN(output));
               return output;
@@ -387,17 +356,17 @@ namespace CeresTrain.Networks.Transformer
         }
       }
 
-      const int MONITOR_TO_DUMP_RATIO = 20; // for efficiency, only monitor 1 out of 20 batches
+      const int MONITOR_TO_DUMP_RATIO = 20;
       int monitorSkipCount = Math.Max(1, ExecutionConfig.ActivationMonitorDumpSkipCount / MONITOR_TO_DUMP_RATIO);
       NNLayerMonitorSet monitor = ExecutionConfig.ActivationMonitorDumpSkipCount > 0
-                                //                                ? new NNLayerMonitorSet(this, 100, 1000, layerName => true)
-                                ? new NNLayerMonitorSet(this, monitorSkipCount, ExecutionConfig.ActivationMonitorDumpSkipCount, layerName => true)
-                                : null;
+                                      ? new NNLayerMonitorSet(this, monitorSkipCount,
+                                                              ExecutionConfig.ActivationMonitorDumpSkipCount,
+                                                              layerName => true)
+                                      : null;
 
-      // Optionally, set up a monitor for a specific layer.
       if (ExecutionConfig.SupplementaryStat != NNLayerMonitor.SupplementaryStatType.None)
       {
-        // TODO: Currently we limit to output of encoder layers, generalize this.
+        // e.g. set up supplemental stats for each encoder
         for (int i = 0; i < TransformerConfig.NumLayers; i++)
         {
           monitor?.SetSupplementalLayerStat($"encoder_layer_{i}", ExecutionConfig.SupplementaryStat);
@@ -407,6 +376,88 @@ namespace CeresTrain.Networks.Transformer
       if (TransformerConfig.LoRARankDivisor > 0)
       {
         PrepareForLoRATraining();
+      }
+    }
+
+
+    /// <summary>
+    /// Refactored method to apply weights from the paramsToLoad dictionary,
+    /// now called immediately after RegisterComponents().
+    /// </summary>
+    private void LoadWeightsIfApplicable(Dictionary<string, Tensor> paramsToLoad)
+    {
+      // If there's no dictionary to load, just return
+      if (paramsToLoad == null)
+      {
+        return;
+      }
+
+      using (torch.no_grad())
+      {
+        HashSet<string> loadedParams = new();
+
+        // 1) EMBEDDING
+        layerEmbedding.LoadWeights(paramsToLoad, loadedParams);
+
+        // 2) ENCODER LAYERS
+        for (int layerNum = 0; layerNum < TransformerConfig.NumLayers; layerNum++)
+        {
+          layersEncodersArray[layerNum].LoadWeights(paramsToLoad, loadedParams);
+        }
+
+        // 3) Head premap
+        LinearLoad(paramsToLoad, loadedParams, headPremap, "headPremap.weight", "headPremap.bias");
+
+        // 4) Head shared linear
+        LinearLoad(paramsToLoad, loadedParams, headSharedLinear, "headSharedLinear.weight", "headSharedLinear.bias");
+
+        // 5) Optional MLH head
+        if (paramsToLoad.ContainsKey("mlh_head.fc.weight") && layerMLHHead != null)
+        {
+          layerMLHHead.LoadWeights(paramsToLoad, loadedParams, "mlh_head");
+        }
+
+        // 6) UNC heads
+        layerUNCHead.LoadWeights(paramsToLoad, loadedParams, "unc_head");
+        layerUncPolicyHead.LoadWeights(paramsToLoad, loadedParams, "unc_policy");
+
+        // 7) Q deviation heads
+        layerQDeviationLowerHead.LoadWeights(paramsToLoad, loadedParams, "qdev_lower");
+        layerQDeviationUpperHead.LoadWeights(paramsToLoad, loadedParams, "qdev_upper");
+
+        // 8) Smolgen layer
+        if (TransformerConfig.SmolgenDimPerSquare > 0)
+        {
+          LinearLoad(paramsToLoad, loadedParams, smLinearShared, "smolgenPrepLayer.weight", "smolgenPrepLayer.bias");
+        }
+
+        // 9) Policy head
+        layerPolicyHead.LoadWeights(paramsToLoad, loadedParams, "policy_head");
+
+        // 10) Value heads
+        (layerValueHead as NetTransformerLayerHead).LoadWeights(paramsToLoad, loadedParams, "value_head");
+        (layerValue2Head as NetTransformerLayerHead).LoadWeights(paramsToLoad, loadedParams, "value2_head");
+
+        // -- Now verify if any dictionary parameters were left unused
+        bool foundMissing = false;
+        foreach (KeyValuePair<string, Tensor> paramDefined in paramsToLoad)
+        {
+          if (!loadedParams.Contains(paramDefined.Key))
+          {
+            foundMissing = true;
+            Console.WriteLine("Parameter not loaded: " + paramDefined);
+          }
+        }
+
+        if (foundMissing)
+        {
+          Console.WriteLine(paramsToLoad.Count + " parameters defined");
+          Console.WriteLine(loadedParams.Count + " parameters loaded");
+          ConsoleUtils.WriteLineColored(ConsoleColor.Red,
+             "SERIOUS WARNING: parameters not loaded, indicating "
+             + "C# inference code is not up to date wrt. training code.");
+          Console.WriteLine();
+        }
       }
     }
 

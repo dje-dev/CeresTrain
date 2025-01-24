@@ -78,7 +78,7 @@ namespace CeresTrain.Networks.Transformer
     public void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded)
     {
       ModuleParamLoadingUtils.LinearLoad(weightsSource, weightsLoaded, linear, "embedding_layer.weight", "embedding_layer.bias");
-      ModuleParamLoadingUtils.RMSNormLoad(weightsSource, weightsLoaded, norm, $"embedding_norm.scale");
+      ModuleParamLoadingUtils.RMSNormLoad(weightsSource, weightsLoaded, norm, "embedding_norm.scale");
     }
 
 

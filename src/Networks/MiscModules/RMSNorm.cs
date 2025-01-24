@@ -28,7 +28,7 @@ namespace CeresTrain.Networks.MiscModules
   {
     public readonly float Epsilon;
 
-    public Parameter Scale { get; internal set; }
+    public Parameter Scale;
 
 
     /// <summary>
