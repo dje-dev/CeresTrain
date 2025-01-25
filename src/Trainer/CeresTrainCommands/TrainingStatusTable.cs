@@ -63,7 +63,7 @@ namespace CeresTrain.Trainer
     /// <param name="title"></param>
     /// <param name="maxPositions"></param>
     /// <param name="multiTrainingMode">if multiple threads will concurrently use this same table</param>
-    public TrainingStatusTable(string id, string title, long maxPositions, bool multiTrainingMode)
+    public TrainingStatusTable(string id, string title, long maxPositions, bool multiTrainingMode, bool nullOutputMode = false)
     {
       ID = id;
       MultiTrainingMode = multiTrainingMode;
@@ -71,7 +71,11 @@ namespace CeresTrain.Trainer
       // LINQPad needs a custom table implementor because the AnsiConsole
       // assumed by SpectreConsole is not available.
       bool runningUnderLinqPad = Assembly.GetEntryAssembly().ToString().ToUpper().StartsWith("LINQPAD");
-      if (multiTrainingMode)
+      if (nullOutputMode)
+      {
+        implementor = new NullStatusTableImplementor(maxPositions);
+      }
+      else if (multiTrainingMode)
       {
         implementor = new BatchTrainingStatusTable(maxPositions);
       }
