@@ -176,7 +176,8 @@ namespace CeresTrain.Trainer
                        LRScheduler scheduler,
                        TensorboardWriter tbWriter,
                        long maxPositions,
-                       ref long numRead)
+                       ref long numRead,
+                       bool silentMode = false)
     {
       MaxPositions = maxPositions;
       predictionWinLoss = new float[OptimizationBatchSizeForward];
@@ -212,7 +213,6 @@ namespace CeresTrain.Trainer
       {
         foreach (Dictionary<string, Tensor> batch in dataLoader)
         {
-          numBatchesProcessed++;
           numRead += OptimizationBatchSizeForward;
 
           model.train();
@@ -428,16 +428,19 @@ namespace CeresTrain.Trainer
               DumpTestEvalStats();
             }
 
-            int outCount = 0;
-            Console.WriteLine();
-            foreach ((string name, Parameter param) in model.named_parameters())
+            if (false)
             {
-              if (param.requires_grad && param.grad is not null)
+              int outCount = 0;
+              Console.WriteLine();
+              foreach ((string name, Parameter param) in model.named_parameters())
               {
-                float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
-                if (outCount++ > 10) break;
+                if (param.requires_grad && param.grad is not null)
+                {
+                  float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                  float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
+                  Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
+                  if (outCount++ > 10) break;
+                }
               }
             }
 
@@ -453,16 +456,19 @@ namespace CeresTrain.Trainer
 
           if (numRead > MaxPositions)
           {
-            // End training.Dump stats one last time and save final network.
-            DumpTrainingStatsToConsole("LOCAL", value, policy, ref numRead);
-            SaveNetwork(model, optimizer, false);
+            if (!silentMode)
+            {
+              // End training.Dump stats one last time and save final network.
+              DumpTrainingStatsToConsole("LOCAL", value, policy, silentMode, ref numRead);
+              SaveNetwork(model, optimizer, false);
+            }
 
             break;
           }
 
           if (dumpStatsThisBatch)
           {
-            DumpTrainingStatsToConsole("LOCAL", value, policy, ref numRead);
+            DumpTrainingStatsToConsole("LOCAL", value, policy, silentMode, ref numRead);
           }
 
           batchId++;
@@ -473,14 +479,18 @@ namespace CeresTrain.Trainer
 
 
     private DateTime PossiblySaveNetwork(CeresNeuralNet model, Optimizer optimizer,
-                                         DateTime timeLastSave, bool isLowestLossSoFar = false)
+                                         DateTime timeLastSave, bool silentMode, bool isLowestLossSoFar = false)
     {
       const int SAVE_INTERVAL_SECONDS = 60 * 10;
 
       double secondsSinceSave = (DateTime.Now - timeLastSave).TotalSeconds;
-      if (isLowestLossSoFar || secondsSinceSave > SAVE_INTERVAL_SECONDS)
+      if (!silentMode)
       {
-        timeLastSave = SaveNetwork(model, optimizer, isLowestLossSoFar);
+
+        if (isLowestLossSoFar || secondsSinceSave > SAVE_INTERVAL_SECONDS)
+        {
+          timeLastSave = SaveNetwork(model, optimizer, isLowestLossSoFar);
+        }
       }
 
       return timeLastSave;
@@ -488,9 +498,9 @@ namespace CeresTrain.Trainer
 
 
     string SaveNetFileName(bool best, bool optimizer) => Path.Combine(CeresTrainUserSettingsManager.Settings.OutputNetsDir,
-                                                          (optimizer ? "opt_" : "model_")
-                                                        + (timeStartTraining.Ticks % 10_000).ToString()
-                                                        + (best ? "_best.dat" : ".dat"));
+                                                                      (optimizer ? "opt_" : "model_")
+                                                                    + (timeStartTraining.Ticks % 10_000).ToString()
+                                                                    + (best ? "_best.dat" : ".dat"));
 
     string saveNetworkFileName;
 
@@ -557,10 +567,11 @@ namespace CeresTrain.Trainer
 
       using (DataLoader dataLoader = new DataLoader(tpgDataset, 1, device: TrainingConfig.ExecConfig.Device))
       {
+        bool SILENT_MODE = anchorEvaluator != null;
         TrainingLoop(TrainingConfig.ExecConfig.ID, Model, anchorEvaluator,
                      TrainingConfig.OptConfig.CheckpointResumeFromFileName,
                      0, // unknown StartingCheckpointLastPosNum,
-                     dataLoader, tpgDataset, trainingSessionDescription);
+                     dataLoader, tpgDataset, trainingSessionDescription, SILENT_MODE);
         // TODO: tpgDataset should be a  member of class, not passed explicitly
       }
 
@@ -593,7 +604,7 @@ namespace CeresTrain.Trainer
 
     private Dataset BuildDataSet(int skipCount)
     {
-      Console.WriteLine("Generating training data from tablebase from  " + TrainingConfig.DataConfig.SourceType);
+//      Console.WriteLine("Generating training data from tablebase from  " + TrainingConfig.DataConfig.SourceType);
 
       Dataset tpgDataset;
       switch (TrainingConfig.DataConfig.SourceType)
@@ -673,7 +684,7 @@ namespace CeresTrain.Trainer
     internal void TrainingLoop(string tag, CeresNeuralNet model, IModuleNNEvaluator anchorEvaluator,
                                string startingCheckpointFN, long startingCheckpointLastNumPos,
                                DataLoader train, Dataset tpgDataset,
-                               string trainingSessionDescription)
+                               string trainingSessionDescription, bool silentMode)
     {
       long lastFlushNumPositions = 0;
 
@@ -761,8 +772,11 @@ namespace CeresTrain.Trainer
 
       // Show number of model parameters.
       NumParameters = TorchSharpUtils.NumModuleParameters(model);
-      Console.WriteLine($"INFO: NUM_PARAMETERS {NumParameters}");
-      Console.WriteLine();
+      if (!silentMode)
+      {
+        Console.WriteLine($"INFO: NUM_PARAMETERS {NumParameters}");
+        Console.WriteLine();
+      }
 
       CrossEntropyLoss valueLoss = CrossEntropyLoss();
       CrossEntropyLoss value2Loss = CrossEntropyLoss();
@@ -780,7 +794,8 @@ namespace CeresTrain.Trainer
       {
         scheduler.step();
 
-        consoleStatusTable = new(TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions, false);
+        bool useNullOutput = anchorEvaluator != null; 
+        consoleStatusTable = new(TrainingConfig.ExecConfig.ID, trainingSessionDescription, TrainingConfig.OptConfig.NumTrainingPositions, false, useNullOutput);
 
         consoleStatusTable.RunTraining(
           () => Train(TrainingConfig.ExecConfig.ID, model, anchorEvaluator, optimizer, 
@@ -791,16 +806,20 @@ namespace CeresTrain.Trainer
                       train,
                       tpgDataset, scheduler, tbWriter,
                       TrainingConfig.OptConfig.NumTrainingPositions,
-                      ref numPositionsReadFromTraining));
+                      ref numPositionsReadFromTraining, silentMode));
       }
 
       sw.Stop();
 
-      if (saveNetworkFileName != null)
+      if (!silentMode)
       {
-        Console.WriteLine($"INFO: TORCHSCRIPT_FILENAME {saveNetworkFileName}");
+        if (saveNetworkFileName != null)
+        {
+          Console.WriteLine($"INFO: TORCHSCRIPT_FILENAME {saveNetworkFileName}");
+        }
+
+        Console.WriteLine("INFO: EXIT_STATUS SUCCESS");
       }
-      Console.WriteLine("INFO: EXIT_STATUS SUCCESS");
     }
 
 

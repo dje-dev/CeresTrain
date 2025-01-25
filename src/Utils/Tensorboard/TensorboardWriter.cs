@@ -75,7 +75,7 @@ namespace CeresTrain.Utils.Tensorboard
       logSubdirName = Path.Combine(baseDir, trainingRunID, tagSubIndex.ToString());
       Directory.CreateDirectory(logSubdirName);
 
-      Console.WriteLine("Opening Tensorboard log to " + logSubdirName);
+      //Console.WriteLine("Opening Tensorboard log to " + logSubdirName);
       writer = torch.utils.tensorboard.SummaryWriter(logSubdirName);
     }
 

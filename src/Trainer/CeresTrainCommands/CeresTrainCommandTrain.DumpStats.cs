@@ -40,7 +40,7 @@ namespace CeresTrain.Trainer
 
     float thisLossAdjRunning;
 
-    private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, ref long numRead)
+    private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, bool silentMode, ref long numRead)
     {
       // Compare indices of max values to check if max value is at same index as in target.
       Tensor valueMatches = torch.max(value, 1).indexes.eq(torch.max(valueTarget, 1).indexes);
@@ -53,7 +53,7 @@ namespace CeresTrain.Trainer
       float policyAccuracy = (maxTarget.indexes == maxPredicted.indexes).sum().cpu().ReadCpuValue<long>(0) / (float)OptimizationBatchSizeForward;
 
       lastReadReported = numRead;
-      timeLastSave = PossiblySaveNetwork(Model, optimizer, timeLastSave);
+      timeLastSave = PossiblySaveNetwork(Model, optimizer, timeLastSave, silentMode);
       timeLastDump = DateTime.Now;
 
       float lossValueAdj = TrainingConfig.OptConfig.LossValueMultiplier == 0 ? 0 : lossValueBatch.ToSingle();
