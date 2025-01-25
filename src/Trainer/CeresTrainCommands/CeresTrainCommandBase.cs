@@ -22,6 +22,7 @@ using static TorchSharp.torch;
 
 using CeresTrain.Utils;
 using CeresTrain.Networks;
+using CeresTrain.TrainCommands;
 
 #endregion
 
@@ -69,12 +70,14 @@ namespace CeresTrain.Trainer
     /// Initializes the trainer before any commands performed.
     /// </summary>
     /// <exception cref="Exception"></exception>
-    public void PrepareTrainer()
+    public static void PrepareTrainer(ConfigTraining trainingConfig)
     {
+      CeresNeuralNet Model = default;
+
       if (Model == null) // if not already prepared
       {
         Console.WriteLine(" PyTorch version  : " + __version__);
-        Console.WriteLine("  Training device : " + TrainingConfig.ExecConfig.Device);
+        Console.WriteLine("  Training device : " + trainingConfig.ExecConfig.Device);
 
         // Console.WriteLine("EXPORT model as described here https://github.com/microsoft/Windows-Machine-Learning/blob/65a3ce340d34e7d9a6629ccab4a6da4a1722c258/Samples/Tutorial%20Samples/PyTorch%20Data%20Analysis/PyTorch%20Training%20-%20Data%20Analysis/DataClassifier.py#L63");
 
@@ -84,14 +87,14 @@ namespace CeresTrain.Trainer
         if (fnStartWeights != null)
         {
           var transformerTS = TorchscriptUtils.TorchScriptFilesAveraged<Tensor, Tensor, (Tensor, Tensor, Tensor, Tensor)>
-            (TrainingConfig.ExecConfig.SaveNetwork1FileName, TrainingConfig.ExecConfig.SaveNetwork1FileName,
-             TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType);
+            (trainingConfig.ExecConfig.SaveNetwork1FileName, trainingConfig.ExecConfig.SaveNetwork1FileName,
+             trainingConfig.ExecConfig.Device, trainingConfig.ExecConfig.DataType);
 
           weightsStart = new();
           transformerTS.named_parameters().ToList().ForEach(p => weightsStart.Add(p.name, p.parameter.AsParameter().detach()));
         }
 
-        Model = TrainingConfig.NetDefConfig.CreateNetwork(TrainingConfig.ExecConfig);
+        Model = trainingConfig.NetDefConfig.CreateNetwork(trainingConfig.ExecConfig);
         if (weightsStart != null)
         {
           throw new Exception("Not yet implemented: passing in weights");

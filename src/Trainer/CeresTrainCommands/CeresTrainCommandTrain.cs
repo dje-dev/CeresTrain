@@ -113,14 +113,40 @@ namespace CeresTrain.Trainer
 
     CeresTrainerMonitor monitor;
 
-    int numBatchesProcessed;
 
 
+    /// <summary>
+    /// Constructor.
+    /// </summary>
+    /// <param name="config"></param>
+    /// <param name="description"></param>
+    /// <param name="statusTable"></param>
     public CeresTrainCommandTrain(in ConfigTraining config, string description, TrainingStatusTable statusTable) : base(in config)
     {
       consoleStatusTable = statusTable;
     }
+    
 
+    /// <summary>
+    /// Sets the underlying CeresNeuralNet to a specified value.
+    /// </summary>
+    /// <param name="model"></param>
+    public void SetModel(CeresNeuralNet model)
+    {
+      Model = model;
+    }
+
+
+    /// <summary>
+    /// Initializes the trainer before any commands performed.
+    /// </summary>
+    public void PrepareTrainer()
+    {
+      if (Model == null)
+      {
+        Model = TrainingConfig.CreateCeresNeuralNet();
+      }
+    }
 
 
     public static int WDLToMostProbableV(float vW, float vD, float vL)
@@ -294,7 +320,12 @@ namespace CeresTrain.Trainer
              Tensor uncertaintyPolicy, Tensor action, Tensor boardState, Tensor actionUncertainty,
              FP16[] extraStats0, FP16[] extraStats1) anchorOutput = default;
 
-            anchorOutput = anchorEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+            using (torch.no_grad())
+            {
+              (anchorEvaluator as NetTransformer).LoRAEnabled = false;
+              anchorOutput = anchorEvaluator.forwardValuePolicyMLH_UNC((inputSquares, null));
+              (anchorEvaluator as NetTransformer).LoRAEnabled = true;
+            }
 
             valueTarget = anchorOutput.value;
             policyTarget = where(legalMoves, anchorOutput.policy, illegalMaskValue); 
@@ -493,9 +524,7 @@ namespace CeresTrain.Trainer
       // TODO: need to load in original data type even if using another for inference
       //      model.to(device).to(ScalarType.BFloat16); 
 
-
       Model.to(TrainingConfig.ExecConfig.Device, TrainingConfig.ExecConfig.DataType);
-
 
       // Optionally train the PyTorch model directly
       if (false)
