@@ -400,50 +400,7 @@ namespace CeresTrain.Trainer
             }
 
             scheduler?.step();
-
-            if (false)
-            foreach ((string name, Parameter param) in model.named_parameters())
-            {
-              if (param.requires_grad && param.grad is not null)
-              {
-                float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                bool gradsZero = grads.All(x => x == 0);
-                if (!gradsZero)
-                {
-                  Console.WriteLine(grads[0] + " grad found before optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
-                }
-                else
-                {
-                  Console.WriteLine("Grad zero " + name);
-                }  
-              }
-            }
-
             optimizer.step();
-
-            if (TEST_EVAL_FROM_CSHARP)
-            {
-              Console.WriteLine();
-              Console.WriteLine();
-              DumpTestEvalStats();
-            }
-
-            if (false)
-            {
-              int outCount = 0;
-              Console.WriteLine();
-              foreach ((string name, Parameter param) in model.named_parameters())
-              {
-                if (param.requires_grad && param.grad is not null)
-                {
-                  float[] parms = param.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                  float[] grads = param.grad.cpu().to(ScalarType.Float32).data<float>().ToArray();
-                  Console.WriteLine(grads[0] + " --> " + parms[0] + " After optimizer step see  " + name + " " + TorchSharpUtils.ShapeStr(param.shape));
-                  if (outCount++ > 10) break;
-                }
-              }
-            }
-
             optimizer.zero_grad();
           }
 
@@ -466,7 +423,14 @@ namespace CeresTrain.Trainer
             break;
           }
 
-          if (dumpStatsThisBatch)
+          if (TEST_EVAL_FROM_CSHARP)
+          {
+            Console.WriteLine();
+            Console.WriteLine();
+            DumpTestEvalStats();
+          }
+
+          if (dumpStatsThisBatch && !silentMode)
           {
             DumpTrainingStatsToConsole("LOCAL", value, policy, silentMode, ref numRead);
           }
@@ -689,11 +653,14 @@ namespace CeresTrain.Trainer
       long lastFlushNumPositions = 0;
 
 
-      // Log to tensorboard files.
-      // Tensorboard can be used to view output, for example change to the output log directory and run:
-      //   tensorboard--logdir =. --bind_all --port 6006
-      string logDirName = CeresTrainUserSettingsManager.Settings.OutputLogsDir;
-      tbWriter = new TensorboardWriter(logDirName, tag);
+      if (!silentMode)
+      {
+        // Log to tensorboard files.
+        // Tensorboard can be used to view output, for example change to the output log directory and run:
+        //   tensorboard--logdir =. --bind_all --port 6006
+        string logDirName = CeresTrainUserSettingsManager.Settings.OutputLogsDir;
+        tbWriter = new TensorboardWriter(logDirName, tag);
+      }
 
       if (TrainingConfig.OptConfig.Optimizer == OptimizerType.SGD)
       {
