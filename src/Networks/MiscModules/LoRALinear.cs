@@ -21,6 +21,7 @@ using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
 using Ceres.Base.DataType;
+using System.Collections.Generic;
 
 #endregion
 
@@ -184,7 +185,27 @@ namespace CeresTrain.Networks.MiscModules
                                                                    int lora_rank_divisor,
                                                                    Func<bool> loraEnabledFunc = null)
       => lora_rank_divisor > 0 ? new LoRALinear(module, lora_rank_divisor, loraEnabledFunc) 
-                               : module; 
+                               : module;
+
+
+    /// <summary>
+    /// Reinitializes the LoRA weights (A, B, and alpha) for all LoRALinear modules in a given network. 
+    /// </summary>
+    /// <param name="netModule"></param>
+    /// <returns></returns>
+    public static int ReinitializeLoRAWeights(Module netModule)
+    {
+      int numReinitialized = 0;
+      foreach (Module module in netModule.modules())
+      {
+        if (module is LoRALinear)
+        {
+          numReinitialized += (module as LoRALinear).InitializeParameterValues();
+        }
+      }
+
+      return numReinitialized;
+    }
 
 
     /// <summary>
@@ -226,6 +247,47 @@ namespace CeresTrain.Networks.MiscModules
           throw new InvalidOperationException($"Unsupported layer type: {layer.GetType().Name}");
         }
       }
+    }
+
+
+    /// <summary>
+    /// Extracts Dictionary of LoRA parameters from a model.
+    /// The LoRA wrapped layers are identified by the presence of the string "LoraAlpha" in their name.
+    /// </summary>
+    /// <param name="model"></param>
+    /// <returns></returns>
+    public static Dictionary<string, (float, float[,], float[,])> ExtractedLoRAParameters(Module model)
+    {
+      Dictionary<string, (float, float[,], float[,])> loraParams = new();
+      foreach ((string name, Parameter parameter) np in model.named_parameters(true))
+      {
+        if (np.name.Contains("LoraAlpha"))
+        {
+          string onnxName = np.name.Replace(".LoraAlpha", "").Replace(".LoraA", "").Replace(".LoraB", "");
+
+          onnxName = onnxName.Replace("encoder_layer_", "/transformer_layer.");
+          onnxName = onnxName.Replace("q2", "/attention/q2/MatMul");
+          onnxName = onnxName.Replace("k2", "/attention/k2/MatMul");
+          onnxName = onnxName.Replace("mlpLinear1", "/mlp/linear1/MatMul");
+          onnxName = onnxName.Replace("mlpLinear2", "/mlp/linear2/MatMul");
+          onnxName = onnxName.Replace("./", "/");
+          //Console.WriteLine(onnxName + "   " + np.name);
+
+          Parameter pA = model.get_parameter(np.name.Replace("LoraAlpha", "LoraA"));
+          Parameter pB = model.get_parameter(np.name.Replace("LoraAlpha", "LoraB"));
+          Parameter pAlpha = np.parameter;
+
+          float alpha = pAlpha.to(ScalarType.Float32).data<float>()[0];
+          float[] a = pA.to(ScalarType.Float32).data<float>().ToArray();
+          float[] b = pB.to(ScalarType.Float32).data<float>().ToArray();
+          float[,] a2D = ArrayUtils.To2D(a, (int)pA.shape[1]);
+          float[,] b2D = ArrayUtils.To2D(b, (int)pB.shape[1]);
+
+          loraParams[onnxName] = (alpha, a2D, b2D);
+        }
+      }
+
+      return loraParams;
     }
 
 
