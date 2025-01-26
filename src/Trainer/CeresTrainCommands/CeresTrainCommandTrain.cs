@@ -227,8 +227,8 @@ namespace CeresTrain.Trainer
           value2Target = batch["wdl2"].reshape(OptimizationBatchSizeForward, 3);
           qDeviationLowerTarget = batch["q_deviation_lower"].reshape(OptimizationBatchSizeForward, 1);
           qDeviationUpperTarget = batch["q_deviation_upper"].reshape(OptimizationBatchSizeForward, 1);
-          bool isPrimaryBatch = batch.ContainsKey("is_primary");
-
+          bool isAnchorBatch = batch.ContainsKey("is_set1");
+//Console.WriteLine(isAnchorBatch + " " + value2Target.shape[0]);
           const bool RUN_INFERENCE_BENCHMARK = false;
           if (RUN_INFERENCE_BENCHMARK)
           {
@@ -312,7 +312,8 @@ namespace CeresTrain.Trainer
 
           // .......................................................
           // TODO: have better way of identifying which to use anchor on than the modulus check here ******
-          bool USE_ANCHOR = anchorEvaluator != null && !isPrimaryBatch;
+          bool USE_ANCHOR = anchorEvaluator != null && isAnchorBatch;
+          bool IS_FINE_TUNE = anchorEvaluator != null && !isAnchorBatch;
           if (USE_ANCHOR)
           {
             (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
@@ -368,6 +369,18 @@ namespace CeresTrain.Trainer
 
           lossQDevLowerBatch = lossQDeviationLower.call(qDeviationLower, qDeviationLowerTarget) * QDEV_LOSS_POST_SCALE;
           lossQDevUpperBatch = lossQDeviationUpper.call(qDeviationUpper, qDeviationUpperTarget) * QDEV_LOSS_POST_SCALE;
+
+          if (IS_FINE_TUNE)
+          {
+            // In fine tune mode only Value1 and Policy are
+            // considered reliable as fine-tuning targets.
+            lossValue2Batch = zeros_like(lossValue2Batch);
+            lossMLHBatch = zeros_like(lossMLHBatch);
+            lossUNCBatch = zeros_like(lossUNCBatch);
+            lossUNCPolicyBatch = zeros_like(lossUNCPolicyBatch);
+            lossQDevLowerBatch = zeros_like(lossQDevLowerBatch);
+            lossQDevUpperBatch = zeros_like(lossQDevUpperBatch);
+          }
 
           // lossAction2DBatch = lossAction.call()
           lossTotal = 
@@ -601,9 +614,9 @@ namespace CeresTrain.Trainer
             else if (TrainingConfig.DataConfig.SourceType == ConfigData.DataSourceType.DirectFromTPGFixedSet)
             {
               NUM_PARALLEL_DATASET = 1; // parallelism probably not properly supported by TPGRecordBatchProvider
-              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSetPrimary, TrainingConfig.DataConfig.TPGFixedSetSecondary,
+              enumerator = new TPGRecordBatchProvider(TrainingConfig.DataConfig.TPGFixedSet1, TrainingConfig.DataConfig.TPGFixedSet2,
                                                       TrainingConfig.OptConfig.BatchSizeForwardPass,
-                                                      TrainingConfig.DataConfig.NumTPGFixedPrimarySetBatchesReturnedForEachSecondary
+                                                      TrainingConfig.DataConfig.NumTPGFixedSet1BatchesReturnedForSet2
                                                       ).GetEnumerator();
             }
 
@@ -903,7 +916,7 @@ namespace CeresTrain.Trainer
       List<float> qBaseline = new();
       List<float> qLoRA = new();
       List<float> qTPG = new();
-      foreach (TPGRecord tpg in TrainingConfig.DataConfig.TPGFixedSetPrimary)
+      foreach (TPGRecord tpg in TrainingConfig.DataConfig.TPGFixedSet2)
       {
         Console.WriteLine();
         Console.WriteLine(tpg.SearchQ + " " + tpg.PolicyVector + " " + tpg.FinalPosition.FEN);
