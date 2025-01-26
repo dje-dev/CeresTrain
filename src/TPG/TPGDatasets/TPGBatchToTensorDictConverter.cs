@@ -119,7 +119,7 @@ namespace CeresTrain.TPGDatasets
     /// </summary>
     /// <param name="theseRecords"></param>
     /// <returns></returns>
-    public unsafe Dictionary<string, Tensor> BuildTensorDictFromTPGRecords(TPGRecord[] theseRecords, bool isPrimary)
+    public unsafe Dictionary<string, Tensor> BuildTensorDictFromTPGRecords(TPGRecord[] theseRecords, bool isSet1)
     {
       Parallel.For(0, BatchSize, i =>
       {
@@ -257,7 +257,7 @@ namespace CeresTrain.TPGDatasets
         {"q_deviation_upper", qDeviationUpperOutputTensors },
       };
 
-      dict[isPrimary ? "is_primary" : "is_secondary"] = squaresValues; // add a dummy marker indicating if primary or secondary
+      dict[isSet1 ? "is_set1" : "is_set2"] = squaresValues; // add a dummy marker indicating if originating from set1 or set2
 
       return dict;
     }

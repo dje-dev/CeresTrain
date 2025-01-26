@@ -214,7 +214,7 @@ namespace CeresTrain.TrainingDataGenerator
             MCTSNode rootNode = thisEvaluator.LastSearchResult.Search.SearchRootNode;
             const float FRACTION_EMPIRICAL_POLICY = 0.333f; // TODO *** Clean up this hardcoding ***
             List<TPGRecord> tpgsNew = TPGExtractorFromTree.ExtractTPGsFromTree(rootNode.Tree, minNumNodesForNodeToBeWrittenAsTPG, 
-                                                                               FRACTION_EMPIRICAL_POLICY, fillInTPGReader, out int numNonFillInTPGs);
+                                                                               n => FRACTION_EMPIRICAL_POLICY, fillInTPGReader, out int numNonFillInTPGs);
 
             // Write TPGs to output stream.
             ReadOnlySpan<byte> bufferAsBytes = MemoryMarshal.Cast<TPGRecord, byte>(tpgsNew.ToArray().AsSpan());

@@ -78,18 +78,18 @@ namespace CeresTrain.Trainer
     /// List of TPG records to be used for training (set 1)
     /// (if SourceType is TPGFixedSet).
     /// </summary>
-    public readonly IList<TPGRecord> TPGFixedSetPrimary { get; init; }
+    public readonly IList<TPGRecord> TPGFixedSet1 { get; init; }
 
     /// <summary>
     /// List of TPG records to be used for training (set 2)
     /// (if SourceType is TPGFixedSet).
     /// </summary>
-    public readonly IList<TPGRecord> TPGFixedSetSecondary { get; init; }
+    public readonly IList<TPGRecord> TPGFixedSet2 { get; init; }
 
     /// <summary>
     /// Number of batches from TPGFixedSetPrimary to produce before yielding a batch from TPGFixedSetSecondary.
     /// </summary>
-    public readonly int NumTPGFixedPrimarySetBatchesReturnedForEachSecondary { get; init; } = 0;
+    public readonly int NumTPGFixedSet1BatchesReturnedForSet2 { get; init; } = 0;
 
     #endregion
 

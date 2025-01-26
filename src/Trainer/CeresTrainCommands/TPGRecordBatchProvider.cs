@@ -16,6 +16,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+
 using Ceres.Chess.NNEvaluators.Ceres.TPG;
 
 #endregion
@@ -25,17 +26,17 @@ namespace CeresTrain.Trainer
   /// <summary>
   /// Provides batches of TPG records for training.
   /// </summary>
-  public class TPGRecordBatchProvider : IEnumerable<(TPGRecord[] records, bool isPrimary)>
+  public class TPGRecordBatchProvider : IEnumerable<(TPGRecord[] records, bool isSet1)>
   {
     /// <summary>
     /// Underlying list of TPG records, primary set.
     /// </summary>
-    public readonly IList<TPGRecord> PrimaryRecords;
+    public readonly IList<TPGRecord> Set1Records;
 
     /// <summary>
     /// Underlying list of TPG records, secondary set.
     /// </summary>
-    public readonly IList<TPGRecord> SecondaryRecords;
+    public readonly IList<TPGRecord> Set2Records;
 
     /// <summary>
     /// Number of records in each batch.
@@ -48,75 +49,67 @@ namespace CeresTrain.Trainer
     public readonly int TotalBatches;
 
     /// <summary>
-    /// How many primary batches to produce before yielding one secondary batch.
+    /// How many set 1 batches to produce before yielding one set 2 batch.
     /// </summary>
-    public readonly int NumPrimaryForEverySecondary;
+    public readonly int NumSet1ForEachSet2Record;
 
 
     /// <summary>
     /// Constructor.
     /// </summary>
-    /// <param name="primaryRecords">First (primary) set of TPG records</param>
-    /// <param name="secondaryRecords">Second (secondary) set of TPG records</param>
+    /// <param name="set1Records">First set of TPG records</param>
+    /// <param name="set2Records">Second set of TPG records</param>
     /// <param name="batchSize">Batch size</param>
-    /// <param name="numPrimaryForEverySecondary">
+    /// <param name="numSet1ForEachSet2Record">
     /// Number of consecutive primary batches before taking one secondary batch
     /// </param>
     /// <param name="totalBatches">Total batches to provide</param>
     /// <exception cref="ArgumentException"></exception>
     /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public TPGRecordBatchProvider(IList<TPGRecord> primaryRecords,
-                                  IList<TPGRecord> secondaryRecords,
+    public TPGRecordBatchProvider(IList<TPGRecord> set1Records,
+                                  IList<TPGRecord> set2Records,
                                   int batchSize,
-                                  int numPrimaryForEverySecondary,
+                                  int numSet1ForEachSet2Record,
                                   int totalBatches = int.MaxValue)
     {
-      if (primaryRecords == null || primaryRecords.Count == 0)
+      if (numSet1ForEachSet2Record > 0 && (set1Records == null || set1Records.Count == 0))
       {
-        throw new ArgumentException("primaryRecords cannot be null or empty.", nameof(primaryRecords));
+        throw new ArgumentException("primaryRecords cannot be null or empty.", nameof(set1Records));
       }
 
-      if (secondaryRecords == null || secondaryRecords.Count == 0)
+      if (set2Records == null || set2Records.Count == 0)
       {
-        throw new ArgumentException("secondaryRecords cannot be null or empty.", nameof(secondaryRecords));
+        throw new ArgumentException("secondaryRecords cannot be null or empty.", nameof(set2Records));
       }
 
       if (batchSize <= 0)
       {
         throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be greater than zero.");
       }
-
-      if (numPrimaryForEverySecondary <= 0)
-      {
-        throw new ArgumentOutOfRangeException(
-          nameof(numPrimaryForEverySecondary),
-          "Number of consecutive primary batches must be greater than zero."
-        );
-      }
-
+ 
       if (totalBatches <= 0)
       {
         throw new ArgumentOutOfRangeException(nameof(totalBatches), "Total batches must be greater than zero.");
       }
 
-      PrimaryRecords = primaryRecords;
-      SecondaryRecords = secondaryRecords;
+      Set1Records = set1Records;
+      Set2Records = set2Records;
       BatchSize = batchSize;
-      NumPrimaryForEverySecondary = numPrimaryForEverySecondary;
+      NumSet1ForEachSet2Record = numSet1ForEachSet2Record;
       TotalBatches = totalBatches;
     }
 
 
-    public IEnumerator<(TPGRecord[] records, bool isPrimary)> GetEnumerator()
+    public IEnumerator<(TPGRecord[] records, bool isSet1)> GetEnumerator()
     {
-      int primaryCount = PrimaryRecords.Count;
-      int secondaryCount = SecondaryRecords.Count;
+      int primaryCount = Set1Records.Count;
+      int secondaryCount = Set2Records.Count;
 
       for (int i = 0; i < TotalBatches; i++)
       {
-        bool usePrimary = (i % (NumPrimaryForEverySecondary + 1)) < NumPrimaryForEverySecondary;
-        IList<TPGRecord> sourceRecords = usePrimary ? PrimaryRecords : SecondaryRecords;
-        int recordCount = usePrimary ? primaryCount : secondaryCount;
+        bool useSet1 = (i % (NumSet1ForEachSet2Record + 1)) < NumSet1ForEachSet2Record;
+        IList<TPGRecord> sourceRecords = useSet1 ? Set1Records : Set2Records;
+        int recordCount = useSet1 ? primaryCount : secondaryCount;
 
         TPGRecord[] batch = new TPGRecord[BatchSize];
         for (int j = 0; j < BatchSize; j++)
@@ -124,9 +117,10 @@ namespace CeresTrain.Trainer
           batch[j] = sourceRecords[(i * BatchSize + j) % recordCount];
         }
 
-        yield return (batch, usePrimary);
+        yield return (batch, useSet1);
       }
     }
+
 
     IEnumerator IEnumerable.GetEnumerator()
     {
