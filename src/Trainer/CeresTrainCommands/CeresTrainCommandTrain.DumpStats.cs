@@ -40,6 +40,13 @@ namespace CeresTrain.Trainer
 
     float thisLossAdjRunning;
 
+    float sumFineTuneAnchorErrors = 0;
+    float sumFineTuneNonAnchorErrors = 0;
+    int countFineTuneAnchorPositions = 0;
+    int countFineTuneNonAnchorPositions = 0;
+
+
+
     private void DumpTrainingStatsToConsole(string configID, Tensor value, Tensor policy, bool silentMode, ref long numRead)
     {
       // Compare indices of max values to check if max value is at same index as in target.

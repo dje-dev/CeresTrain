@@ -157,6 +157,7 @@ namespace CeresTrain.Trainer
 
 
 
+
     private void Train(string modelTag,
                        CeresNeuralNet model,
                        IModuleNNEvaluator anchorEvaluator,
@@ -183,14 +184,10 @@ namespace CeresTrain.Trainer
       predictionWinLoss = new float[OptimizationBatchSizeForward];
       numRead = 0;
 
-      // Make special versions of CrossEntropy losses for use only with the anchor evaluator
-      // because regular cross entropy expects probabilities on the right, but 
-      // the anchor probabilities will already be in logit space.
-      // TODO: This makes implicit assumption that these 3 losses passed into this function
-      //       are CrossEntropy. Instead rework to pass the following 3 into the function.
-      Loss<Tensor, Tensor, Tensor> lossPolicyTwoLogits = new CrossEntropyLossTwoLogits(false);
-      Loss<Tensor, Tensor, Tensor> lossValueTwoLogits = new CrossEntropyLossTwoLogits(false);
-      Loss<Tensor, Tensor, Tensor> lossValue2TwoLogits = new CrossEntropyLossTwoLogits(false);
+      sumFineTuneAnchorErrors = 0;
+      sumFineTuneNonAnchorErrors = 0;
+      countFineTuneAnchorPositions = 0;
+      countFineTuneNonAnchorPositions = 0;
 
       int batchSizeData = TrainingConfig.OptConfig.BatchSizeForwardPass;
       int batchSizeOptimization = TrainingConfig.OptConfig.BatchSizeBackwardPass;
@@ -300,9 +297,9 @@ namespace CeresTrain.Trainer
           bool USE_4BOARD = (object)action != null;
 
           // Mask illegal moves out of the policy vector.
-          const float MASK_POLICY_VALUE = -1E5f;
+          const float MASK_POLICY_VALUE = -6E4f; // say within float16 range in case that is underlying data type
           Tensor legalMoves = policyTarget.greater(0);
-          Tensor illegalMaskValue = zeros_like(policy) + MASK_POLICY_VALUE;
+          Tensor illegalMaskValue = zeros_like(policy).add_(MASK_POLICY_VALUE);
           maskedPolicyForLoss = where(legalMoves, policy, illegalMaskValue);
 
           const float QDEV_LOSS_POST_SCALE = 10.0f;
@@ -312,9 +309,9 @@ namespace CeresTrain.Trainer
 
           // .......................................................
           // TODO: have better way of identifying which to use anchor on than the modulus check here ******
-          bool USE_ANCHOR = anchorEvaluator != null && isAnchorBatch;
+          bool IS_ANCHOR = anchorEvaluator != null && isAnchorBatch;
           bool IS_FINE_TUNE = anchorEvaluator != null && !isAnchorBatch;
-          if (USE_ANCHOR)
+          if (IS_ANCHOR)
           {
             (Tensor policy, Tensor value, Tensor mlh, Tensor unc,
              Tensor value2, Tensor qDeviationLower, Tensor qDeviationUpper,
@@ -341,23 +338,23 @@ namespace CeresTrain.Trainer
 
 
           // TODO: Someday short circuit evaluation if weight is zero.
-          if (USE_ANCHOR)
+          if (IS_ANCHOR)
           {
-            lossPolicyBatch = lossPolicyTwoLogits.call(maskedPolicyForLoss, policyTarget);
-            lossValueBatch = lossValueTwoLogits.call(value, valueTarget);
-            lossValue2Batch = lossValue2TwoLogits.call(value2, value2Target);
+            // Convert from logits to probabilities as expected by CrossEntropyLoss.
+            policyTarget = softmax(policyTarget, dim: -1);
+            valueTarget = softmax(valueTarget, dim: -1);
+            value2Target = softmax(value2Target, dim: -1);
           }
-          else
-          {
-            lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
-            lossValueBatch = lossValue.call(value, valueTarget);
-            lossValue2Batch = lossValue2.call(value2, value2Target);
+          
+          lossPolicyBatch = lossPolicy.call(maskedPolicyForLoss, policyTarget);
+          lossValueBatch = lossValue.call(value, valueTarget);
+          lossValue2Batch = lossValue2.call(value2, value2Target);
 
-            // Subtract entropy from some of the losses
-            lossValueBatch = lossValueBatch - TorchSharpUtils.Entropy(valueTarget);
-            lossValue2Batch = lossValue2Batch - TorchSharpUtils.Entropy(value2Target);
-            lossPolicyBatch = lossPolicyBatch - TorchSharpUtils.Entropy(policyTarget);
-          }
+          // Subtract entropy from some of the losses
+          lossValueBatch = lossValueBatch - TorchSharpUtils.Entropy(valueTarget);
+          lossValue2Batch = lossValue2Batch - TorchSharpUtils.Entropy(value2Target);
+          lossPolicyBatch = lossPolicyBatch - TorchSharpUtils.Entropy(policyTarget);
+          
 
           lossMLHBatch = (object)mlh == null ? zeros_like(unc) : lossMLH.call(mlh, mlhTarget) * MLH_LOSS_POST_SCALE;
           lossUNCBatch = lossUNC.call(unc, uncTarget) * UNC_VALUE_LOSS_POST_SCALE;
@@ -391,6 +388,35 @@ namespace CeresTrain.Trainer
                     + lossUNCPolicyBatch * TrainingConfig.OptConfig.LossUncertaintyPolicyMultiplier
                     + lossQDevLowerBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier
                     + lossQDevUpperBatch * TrainingConfig.OptConfig.LossQDeviationMultiplier;
+
+          if (float.IsNaN(lossTotal.to(ScalarType.Float32).item<float>()))
+          {
+            throw new Exception("lossTotal was NaN");
+          }
+
+          if (IS_ANCHOR)
+          {
+            // TODO: check policy error sometimes negative (?)            
+            if (false)
+            {
+              Console.WriteLine();
+              Console.WriteLine("policy " + MathF.Round(lossPolicyBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossPolicyMultiplier, 3));
+              Console.WriteLine("value " + MathF.Round(lossValueBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossValueMultiplier, 3));
+              Console.WriteLine("value2 " + MathF.Round(lossValue2Batch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossValue2Multiplier, 3));
+              Console.WriteLine("unc " + MathF.Round(lossUNCBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossUNCMultiplier, 3));
+              Console.WriteLine("uncPolicy " + MathF.Round(lossUNCPolicyBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossUncertaintyPolicyMultiplier, 3));
+              Console.WriteLine("qDevLower " + MathF.Round(lossQDevLowerBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossQDeviationMultiplier, 3));
+              Console.WriteLine("qDevUpper " + MathF.Round(lossQDevUpperBatch.cpu().to(ScalarType.Float32).item<float>() * TrainingConfig.OptConfig.LossQDeviationMultiplier, 3));
+            }
+
+            sumFineTuneAnchorErrors += lossTotal.to(ScalarType.Float32).item<float>();
+            countFineTuneAnchorPositions += (int)inputSquares.shape[0];
+          }
+          else if (IS_FINE_TUNE)
+          {
+            sumFineTuneNonAnchorErrors += lossTotal.to(ScalarType.Float32).item<float>();
+            countFineTuneNonAnchorPositions += (int)inputSquares.shape[0];
+          }
 
           if ((object)mlh is not null)
           {
@@ -558,7 +584,11 @@ namespace CeresTrain.Trainer
                                             lossValue2AdjRunning,
                                             float.NaN, float.NaN, float.NaN,
                                             valueDLossAdjRunning, value2DLossAdjRunning,
-                                            0, 0  /* TODO: actionLossRunning*/);
+                                            0, 0  /* TODO: actionLossRunning*/,
+                                            countFineTuneAnchorPositions,
+                                            countFineTuneNonAnchorPositions,
+                                            sumFineTuneAnchorErrors /countFineTuneAnchorPositions, 
+                                            sumFineTuneNonAnchorErrors/countFineTuneNonAnchorPositions);
 
       tpgDataset.Dispose();
       //      Dispose();
@@ -962,49 +992,5 @@ namespace CeresTrain.Trainer
   }
 
 
-  /// <summary>
-  /// Version of CrossEntropyLoss that expects logits on the left and right.
-  /// </summary>
-  public sealed class CrossEntropyLossTwoLogits : Loss<Tensor, Tensor, Tensor>
-  {
-    public readonly bool SubtractEntropy;
-
-    public CrossEntropyLossTwoLogits(bool subtractEntropy, Reduction reduction = Reduction.Mean)
-        : base(reduction)
-    {
-      SubtractEntropy = subtractEntropy;
-    }
-
-    public override Tensor forward(Tensor predLogits, Tensor targetLogits)
-    {
-      // N.B. The logit calculations are highly numerically sensitive and require 64-bit precision.
-      const ScalarType TYPE_COMPUTE = ScalarType.Float64;
-      ScalarType sourceType = predLogits.dtype;
-
-      predLogits = predLogits.to(TYPE_COMPUTE);
-      targetLogits = targetLogits.to(TYPE_COMPUTE);
-
-      using (torch.NewDisposeScope())
-      {
-        // Convert target logits to probabilities via softmax
-        Tensor pTarget = softmax(targetLogits, dim: -1);
-
-        // Convert model logits to log probabilities
-        Tensor logPPred = torch.nn.functional.log_softmax(predLogits, dim: -1);
-
-        // Cross-entropy: - sum_i [ p_target[i] * log p_pred[i] ]
-        // summed over classes => shape [batch], then average
-        Tensor crossEntropyPerSample = pTarget.mul(logPPred).sum(dim: -1).neg();
-        Tensor loss = crossEntropyPerSample.mean();
-
-        if (SubtractEntropy)
-        {
-          loss = loss - TorchSharpUtils.Entropy(targetLogits);
-        } 
-
-        return loss.to(sourceType).MoveToOuterDisposeScope();
-      }
-    }
-  }
 
 }

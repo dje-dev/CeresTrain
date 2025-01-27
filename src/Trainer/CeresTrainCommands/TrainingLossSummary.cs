@@ -31,12 +31,15 @@ namespace CeresTrain.Trainer
   /// <param name="MLHLoss"></param>
   /// <param name="UNCLoss"></param>
   /// <param name="Value2Loss"></param>
-  /// <param name="QDeviationMaxLoss"></param>
+  /// <param name="QDeviationLowerLoss"></param>
+  /// <param name="QDeviationUpperLoss"></param>
   /// <param name="PolicyUncertaintyLoss"></param>
   /// <param name="ValueDLoss"></param>
   /// <param name="Value2DLoss"></param>
   /// <param name="ActionLoss"></param>
   /// <param name="ActionUncertaintyLoss"></param>
+  /// <param name="AvgFineTuneAnchorError"></param>
+  /// <param name="AvgFineTuneNonAnchorError"></param>
   [Serializable]
   public readonly record struct TrainingLossSummary(float TotalLoss,
                                                     float ValueLoss, float ValueAccuracy,
@@ -46,7 +49,9 @@ namespace CeresTrain.Trainer
                                                     float QDeviationLowerLoss, float QDeviationUpperLoss,
                                                     float PolicyUncertaintyLoss,
                                                     float ValueDLoss, float Value2DLoss,
-                                                    float ActionLoss, float ActionUncertaintyLoss)
+                                                    float ActionLoss, float ActionUncertaintyLoss,
+                                                    int NumFineTuneAnchorPositions, int NumFineTuneNonAnchorPositions,
+                                                    float AvgFineTuneAnchorError, float AvgFineTuneNonAnchorError)
   {
     /// <summary>
     /// Returns a sanitized version of the loss summary where NaN values are replaced with -999
