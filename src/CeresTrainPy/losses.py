@@ -27,7 +27,7 @@ class LossCalculator():
   def __init__(self, model : pl.LightningModule):
     super().__init__()
 
-    self.MASK_POLICY_VALUE = -1E5 # for illegal moves
+    self.MASK_POLICY_VALUE = -6E4 # for illegal moves (stay within range of float16)
 
     # Keep running statistics (counts/totals) in between calls to reset_counters.
     self.reset_counters()
