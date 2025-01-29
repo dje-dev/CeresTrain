@@ -826,37 +826,32 @@ namespace CeresTrain.Networks.Transformer
       }
 
 
-      LinearLoad(weightsSource, weightsLoaded, BaseLinear(attentionQKV), $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
+      LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(attentionQKV), $"transformer_layer.{LayerNum}.attention.qkv.weight", $"transformer_layer.{LayerNum}.attention.qkv.bias");
       LinearLoad(weightsSource, weightsLoaded, attentionOutput, $"transformer_layer.{LayerNum}.attention.W_h.weight", $"transformer_layer.{LayerNum}.attention.W_h.bias");
-
-      static Module<Tensor, Tensor> BaseLinear(Module<Tensor,Tensor> module)
-      {
-        return (module is Linear) ? module : (module as LoRALinear).WrappedLinear;
-      }
 
       if (NonLinearAttention)
       {
         RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)qkvLN, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
-        LinearLoad(weightsSource, weightsLoaded, BaseLinear(q2), $"transformer_layer.{LayerNum}.attention.q2.weight", null);
-        LinearLoad(weightsSource, weightsLoaded, BaseLinear(k2), $"transformer_layer.{LayerNum}.attention.k2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(q2), $"transformer_layer.{LayerNum}.attention.q2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(k2), $"transformer_layer.{LayerNum}.attention.k2.weight", null);
         LinearLoad(weightsSource, weightsLoaded, v2, $"transformer_layer.{LayerNum}.attention.v2.weight", null);
       }
 
       if (SoftMoEParams.NumExperts == 0 || SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
-        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear1), $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpLinear1), $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
       {
-        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear3), $"transformer_layer.{LayerNum}.mlp.linear3.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpLinear3), $"transformer_layer.{LayerNum}.mlp.linear3.weight", null);
       }
 
       if (SoftMoEParams.NumExperts == 0
       || (SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinearSecondLayer
        && SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear))
       {
-        LinearLoad(weightsSource, weightsLoaded, BaseLinear(mlpLinear2), $"transformer_layer.{LayerNum}.mlp.linear2.weight", $"transformer_layer.{LayerNum}.mlp.linear2.bias");
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpLinear2), $"transformer_layer.{LayerNum}.mlp.linear2.weight", $"transformer_layer.{LayerNum}.mlp.linear2.bias");
       }
 
       if (NormType == NetTransformerDef.NormalizationType.LayerNorm)
