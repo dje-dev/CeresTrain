@@ -104,7 +104,7 @@ class CeresNet(pl.LightningModule):
     self.action_uncertainty_loss_weight = action_uncertainty_loss_weight
 
     
-    self.Activation  = self.to_activation(config.NetDef_HeadsActivationType)
+    self.Activation  = to_activation(config.NetDef_HeadsActivationType)
     self.test = config.Exec_TestFlag
 
     self.embedding_layer = nn.Linear(NUM_INPUT_BYTES_PER_SQUARE + self.prior_state_dim, self.EMBEDDING_DIM)
@@ -180,6 +180,7 @@ class CeresNet(pl.LightningModule):
 
     num_tokens_q = NUM_TOKENS_NET
     num_tokens_kv = NUM_TOKENS_NET
+    
     self.transformer_layer = torch.nn.Sequential(
        *[EncoderLayer('T', num_tokens_q, num_tokens_kv,
                       self.NUM_LAYERS, self.EMBEDDING_DIM,
@@ -187,6 +188,7 @@ class CeresNet(pl.LightningModule):
                       self.NUM_HEADS,
                       ffn_activation_type = config.NetDef_FFNActivationType, 
                       norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
+                      use_global = config.NetDef_FFNUseGlobalEveryNLayers > 0 and (i % config.NetDef_FFNUseGlobalEveryNLayers) == config.NetDef_FFNUseGlobalEveryNLayers - 1,
                       attention_multiplier = ATTENTION_MULTIPLIER,
                       smoe_mode = config.NetDef_SoftMoE_MoEMode,
                       smoe_num_experts = config.NetDef_SoftMoE_NumExperts,
@@ -219,7 +221,8 @@ class CeresNet(pl.LightningModule):
     self.q_ratio = q_ratio
 
     if (self.denseformer):
-      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2, depth=self.EMBEDDING_DIM) for i in range(self.NUM_LAYERS)])
+      self.dwa_modules = torch.nn.ModuleList([DWA(n_alphas=i+2, depth=self.EMBEDDING_DIM) for i in range(self.NUM_LAYERS)])
+
 
   def forward(self, squares: torch.Tensor, prior_state:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(squares, list):

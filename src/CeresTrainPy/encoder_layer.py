@@ -26,7 +26,8 @@ class EncoderLayer(torch.nn.Module):
   def __init__(self, trunk_type : str, 
                num_tokens_q : int, num_tokens_kv : int,
                num_layers: int, hidden_size: int, ffn_hidden_size: int, 
-                num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5, 
+                num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5,
+                use_global : bool = False,
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                 smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                 smolgen_activation_type : str = 'None',
@@ -48,6 +49,7 @@ class EncoderLayer(torch.nn.Module):
     self.test = test
     self.layerNum = layerNum   
     self.numLayers = num_layers 
+    self.use_global = use_global
     self.alpha = alpha
     self.num_attention_heads = num_attention_heads
     self.dim_per_head = hidden_size // num_attention_heads
@@ -70,7 +72,7 @@ class EncoderLayer(torch.nn.Module):
                                            1, 0, 0, 0, None, smolgen_activation_type, False, None, None, None, None, test)
       self.ln3 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
       if self.dual_attention_mode == 'DualAttentionAndFFN':
-        self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, use_te = False) 
+        self.mlp2 = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, norm_type=norm_type, use_global=use_global, use_te = False) 
         self.ln4 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
 
     if self.dropout_rate > 0:
@@ -93,7 +95,7 @@ class EncoderLayer(torch.nn.Module):
       self.moe = None
 
     if ffn_hidden_size > 0:
-      self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, use_te = False) 
+      self.mlp = MLP2Layer(model_dim=hidden_size, ffn_inner_dim=ffn_hidden_size, out_dim = hidden_size, activation_type=ffn_activation_type, norm_type=norm_type, use_global=use_global, use_te = False) 
 
 
   def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

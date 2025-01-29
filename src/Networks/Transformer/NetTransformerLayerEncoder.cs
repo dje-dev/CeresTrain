@@ -177,6 +177,13 @@ namespace CeresTrain.Networks.Transformer
     Linear attentionQKVDual;
     Linear attentionOutputDual;
 
+    const int MLP_GLOBAL_PER_SQUARE_DIVISOR = 8; //reduces DIM ==> DIM / MLP_GLOBAL_PER_SQUARE_DIVISOR before flatten
+    const int MLP_GLOBAL_DIVISOR = 1; // divisor used to determine size of model dimension versus concatenated global dimension
+
+    Linear mlpGlobalSquareReduce;
+    Linear mlpGlobalReduce;
+    Module<Tensor, Tensor> mlpGlobalLN;
+
     Module<Tensor, Tensor> mlpLinear1;
     Module<Tensor, Tensor> mlpLinear2;
     Module<Tensor, Tensor> mlpLinear3;
@@ -208,7 +215,7 @@ namespace CeresTrain.Networks.Transformer
     // Implementations often but not always use no bias
     const bool USE_BIAS = false; // N.B. Weight loading code assumes this is false
 
-
+    public readonly bool GlobalInMLP = false;
 
     /// <summary>
     /// Constructor.
@@ -246,7 +253,8 @@ namespace CeresTrain.Networks.Transformer
                                       SoftMoEParams softMoEParams, bool monitorMoEActivationStats, 
                                       ref Linear smLinearShared,
                                       int loraRankDivisor,
-                                      Func<bool> loRAEnabledFunc)
+                                      Func<bool> loRAEnabledFunc,
+                                      bool globalInMLP)
       : base($"transformer_layer.{layerNum}")
     {
       if (dim % numHeads != 0)
@@ -281,6 +289,7 @@ namespace CeresTrain.Networks.Transformer
       MonitorMoEActivationStats = monitorMoEActivationStats;
 
       LoRARankDivisor = loraRankDivisor;
+      GlobalInMLP = globalInMLP;
 
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
       attentionQKV = LoRALinear.PossiblyLoRAWrappedModule(attentionQKV, loraRankDivisor, () => LoRAEnabledFunc());
@@ -330,7 +339,15 @@ namespace CeresTrain.Networks.Transformer
 
       if (!useSoftMoE || softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
-        mlpLinear1 = Linear(dim, dim * ffnMult, hasBias: USE_FFN_BIAS);
+        if (GlobalInMLP)
+        {
+          int mlpGlobalPerSquare = dim / MLP_GLOBAL_PER_SQUARE_DIVISOR;
+          int mlpGlobalDim = 64 * mlpGlobalPerSquare;
+          mlpGlobalSquareReduce = Linear(dim, mlpGlobalPerSquare, hasBias: USE_FFN_BIAS);
+          mlpGlobalReduce = Linear(mlpGlobalDim, dim / MLP_GLOBAL_DIVISOR, hasBias: USE_FFN_BIAS);
+          mlpGlobalLN = MakeNormalizationLayer(dim / MLP_GLOBAL_DIVISOR);
+        }
+        mlpLinear1 = Linear(dim + (GlobalInMLP ? dim / MLP_GLOBAL_DIVISOR : 0), dim * ffnMult, hasBias: USE_FFN_BIAS);
         mlpLinear1 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear1, loraRankDivisor, () => LoRAEnabledFunc());
 
       }
@@ -543,6 +560,15 @@ namespace CeresTrain.Networks.Transformer
 
         if (moe == null || SoftMoEParams.NumExperts == 0)
         {
+          if (GlobalInMLP)
+          {
+            Tensor mlpGlobal = mlpGlobalSquareReduce.call(mlpInput);
+            mlpGlobal = torch.flatten(mlpGlobal, 1);
+            mlpGlobal = mlpGlobalReduce.call(mlpGlobal);
+            mlpGlobal = mlpGlobalLN.call(mlpGlobal);
+            mlpInput = torch.cat([mlpInput, mlpGlobal.unsqueeze(1).expand(-1, 64, -1)], dim: -1);
+          }
+
           Tensor afterLinear1 = mlpLinear1.call(mlpInput);
           Tensor beforeLinear2 = TorchSharpUtils.WithActivation(afterLinear1, FFNActivation);
           if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)

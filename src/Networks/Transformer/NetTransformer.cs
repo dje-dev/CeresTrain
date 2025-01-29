@@ -217,7 +217,9 @@ namespace CeresTrain.Networks.Transformer
             ExecutionConfig.MonitorActivationStats,
             ref smLinearShared,
             TransformerConfig.LoRARankDivisor,
-            () => LoRAEnabled
+            () => LoRAEnabled,
+            TransformerConfig.FFNUseGlobalEveryNLayers > 0 && (layerNum % TransformerConfig.FFNUseGlobalEveryNLayers)
+                                                               == TransformerConfig.FFNUseGlobalEveryNLayers - 1
         );
         teCS = teCS.to(ExecutionConfig.Device, ExecutionConfig.DataType);
         layersEncodersArray[layerNum] = teCS;

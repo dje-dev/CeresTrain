@@ -131,6 +131,7 @@ class Configuration:
     self.NetDef_NonLinearAttention = config_net_def.get('NonLinearAttention', False)
     self.NetDef_FFNMultiplier = config_net_def.get('FFNMultiplier', 1)
     self.NetDef_FFNActivationType = config_net_def.get('FFNActivationType', 'ReLUSquared')
+    self.NetDef_FFNUseGlobalEveryNLayers = config_net_def.get('FFNUseGlobalEveryNLayers', 0)
     self.NetDef_HeadsActivationType = config_net_def.get('HeadsActivationType', 'ReLU')
     self.NetDef_PriorStateDim = config_net_def.get('PriorStateDim', 64)  
     self.NetDef_DeepNorm = config_net_def.get('DeepNorm', False) 

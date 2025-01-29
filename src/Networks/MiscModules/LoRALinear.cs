@@ -123,6 +123,11 @@ namespace CeresTrain.Networks.MiscModules
       RegisterComponents();
     }
 
+    public static Module<Tensor, Tensor> BaseLinear(Module<Tensor, Tensor> module)
+    {
+      return (module is Linear) ? module : (module as LoRALinear).WrappedLinear;
+    }
+
 
     /// <summary>
     /// Overwrites the contents of LoraA, LoraB, LoraAlpha in-place 

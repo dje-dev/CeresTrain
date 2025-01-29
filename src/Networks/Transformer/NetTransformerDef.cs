@@ -255,6 +255,12 @@ namespace CeresTrain.Networks.Transformer
     public readonly ActivationType FFNActivationType { get; init; } = ActivationType.Mish;
 
     /// <summary>
+    /// If nonzero, determines the ratio of MLP layers which are enhanced with a
+    /// computed global features (computed and concatenated to input to first linear layer).
+    /// </summary>
+    public readonly int FFNUseGlobalEveryNLayers { get; init; } = 0;
+
+    /// <summary>
     /// Activation function to use in network heads.
     /// </summary>
     public readonly ActivationType HeadsActivationType { get; init; } = ActivationType.Mish;
