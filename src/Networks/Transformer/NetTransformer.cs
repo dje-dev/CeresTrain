@@ -33,6 +33,7 @@ using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.Trainer;
+using CeresTrain.Networks.MiscModules;
 
 #endregion
 
@@ -77,8 +78,8 @@ namespace CeresTrain.Networks.Transformer
 
     internal NetTransformerLayerEncoder[] layersEncodersArray;
 
-    internal Linear headPremap;
-    internal Linear headSharedLinear;
+    internal Module<Tensor,Tensor> headPremap;
+    internal Module<Tensor,Tensor> headSharedLinear;
 
     public Module<Tensor,Tensor> layerValueHead;
     internal NetTransformerLayerHead layerValue2Head;
@@ -229,6 +230,7 @@ namespace CeresTrain.Networks.Transformer
                           true,
                           ExecutionConfig.Device,
                           ExecutionConfig.DataType);
+      headPremap = LoRALinear.PossiblyLoRAWrappedModule(headPremap, TransformerConfig.LoRARankDivisor, () => LoRAEnabled);
       headPremap.to(ExecutionConfig.Device, ExecutionConfig.DataType);
 
       // Head shared linear
@@ -237,6 +239,7 @@ namespace CeresTrain.Networks.Transformer
                                 true,
                                 ExecutionConfig.Device,
                                 ExecutionConfig.DataType);
+      headSharedLinear = LoRALinear.PossiblyLoRAWrappedModule(headSharedLinear, TransformerConfig.LoRARankDivisor, () => LoRAEnabled);
       headSharedLinear.to(ExecutionConfig.Device, ExecutionConfig.DataType);
 
       // Optional MLH head
@@ -407,10 +410,10 @@ namespace CeresTrain.Networks.Transformer
         }
 
         // 3) Head premap
-        LinearLoad(paramsToLoad, loadedParams, headPremap, "headPremap.weight", "headPremap.bias");
+        LinearLoad(paramsToLoad, loadedParams, LoRALinear.BaseLinear(headPremap), "headPremap.weight", "headPremap.bias");
 
         // 4) Head shared linear
-        LinearLoad(paramsToLoad, loadedParams, headSharedLinear, "headSharedLinear.weight", "headSharedLinear.bias");
+        LinearLoad(paramsToLoad, loadedParams, LoRALinear.BaseLinear(headSharedLinear), "headSharedLinear.weight", "headSharedLinear.bias");
 
         // 5) Optional MLH head
         if (paramsToLoad.ContainsKey("mlh_head.fc.weight") && layerMLHHead != null)
