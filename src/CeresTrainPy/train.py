@@ -302,7 +302,7 @@ def Train():
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down using a truncated consine decay, terminating around 0.10
     FRAC_START_DECAY = config.Opt_LRBeginDecayAtFractionComplete
-    MIN_LR = 0.35
+    MIN_LR = 0.25
     WARMUP_POS = num_warmup_positions()
 
     if num_pos < WARMUP_POS:
