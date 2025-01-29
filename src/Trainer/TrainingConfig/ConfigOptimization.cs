@@ -151,7 +151,7 @@ namespace CeresTrain.Trainer
     /// Maximum learning rate to be used during optimization.
     /// Learning rate typically needs to be lower for small batch sizes and/or larger networks.
     /// </summary>
-    public readonly float LearningRateBase { get; init; } = 2E-4f;
+    public readonly float LearningRateBase { get; init; } = 2.5E-4f;
 
     /// <summary>
     /// Fraction complete (between 0 and 1) at which scaling down of the LearningRateBase begins 
