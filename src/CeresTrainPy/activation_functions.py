@@ -14,7 +14,7 @@ If not, see <http://www.gnu.org/licenses/>.
 import torch
 
 
-def to_activation(self, activation_str : str) -> torch.nn.Module:
+def to_activation(activation_str : str) -> torch.nn.Module:
   """
   Converts a string identifier of activation to a PyTorch activation function.
   """
