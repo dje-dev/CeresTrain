@@ -145,8 +145,8 @@ class TPGDataset(Dataset):
       exit()
 
     # Reduce files to be only the files that this worker is responsible for.
-    assert self.worker_id >= 0, "Worker ID expected to have been be set before calling item_generator" 
-    self.files = [file for index, file in enumerate(self.files) if index % self.num_workers == self.worker_id]      
+    assert self.num_workers == 0 or self.worker_id >= 0, "Worker ID expected to have been be set before calling item_generator" 
+    self.files = [file for index, file in enumerate(self.files) if self.num_workers == 0 or (index % self.num_workers == self.worker_id)]
 
     wdl_smoothing_transform = np.array([
         [1-self.wdl_smoothing, self.wdl_smoothing*0.75, self.wdl_smoothing*0.25],

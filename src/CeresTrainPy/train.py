@@ -356,9 +356,8 @@ def Train():
 
   # Use two concurrent dataset workers (if more than one training data file is available)
   count_zst_files = len(fnmatch.filter(os.listdir(TPG_TRAIN_DIR), '*.zst'))
-  NUM_DATASET_WORKERS = 1 # Using 1 means there is one parallel worker always processing in advance. Be cautious about changing this.
-  PREFETCH_FACTOR = 4 # to keep GPU busy
-
+  NUM_DATASET_WORKERS = 0 if sys.platform.startswith("win") else 1 # Not available on Windows. 1 meansone parallel worker always processing in advance (change with caution).
+  PREFETCH_FACTOR = None if NUM_DATASET_WORKERS == 0 else 4 # to keep GPU busy
  
   world_size = len(devices)
   rank = 0 if world_size == 1 else dist.get_rank()
