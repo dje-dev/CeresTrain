@@ -140,10 +140,6 @@ class TPGDataset(Dataset):
     POS_PER_BLOCK = 24576//2 # read this many positions per loop iteration (somewhat arbitrary, each block about 115MB)
     BYTES_PER_BLOCK = POS_PER_BLOCK * BYTES_PER_POS
 
-    if self.worker_id is None:
-      print('ERROR: worker_id not initialized')
-      exit()
-
     # Reduce files to be only the files that this worker is responsible for.
     assert self.num_workers == 0 or self.worker_id >= 0, "Worker ID expected to have been be set before calling item_generator" 
     self.files = [file for index, file in enumerate(self.files) if self.num_workers == 0 or (index % self.num_workers == self.worker_id)]
