@@ -565,6 +565,11 @@ namespace CeresTrain.Networks.Transformer
             Tensor mlpGlobal = mlpGlobalSquareReduce.call(mlpInput);
             mlpGlobal = torch.flatten(mlpGlobal, 1);
             mlpGlobal = mlpGlobalReduce.call(mlpGlobal);
+            mlpGlobal = TorchSharpUtils.WithActivation(mlpGlobal, FFNActivation);
+            if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
+            {
+              throw new NotImplementedException();
+            }
             mlpGlobal = mlpGlobalLN.call(mlpGlobal);
             mlpInput = torch.cat([mlpInput, mlpGlobal.unsqueeze(1).expand(-1, 64, -1)], dim: -1);
           }

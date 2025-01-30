@@ -19,7 +19,7 @@ from rms_norm import RMSNorm
 # the YouTube video "How might LLMs store facts" by 3Blue1Brown (at about 9:00).
 USE_BIAS = True # Daniel Moore reported biases useful in FFN
 
-MLP_GLOBAL_PER_SQUARE_DIVISOR = 8; # reduces DIM ==> DIM / MLP_GLOBAL_PER_SQUARE_DIVISOR before flatten
+MLP_GLOBAL_PER_SQUARE_DIVISOR = 16; # reduces DIM ==> DIM / MLP_GLOBAL_PER_SQUARE_DIVISOR before flatten
 MLP_GLOBAL_DIVISOR = 1; # divisor used to determine size of model dimension versus concatenated global dimension
 MLP_GLOBAL_LN_EPS = 1e-6
 
@@ -67,6 +67,7 @@ class MLP2Layer(torch.nn.Module):
         mlpGlobal = self.mlpGlobalSquareReduce(x);
         mlpGlobal = torch.flatten(mlpGlobal, 1);
         mlpGlobal = self.mlpGlobalReduce(mlpGlobal);
+        mlpGlobal = self.activation_fn(mlpGlobal)
         mlpGlobal = self.mlpGlobalLN(mlpGlobal);
         x = torch.concat((x, mlpGlobal.unsqueeze(1).expand(-1, 64, -1)), dim=-1)
 
