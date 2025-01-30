@@ -130,7 +130,7 @@ namespace CeresTrain.TrainCommands
                                                                             devices, hostConfig.OverridePyTorchCompileMode,
                                                                             numPos, tpgDir);
           bool isWSL = hostConfig.HostName.ToUpper() == "WSL";
-          if (isWSL || hostConfig.HostName == System.Environment.MachineName)
+          if (isWSL || hostConfig.HostName.ToUpper() == Environment.MachineName.ToUpper())
           {
             if (isWSL && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {

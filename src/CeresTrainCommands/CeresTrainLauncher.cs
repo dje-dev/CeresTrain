@@ -84,11 +84,15 @@ namespace CeresTrain.TrainCommands
 
       (FileLogger logger, TrainingStatusTable consoleStatusTable) = CeresTrainCommandUtils.DoTrainingPrologue(configID, ceresTrainPyDir, configID, in config, configFullPath, trainingStatusTable);
       DateTime startTime = DateTime.Now;
+      bool isWindows = hostName == Environment.MachineName.ToUpper();
 
+      //"cmd", $"/c 
+      string pythonExe = isWindows ? "python" : "python3";
+      string cmdArg = isWindows ? "/c" : "-c";  
       ProcessStartInfo startInfo = new()
       {
-        FileName = isWSL ? "wsl" : "/usr/bin/bash",
-        Arguments = (isWSL ? "bash " : "") + $"-c \"cd {ceresTrainPyDir} && python3 train.py {configFullPath} {hostPathToOutput}\"",
+        FileName = isWSL ? "wsl" : (isWindows ? "cmd" : "/usr/bin/bash"),
+        Arguments = (isWSL ? "bash " : "") + $"{cmdArg} \"cd {ceresTrainPyDir} && {pythonExe} train.py {configFullPath} {hostPathToOutput}\"",
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
