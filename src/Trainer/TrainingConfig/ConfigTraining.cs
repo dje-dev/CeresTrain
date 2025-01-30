@@ -144,6 +144,7 @@ namespace CeresTrain.Trainer
       } 
 
       if (!runningInProcess 
+       && OptConfig.PyTorchCompileMode != null
        && OptConfig.PyTorchCompileMode.Contains("max-autotune")
        && OptConfig.BatchSizeBackwardPass != OptConfig.BatchSizeForwardPass)
       {
