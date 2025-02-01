@@ -26,6 +26,9 @@ using CeresTrain.Networks.Transformer;
 using static TorchSharp.torch;
 using System.Linq;
 using System.Collections.Generic;
+using CeresTrain.Networks.MiscModules;
+using TorchSharp.Utils;
+using Ceres.Base.Misc;
 
 #endregion
 
@@ -143,9 +146,16 @@ namespace CeresTrain.Utils
       float epsilon = 1e-6f;
       Tensor clippedProbabilities = clamp(probabilities + epsilon, epsilon, 1.0f); // Ensure probabilities are in a valid range
       Tensor logProbabilities = log(clippedProbabilities); // Log of probabilities
-      Tensor entropy = torch.nn.functional.cross_entropy(logProbabilities, clippedProbabilities); // Entropy as self cross-entropy
+      Tensor entropy = functional.cross_entropy(logProbabilities, clippedProbabilities); // Entropy as self cross-entropy
       return entropy;
     }
+
+    /// <summary>
+    /// Returns entropy of the specified logits.
+    /// </summary>
+    /// <param name="logits"></param>
+    /// <returns></returns>
+    public static Tensor EntropyLogits(Tensor logits) => functional.cross_entropy(logits, logits);
 
 
     /// <summary>
@@ -183,8 +193,8 @@ namespace CeresTrain.Utils
     /// <param name="linearLayers"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentException"></exception>
-    public static Dictionary<string, (float[] weights, float[] bias)> 
-      ExtractWeightsFromLinearLayers(Module<Tensor, Tensor> module, params (string name, bool transpose)[] linearLayers)
+    public static Dictionary<string, (float[] weights, float[] bias)>
+  ExtractWeightsFromLinearLayers(Module<Tensor, Tensor> module, params (string name, bool transpose)[] linearLayers)
     {
       int nextNameIndex = 0;
 
@@ -203,7 +213,8 @@ namespace CeresTrain.Utils
         }
         else if (nn.module.named_parameters().Count() > 0)
         {
-          throw new ArgumentException("Found Module with parameters but not Linear, not supported.");
+          ConsoleUtils.WriteLineColored(ConsoleColor.Yellow, "not emitting " + nn.name);
+//          throw new ArgumentException("Found Module with parameters but not Linear, not supported.");
         }
       }
 
@@ -292,6 +303,83 @@ namespace CeresTrain.Utils
       }
     }
 
+
+
+    #region Copying parameters
+
+    /// <summary>
+    /// Copies all parameters from sourceNet into destNet, assuming they have the same structure.
+    /// Returns (paramCount, layerCount) as a tuple.
+    /// </summary>
+    public static (long paramCount, long layerCount) CopyParameters(Module sourceNet, Module destNet)
+    {
+      if (sourceNet == null) throw new ArgumentNullException(nameof(sourceNet));
+      if (destNet == null) throw new ArgumentNullException(nameof(destNet));
+
+      long totalParamCount = 0;
+      long totalLayerCount = 0;
+
+      RecurseCopy(sourceNet, destNet, ref totalParamCount, ref totalLayerCount);
+
+      // Optionally print or log the final result:
+      Console.WriteLine($"[CopyParameters] Copied {totalParamCount} parameters across {totalLayerCount} layers.");
+
+      return (totalParamCount, totalLayerCount);
+    }
+
+    /// <summary>
+    /// Recursively copies parameters from source to destination, accumulating counts.
+    /// </summary>
+    static void RecurseCopy(Module source, Module dest, ref long paramCount, ref long layerCount)
+    {
+//      var nps = source.named_parameters().ToArray();
+
+      object sourceParamsObj = source.GetType()
+                                   .GetField("_internal_params", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                   ?.GetValue(source);
+      OrderedDict<string, Parameter> sourceParamsDict = sourceParamsObj as OrderedDict<string, Parameter>;
+      object destParamsObj = dest.GetType()
+                                   .GetField("_internal_params", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                   ?.GetValue(source);
+      OrderedDict<string, Parameter> destParamsDict = destParamsObj as OrderedDict<string, Parameter>;
+
+      if (sourceParamsDict.Keys.Count != destParamsDict.Keys.Count)
+      {
+        throw new InvalidOperationException(
+           $"Parameter count mismatch in modules '{source.GetType()}' vs '{dest.GetType()}'. " +
+           $"Source has {sourceParamsDict.Keys.Count}, Dest has {destParamsDict.Keys.Count}." );
+      }
+
+      // Copy parameters at the current module level
+      foreach ((string, Parameter) destParam in destParamsDict)
+      {
+        // Copies tensor data in-place
+        destParam.Item2.copy_(sourceParamsDict[destParam.Item1]);
+        paramCount++;
+      }
+
+      // Consider this a 'layer'
+      layerCount++;
+
+      // Recursively process child modules
+      Module[] sourceChildren = source.children().ToArray();
+      Module[] destChildren = dest.children().ToArray();
+
+      if (sourceChildren.Length != destChildren.Length)
+      {
+        throw new InvalidOperationException(
+            $"Submodule count mismatch in modules '{source.GetType()}' vs '{dest.GetType()}'. " +
+            $"Source has {sourceChildren.Length}, Dest has {destChildren.Length}."
+        );
+      }
+
+      for (int i = 0; i < sourceChildren.Length; i++)
+      {
+        RecurseCopy(sourceChildren[i], destChildren[i], ref paramCount, ref layerCount);
+      }
+    }
+
+    #endregion
   }
 
 }
