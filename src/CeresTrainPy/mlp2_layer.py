@@ -19,7 +19,7 @@ from rms_norm import RMSNorm
 # the YouTube video "How might LLMs store facts" by 3Blue1Brown (at about 9:00).
 USE_BIAS = True # Daniel Moore reported biases useful in FFN
 
-MLP_GLOBAL_PER_SQUARE_DIVISOR = 16; # reduces DIM ==> DIM / MLP_GLOBAL_PER_SQUARE_DIVISOR before flatten
+MLP_GLOBAL_PER_SQUARE_DIVISOR = 8; # reduces DIM ==> DIM / MLP_GLOBAL_PER_SQUARE_DIVISOR before flatten
 MLP_GLOBAL_DIVISOR = 1; # divisor used to determine size of model dimension versus concatenated global dimension
 MLP_GLOBAL_LN_EPS = 1e-6
 
