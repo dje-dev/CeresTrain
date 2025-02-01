@@ -107,7 +107,7 @@ namespace CeresTrain.TrainingDataGenerator
       TPGRecordConverter.ConvertToTPGRecord(in encodedPosToConvert, true, default, targetInfo, returnBlendedPolicy,
                                            CompressedPolicyVector.DEFAULT_MIN_PROBABILITY_LEGAL_MOVE,
                                            ref tpgRecord, default,
-                                           emitLastPlySinceSquare, 0, 0);
+                                           emitLastPlySinceSquare, 0, 0, node.N);
 
       return tpgRecord;
     }

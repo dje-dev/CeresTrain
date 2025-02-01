@@ -789,6 +789,7 @@ const bool TEST = false;
       target.DeltaQVersusV = infoTraining.Uncertainty;
       target.KLDPolicy = infoTraining.KLDPolicy;
       target.PlayedMoveQSuboptimality = i == 0 ? 0 : gameAnalyzer.PositionRef(i - 1).MiscInfo.InfoTraining.QSuboptimality;
+      target.NumSearchNodes = infoTraining.NumVisits;
 
       // Emit prior position Win/Loss if requested in options
       // and this move was not a big blunder (which makes prior evaluation not informative).
