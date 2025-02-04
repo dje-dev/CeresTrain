@@ -871,6 +871,12 @@ namespace CeresTrain.Networks.Transformer
       if (SoftMoEParams.NumExperts == 0 || SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
       {
         LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpLinear1), $"transformer_layer.{LayerNum}.mlp.linear1.weight", $"transformer_layer.{LayerNum}.mlp.linear1.bias");
+        if (GlobalInMLP)
+        {
+          LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpGlobalSquareReduce), $"transformer_layer.{LayerNum}.mlp.mlpGlobalSquareReduce.weight", $"transformer_layer.{LayerNum}.mlp.mlpGlobalSquareReduce.bias");
+          LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(mlpGlobalReduce), $"transformer_layer.{LayerNum}.mlp.mlpGlobalReduce.weight", $"transformer_layer.{LayerNum}.mlp.mlpGlobalReduce.bias");
+          RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)mlpGlobalLN, $"transformer_layer.{LayerNum}.mlp.mlpGlobalLN.scale");
+        }
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
