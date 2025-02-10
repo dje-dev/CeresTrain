@@ -208,12 +208,14 @@ namespace CeresTrain.TPG.TPGGenerator
       // Seed the random number generator with time so each run generates new data.
       Random rand = new Random(DateTime.Now.Millisecond);
 
+      ConcurrentDictionary<ulong, int> writtenPositionHashes = new();
+
       // Launch all threads.
       int numThreadsToUse = Math.Min(Options.FilesToProcess.Count, Options.NumThreads);
       Task[] threads = new Task[numThreadsToUse];
       for (int i = 0; i < numThreadsToUse; i++)
       {
-        Task task = new Task(() => RunGeneratorThread(Options.FilesToProcess, rand));
+        Task task = new Task(() => RunGeneratorThread(Options.FilesToProcess, writtenPositionHashes, rand));
         task.Start();
         threads[i] = task;
       }
@@ -235,7 +237,9 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
-    private void RunGeneratorThread(ConcurrentQueue<string> files, Random rand)
+    private void RunGeneratorThread(ConcurrentQueue<string> files, 
+                                    ConcurrentDictionary<ulong, int> writtenPositionHashes, 
+                                    Random rand)
     {
       while (true)
       {
@@ -253,7 +257,7 @@ namespace CeresTrain.TPG.TPGGenerator
         }
 
         // Actually process all positions in file.
-        DoProcessFN(fn);
+        DoProcessFN(fn, writtenPositionHashes);
 
         // Replace the file in the set of files to process (at the end of the queue).
         files.Enqueue(fn);
@@ -261,11 +265,11 @@ namespace CeresTrain.TPG.TPGGenerator
     }
 
 
-    void DoProcessFN(string fn)
+    void DoProcessFN(string fn, ConcurrentDictionary<ulong, int> writtenPositionHashes)
     {
       try
       {
-        Read(fn);
+        Read(fn, writtenPositionHashes);
       }
       catch (Exception exc)
       {
@@ -292,7 +296,7 @@ namespace CeresTrain.TPG.TPGGenerator
                                           in EncodedTrainingPositionGame game, 
                                           bool includeCheckForPositionMaxFraction,
                                           bool includeGameAnalyzerCheck,
-                                          Dictionary<ulong, int> positionUsedCountsByHash, 
+                                          ConcurrentDictionary<ulong, int> positionUsedCountsByHash, 
                                           int numWrittenThisFile)
     {
       if (gameAnalyzer != null && includeGameAnalyzerCheck)
@@ -348,7 +352,7 @@ namespace CeresTrain.TPG.TPGGenerator
 
     const bool VALIDATE_BEFORE_WRITE = true;
 
-    void Read(string fn)
+    void Read(string fn, ConcurrentDictionary<ulong, int> writtenPositionHashes)
     {
       // Every thread uses a random "skip modulus" which 
       // determines the positions that are skipped 
@@ -365,8 +369,6 @@ namespace CeresTrain.TPG.TPGGenerator
       // but later in this method we filter them out.
       var reader = EncodedTrainingPositionReader.EnumerateGames(fn, s => true, filterOutFRCGames: false);
 
-      Dictionary<ulong, int> positionUsedCountsByHash = new();
-
       Span<EncodedMove> policyMoves = stackalloc EncodedMove[CompressedPolicyVector.NUM_MOVE_SLOTS];
       Span<float> policyProbs = stackalloc float[CompressedPolicyVector.NUM_MOVE_SLOTS];
 
@@ -375,8 +377,6 @@ namespace CeresTrain.TPG.TPGGenerator
       // To enhance random sampling, skip each thread skips a random number
       // of games from beginning of each file.
       int numGamesToSkipAtBeginningOfFile = (int)(threadRandom.Value.NextInt64() % 100);
-
-      int writeToSetCounter = 0;
 
       try
       {
@@ -453,7 +453,7 @@ namespace CeresTrain.TPG.TPGGenerator
             }
 
             // Verify this position acceptable to process.
-            bool okToProcess = PositionAtIndexShouldBeProcessed(i, in game, true, true, positionUsedCountsByHash, numWrittenThisFile);
+            bool okToProcess = PositionAtIndexShouldBeProcessed(i, in game, true, true, writtenPositionHashes, numWrittenThisFile);
             if (!okToProcess)
             {
               // We know we've already skipped ahead far enough to ensure position diversity.
@@ -470,7 +470,7 @@ namespace CeresTrain.TPG.TPGGenerator
             // there are additional restrictions on which positions are suitable to emit.
             if (Options.NumRelatedPositionsPerBlock > 1)
             {
-              if (!IsAcceptableFirstPositionOfMultiboard(numWrittenThisFile, positionUsedCountsByHash, game, i))
+              if (!IsAcceptableFirstPositionOfMultiboard(numWrittenThisFile, writtenPositionHashes, game, i))
               {
                 continue;
               }
@@ -481,8 +481,10 @@ namespace CeresTrain.TPG.TPGGenerator
             numWrittenThisFile += Options.NumRelatedPositionsPerBlock;
             long numBlocksWrittenThisFile = indexThisPosUsed / Options.NumRelatedPositionsPerBlock;
 
-            // Rotate written positions thru all sets to enhance diversity of positions within any single file.
-            int setNum = (writeToSetCounter++ % Options.NumConcurrentSets);
+            // Rotate written positions thru all sets to
+            // enhance diversity of positions within any single file
+            // and also (criticalyl) to spread lock contention across all output files.
+            int setNum = (int)(numBlocksWrittenThisFile % Options.NumConcurrentSets);
 
             if (Options.NumRelatedPositionsPerBlock == 1)
             {
@@ -704,7 +706,10 @@ const bool TEST = false;
     }
 
 
-    private bool IsAcceptableFirstPositionOfMultiboard(int numWrittenThisFile, Dictionary<ulong, int> positionUsedCountsByHash, EncodedTrainingPositionGame game, int i)
+    private bool IsAcceptableFirstPositionOfMultiboard(int numWrittenThisFile, 
+                                                       ConcurrentDictionary<ulong, int> positionUsedCountsByHash, 
+                                                       EncodedTrainingPositionGame game, 
+                                                       int i)
     {
       if (Options.NumRelatedPositionsPerBlock != 4)
       {
