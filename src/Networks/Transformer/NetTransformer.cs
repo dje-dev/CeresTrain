@@ -561,7 +561,7 @@ namespace CeresTrain.Networks.Transformer
         using (NewDisposeScope())
         {
           // Run encoder.
-          Tensor flowCSNext = layersEncodersArray[layerNum].call(flowCS, flowState);
+          Tensor flowCSNext = layersEncodersArray[layerNum].call((flowCS, flowState));
           flowCS.Dispose();
           flowCS = flowCSNext.MoveToOuterDisposeScope();
         }

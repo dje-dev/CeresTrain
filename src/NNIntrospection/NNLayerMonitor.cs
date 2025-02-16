@@ -118,7 +118,7 @@ namespace CeresTrain.NNIntrospection
     Module ParentModule;
     Module LayerModule;
 
-    internal Func<Module, Tensor, Tensor, float> supplementalStatCalcCallback;
+    internal Func<Module, (Tensor, Tensor), Tensor, float> supplementalStatCalcCallback;
     float supplementalStatAgg;
 
     #endregion
@@ -307,16 +307,27 @@ namespace CeresTrain.NNIntrospection
     }
 
 
-    public void SetSupplementalStat(Func<Module, Tensor, Tensor, float> statCalcCallback)
+    public void SetSupplementalStat(Func<Module, (Tensor, Tensor), Tensor, float> statCalcCallback)
     {
       supplementalStatCalcCallback = statCalcCallback;
     }
 
 
-    void RegisterHook(Module model, string layerName, Func<Module<Tensor, Tensor>, Tensor, Tensor, Tensor> callback)
+    void RegisterHook(Module model, string layerName, Func<Module<(Tensor,Tensor), Tensor>, (Tensor, Tensor), Tensor, Tensor> callback)
     {
-      foreach ((string name, Module<Tensor, Tensor> module) node in model.named_modules())
+      foreach ((string name, Module module) nodeRaw in model.named_modules())
       {
+        (string name, Module<(Tensor, Tensor), Tensor> module) node = default;
+        if (nodeRaw.module is not NetTransformerLayerEncoder)
+        {
+          // Ignore other layers such as appearing in head, or embedding layer.
+          return;
+        }
+        else
+        {
+          node = (nodeRaw.name, (NetTransformerLayerEncoder)nodeRaw.module);
+        }
+
         if (layerName == node.name)
         {
           // Set up (optional) pre-hook to inform the layer if monitoring will be called for the next invocation. 
@@ -335,7 +346,7 @@ namespace CeresTrain.NNIntrospection
           // Set up the hook to monitor the layer.  
           node.module.register_forward_hook((module, input, output) =>
           {
-            return callback(node.module, input, output);
+            return callback(module, input, output);
           });
 
           return;

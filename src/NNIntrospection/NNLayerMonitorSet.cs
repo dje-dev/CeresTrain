@@ -75,7 +75,7 @@ namespace CeresTrain.NNIntrospection
             stat = layerSupplementaryStat(node.name);
           }
 
-          Monitors.Add(new NNLayerMonitor(module, node.module, node.name, monitorSkipCount, 0, stat, this));
+          Monitors.Add(new NNLayerMonitor(module, node.module, node.name, monitorSkipCount, dumpSkipCount, stat, this));
         }
       }
     }
@@ -104,7 +104,7 @@ namespace CeresTrain.NNIntrospection
     /// <param name="layerName"></param>
     /// <param name="computeLayerStatFunc"></param>
     /// <exception cref="ArgumentException"></exception>
-    public void SetSupplementalLayerStat(string layerName, Func<Module, Tensor, Tensor, float> computeLayerStatFunc)
+    public void SetSupplementalLayerStat(string layerName, Func<Module, (Tensor, Tensor), Tensor, float> computeLayerStatFunc)
     {
       int indexLayer = Monitors.FindIndex(monitor => monitor.LayerName == layerName);
       if (indexLayer == -1)
