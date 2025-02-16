@@ -51,6 +51,11 @@ namespace CeresTrain.Networks.Transformer
     public NetTransformerDef TransformerConfig;
     public ConfigNetExecution ExecutionConfig;
 
+    /// <summary>
+    /// Network can be configured to run in one of two modes:
+    ///   - LoraEnabled is true, most layers frozen and LoRA adaptation layers enabled
+    ///   - LoraEnabled is false, normal mode and any possibly attached LoRA adaptations are not included
+    /// </summary>
     public bool LoRAEnabled;
 
     public ParameterStats ParameterStats => new(this);
@@ -556,7 +561,7 @@ namespace CeresTrain.Networks.Transformer
         using (NewDisposeScope())
         {
           // Run encoder.
-          (Tensor flowCSNext, Tensor globalUpdate) = layersEncodersArray[layerNum].call(flowCS, flowState);
+          Tensor flowCSNext = layersEncodersArray[layerNum].call(flowCS, flowState);
           flowCS.Dispose();
           flowCS = flowCSNext.MoveToOuterDisposeScope();
         }

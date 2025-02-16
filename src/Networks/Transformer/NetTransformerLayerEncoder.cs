@@ -37,7 +37,7 @@ namespace CeresTrain.Networks.Transformer
   /// <summary>
   /// Encoder layer used in CeresTransformerEncoder.
   /// </summary>
-  public class NetTransformerLayerEncoder : Module<Tensor, Tensor, (Tensor, Tensor)>,
+  public class NetTransformerLayerEncoder : Module<Tensor, Tensor, Tensor>,
                                             IModuleReceivesMonitoringStatusInfo                                             
   {
     /// <summary>
@@ -533,7 +533,7 @@ namespace CeresTrain.Networks.Transformer
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     /// <exception cref="NotImplementedException"></exception>
-    public override (Tensor, Tensor) forward(Tensor x, Tensor state)
+    public override Tensor forward(Tensor x, Tensor state)
     {
       bool isEval = !training;
       using (NewDisposeScope())
@@ -655,7 +655,7 @@ namespace CeresTrain.Networks.Transformer
           out2 = out3;
         }
 
-        return (out2.MoveToOuterDisposeScope(), null);
+        return out2.MoveToOuterDisposeScope();
       }
     }
 
