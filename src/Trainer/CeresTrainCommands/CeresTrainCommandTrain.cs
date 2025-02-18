@@ -201,9 +201,6 @@ namespace CeresTrain.Trainer
 
       monitor = new(this);
 
-      // Extract set of parameters once for reuse below.
-      Parameter[] parametersArray = model.parameters().ToArray();
-
       int batchAccumulationCounter = 0;// counter to keep track of batches
 
       using (var d = NewDisposeScope())
@@ -435,7 +432,7 @@ namespace CeresTrain.Trainer
           {
             if (TrainingConfig.OptConfig.GradientClipLevel > 0)
             {
-              nn.utils.clip_grad_norm_(parametersArray, TrainingConfig.OptConfig.GradientClipLevel);
+              nn.utils.clip_grad_norm_(parametersNotFrozen, TrainingConfig.OptConfig.GradientClipLevel);
             }
 
             scheduler?.step();
@@ -688,6 +685,7 @@ namespace CeresTrain.Trainer
     long numPositionsReadFromTraining = 0;
 
 
+    Parameter[] parametersNotFrozen;
     internal void TrainingLoop(string tag, CeresNeuralNet model, IModuleNNEvaluator anchorEvaluator,
                                string startingCheckpointFN, long startingCheckpointLastNumPos,
                                DataLoader train, Dataset tpgDataset,
@@ -695,6 +693,8 @@ namespace CeresTrain.Trainer
     {
       long lastFlushNumPositions = 0;
 
+      // Extract set of parameters once for reuse below.
+      parametersNotFrozen = model.parameters().Where(p => p.requires_grad).ToArray();
 
       if (!silentMode)
       {
@@ -709,7 +709,7 @@ namespace CeresTrain.Trainer
       {
         // TODO: Not yet implemented is per-parameter weight decay, etc.
         //       Settings (such as momentum) probably not synced up with PyTorch implementation.
-        optimizer = SGD(model.parameters(),
+        optimizer = SGD(parametersNotFrozen,
                         TrainingConfig.OptConfig.LearningRateBase,
                         //                        momentum: 0.9, 
                         //                        nesterov: true,
@@ -855,6 +855,12 @@ namespace CeresTrain.Trainer
 
         foreach ((string name, Parameter parameter) namedParam in module.named_parameters())
         {
+          // Skip non-updating parameters
+          if (!namedParam.parameter.requires_grad)
+          {
+            continue;
+          }
+
           string paramName = namedParam.name;
           Parameter param = namedParam.parameter;
 
