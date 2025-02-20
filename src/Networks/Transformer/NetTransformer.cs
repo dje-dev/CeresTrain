@@ -34,6 +34,7 @@ using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using CeresTrain.Trainer;
 using CeresTrain.Networks.MiscModules;
+using Ceres.Base.Math;
 
 #endregion
 
@@ -560,6 +561,12 @@ namespace CeresTrain.Networks.Transformer
       {
         using (NewDisposeScope())
         {
+#if SHOW_ACTIVATIONS
+          float[] activationsFlat = flowCS.to(ScalarType.Float32).cpu().data<float>().ToArray();
+          float min = (float)StatUtils.Min(activationsFlat);
+          float max = (float)StatUtils.Max(activationsFlat);
+          Console.WriteLine($"layer {layerNum}  min: {min,6:F2}  max: {max,6:F2}");
+#endif
           // Run encoder.
           Tensor flowCSNext = layersEncodersArray[layerNum].call((flowCS, flowState));
           flowCS.Dispose();
