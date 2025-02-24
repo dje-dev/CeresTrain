@@ -24,6 +24,8 @@ using TorchSharp.Modules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using Ceres.Base.Misc;
 using CeresTrain.Utils;
+using CeresTrain.Networks.MiscModules;
+using static CeresTrain.Networks.Transformer.NetTransformer;
 
 #endregion
 
@@ -71,12 +73,12 @@ namespace CeresTrain.Networks.Transformer
     /// <summary>
     /// First linear layer.
     /// </summary>
-    public readonly Linear Linear1;
+    public readonly Module<Tensor,Tensor> Linear1;
 
     /// <summary>
     /// Second linear layer.
     /// </summary>
-    public readonly Linear Linear2;
+    public readonly Module<Tensor, Tensor> Linear2;
 
 
     bool SaveIntermediateActivations;
@@ -123,8 +125,13 @@ namespace CeresTrain.Networks.Transformer
       }
 
 
-      Linear1 = Linear(inputDim, dim1, hasBias: true);     
+      Linear1 = Linear(inputDim, dim1, hasBias: true);
+      Linear1 = LoRALinear.PossiblyLoRAWrappedModule(Linear1, Parent.TransformerConfig.LoRARankDivisor,
+                                                  () => Parent.LoRAEnabled, Parent.EligibleForLoRA(0, LayerTypeEnum.Head));
+
       Linear2 = Linear(dim1, dim2, hasBias: true);
+      Linear2 = LoRALinear.PossiblyLoRAWrappedModule(Linear2, Parent.TransformerConfig.LoRARankDivisor,
+                                                  () => Parent.LoRAEnabled, Parent.EligibleForLoRA(0, LayerTypeEnum.Head));
 
       RegisterComponents();
     }
@@ -132,8 +139,8 @@ namespace CeresTrain.Networks.Transformer
 
     public void LoadWeights(Dictionary<string, Tensor> weightsSource, HashSet<string> weightsLoaded, string linearBaseName)
     {
-      LinearLoad(weightsSource, weightsLoaded, Linear1, linearBaseName + ".fc.weight", linearBaseName + ".fc.bias");
-      LinearLoad(weightsSource, weightsLoaded, Linear2, linearBaseName + ".fcFinal.weight", linearBaseName + ".fcFinal.bias");
+      LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(Linear1), linearBaseName + ".fc.weight", linearBaseName + ".fc.bias");
+      LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(Linear2), linearBaseName + ".fcFinal.weight", linearBaseName + ".fcFinal.bias");
     }
 
 

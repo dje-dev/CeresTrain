@@ -68,7 +68,7 @@ namespace CeresTrain.Networks.MiscModules
     /// <summary>
     /// Scaling factor for the LoRA update.
     /// </summary>
-    public readonly Parameter LoraAlpha;
+//    public readonly Parameter LoraAlpha;
 
     /// <summary>
     /// Low-rank matrix A.
@@ -114,9 +114,9 @@ namespace CeresTrain.Networks.MiscModules
 
       // Compute the LoRA update and scale it by alpha/sqrt(r)
       // (see "A Rank Stabilization Scaling Factor for Fine-Tuning with LoRA" by Kalajdzievski)
-      LoraAlpha = Parameter(torch.empty(1));  // Note that we make this trainable, different from most implementations
-      LoraAlpha.name = "lora_Alpha_";
-      LoraAlpha.requires_grad = true;
+//      LoraAlpha = Parameter(torch.empty(1));  // Note that we make this trainable, different from most implementations
+//      LoraAlpha.name = "lora_Alpha_";
+//      LoraAlpha.requires_grad = false;
 
       InitializeParameterValues();
 
@@ -147,8 +147,8 @@ namespace CeresTrain.Networks.MiscModules
         LoraB.zero_();
 
         // LoraAlpha: alpha = rank / sqrt(rank)
-        float alpha = Rank / MathF.Sqrt(Rank);
-        LoraAlpha.fill_(alpha);
+//        float alpha = Rank / MathF.Sqrt(Rank);
+//        LoraAlpha.fill_(alpha);
 
         return 3;
       }
@@ -165,7 +165,7 @@ namespace CeresTrain.Networks.MiscModules
 
           // Apply LoRA
           Tensor original = WrappedLinear.forward(x);
-          Tensor ret = original + LoraAlpha * (x.matmul(LoraA).matmul(LoraB));
+          Tensor ret = original + (x.matmul(LoraA).matmul(LoraB));
           return ret.MoveToOuterDisposeScope();
         }
       }
@@ -188,9 +188,11 @@ namespace CeresTrain.Networks.MiscModules
     /// <returns></returns>
     public static Module<Tensor, Tensor> PossiblyLoRAWrappedModule(Module<Tensor, Tensor> module, 
                                                                    int lora_rank_divisor,
-                                                                   Func<bool> loraEnabledFunc = null)
-      => lora_rank_divisor > 0 ? new LoRALinear(module, lora_rank_divisor, loraEnabledFunc) 
-                               : module;
+                                                                   Func<bool> loraEnabledFunc = null,
+                                                                   bool isEligible = true)
+      => isEligible && lora_rank_divisor > 0
+           ? new LoRALinear(module, lora_rank_divisor, loraEnabledFunc) 
+           : module;
 
 
     /// <summary>
@@ -263,6 +265,8 @@ namespace CeresTrain.Networks.MiscModules
     /// <returns></returns>
     public static Dictionary<string, (float, float[,], float[,])> ExtractedLoRAParameters(Module model)
     {
+      throw new NotImplementedException("Needs remediation, see IsLoRAElegible method");
+
       Dictionary<string, (float, float[,], float[,])> loraParams = new();
       foreach ((string name, Parameter parameter) np in model.named_parameters(true))
       {
@@ -282,13 +286,13 @@ namespace CeresTrain.Networks.MiscModules
           Parameter pB = model.get_parameter(np.name.Replace("LoraAlpha", "LoraB"));
           Parameter pAlpha = np.parameter;
 
-          float alpha = pAlpha.to(ScalarType.Float32).data<float>()[0];
+//          float alpha = pAlpha.to(ScalarType.Float32).data<float>()[0];
           float[] a = pA.to(ScalarType.Float32).data<float>().ToArray();
           float[] b = pB.to(ScalarType.Float32).data<float>().ToArray();
           float[,] a2D = ArrayUtils.To2D(a, (int)pA.shape[1]);
           float[,] b2D = ArrayUtils.To2D(b, (int)pB.shape[1]);
 
-          loraParams[onnxName] = (alpha, a2D, b2D);
+          loraParams[onnxName] = (1, a2D, b2D);
         }
       }
 
@@ -303,10 +307,10 @@ namespace CeresTrain.Networks.MiscModules
     /// <returns></returns>
     public (float alpha, float[,] A, float[,] B) GetLoRAWeights()
     {
-      float alpha = LoraAlpha.cpu().to(ScalarType.Float32).data<float>().ToArray()[0];
+//      float alpha = LoraAlpha.cpu().to(ScalarType.Float32).data<float>().ToArray()[0];
       float[,] aMatrix = ArrayUtils.To2D<float>(LoraA.cpu().to(ScalarType.Float32).data<float>().ToArray(), (int)LoraA.shape[1]);
       float[,] bMatrix = ArrayUtils.To2D<float>(LoraB.cpu().to(ScalarType.Float32).data<float>().ToArray(), (int)LoraB.shape[1]);
-      return (alpha, aMatrix, bMatrix);
+      return (1, aMatrix, bMatrix);
     }
 
 

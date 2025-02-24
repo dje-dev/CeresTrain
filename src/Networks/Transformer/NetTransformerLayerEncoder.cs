@@ -29,6 +29,7 @@ using CeresTrain.Networks.SoftMoE;
 using CeresTrain.Networks.MiscModules;
 using static CeresTrain.Utils.ModuleParamLoadingUtils;
 using CeresTrain.Utils;
+using static CeresTrain.Networks.Transformer.NetTransformer;
 
 #endregion
 
@@ -292,7 +293,8 @@ namespace CeresTrain.Networks.Transformer
       GlobalInMLP = globalInMLP;
 
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
-      attentionQKV = LoRALinear.PossiblyLoRAWrappedModule(attentionQKV, loraRankDivisor, () => LoRAEnabledFunc());
+      attentionQKV = LoRALinear.PossiblyLoRAWrappedModule(attentionQKV, loraRankDivisor, () => LoRAEnabledFunc(),
+                                                          Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.QKV));
 
       if (NonLinearAttention)
       {
@@ -303,12 +305,13 @@ namespace CeresTrain.Networks.Transformer
         qkvLN = new RMSNorm(dim, NORM_EPS);
 
         q2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
-        q2 = LoRALinear.PossiblyLoRAWrappedModule(q2, loraRankDivisor, () => LoRAEnabledFunc());
+        q2 = LoRALinear.PossiblyLoRAWrappedModule(q2, loraRankDivisor, () => LoRAEnabledFunc(), Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.Q2));
 
         k2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
-        k2 = LoRALinear.PossiblyLoRAWrappedModule(k2, loraRankDivisor, () => LoRAEnabledFunc());
+        k2 = LoRALinear.PossiblyLoRAWrappedModule(k2, loraRankDivisor, () => LoRAEnabledFunc(), Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.K2));
 
         v2 = Linear(dim * attentionMultiplier, dim * attentionMultiplier, hasBias: USE_BIAS);
+        v2 = LoRALinear.PossiblyLoRAWrappedModule(v2, loraRankDivisor, () => LoRAEnabledFunc(), Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.V2));
       }
 
       attentionOutput = Linear(dim * attentionMultiplier, dim, hasBias: true);
@@ -348,7 +351,8 @@ namespace CeresTrain.Networks.Transformer
           mlpGlobalLN = MakeNormalizationLayer(dim / MLP_GLOBAL_DIVISOR);
         }
         mlpLinear1 = Linear(dim + (GlobalInMLP ? dim / MLP_GLOBAL_DIVISOR : 0), dim * ffnMult, hasBias: USE_FFN_BIAS);
-        mlpLinear1 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear1, loraRankDivisor, () => LoRAEnabledFunc());
+        mlpLinear1 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear1, loraRankDivisor, 
+                                                          () => LoRAEnabledFunc(), Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.Linear1));
 
       }
 
@@ -356,7 +360,8 @@ namespace CeresTrain.Networks.Transformer
                           softMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinearSecondLayer)
       {
         mlpLinear2 = Linear(dim * ffnMult, dim, hasBias: USE_FFN_BIAS);
-        mlpLinear2 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear2, loraRankDivisor, () => LoRAEnabledFunc());
+        mlpLinear2 = LoRALinear.PossiblyLoRAWrappedModule(mlpLinear2, loraRankDivisor, 
+                                                          () => LoRAEnabledFunc(), Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.Linear2));
       }
 
       if (FFNActivation == NetTransformerDef.ActivationType.SwiGLU)
@@ -506,6 +511,15 @@ namespace CeresTrain.Networks.Transformer
           scores += smolgenLogits;
         }
 
+#if SHOW_ACTIVATIONS
+//if (count++ % 29 == 0) DumpTensorStats(A, "scores");
+
+        float[] activationsFlat = scores.to(ScalarType.Float32).cpu().data<float>().ToArray();
+        float min = (float)StatUtils.Min(activationsFlat);
+        float max = (float)StatUtils.Max(activationsFlat);
+        Console.WriteLine($"layer {this.Parent}  min: {min,6:F2}  max: {max,6:F2}");
+#endif
+
         if (softCapLevel != 0)
         {
           // Softcap logits for enhanced training stability
@@ -513,7 +527,6 @@ namespace CeresTrain.Networks.Transformer
         }
 
         Tensor A = functional.softmax(scores, dim: -1);
-//if (count++ % 29 == 0) DumpTensorStats(A, "scores");
 
         Tensor H = matmul(A, V);
         return H.MoveToOuterDisposeScope();
@@ -868,7 +881,7 @@ namespace CeresTrain.Networks.Transformer
         RMSNormLoad(weightsSource, weightsLoaded, (RMSNorm)qkvLN, $"transformer_layer.{LayerNum}.attention.qkvLN.scale");
         LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(q2), $"transformer_layer.{LayerNum}.attention.q2.weight", null);
         LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(k2), $"transformer_layer.{LayerNum}.attention.k2.weight", null);
-        LinearLoad(weightsSource, weightsLoaded, v2, $"transformer_layer.{LayerNum}.attention.v2.weight", null);
+        LinearLoad(weightsSource, weightsLoaded, LoRALinear.BaseLinear(v2), $"transformer_layer.{LayerNum}.attention.v2.weight", null);
       }
 
       if (SoftMoEParams.NumExperts == 0 || SoftMoEParams.MoEMode != SoftMoEParams.SoftMoEModeType.ReplaceLinear)
@@ -939,6 +952,6 @@ namespace CeresTrain.Networks.Transformer
     }
 
 
-#endregion
+    #endregion
   }
 }

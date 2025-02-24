@@ -238,7 +238,8 @@ namespace CeresTrain.Networks.Transformer
                           true,
                           ExecutionConfig.Device,
                           ExecutionConfig.DataType);
-      headPremap = LoRALinear.PossiblyLoRAWrappedModule(headPremap, TransformerConfig.LoRARankDivisor, () => LoRAEnabled);
+      headPremap = LoRALinear.PossiblyLoRAWrappedModule(headPremap, TransformerConfig.LoRARankDivisor, 
+                                                        () => LoRAEnabled, EligibleForLoRA(0, LayerTypeEnum.HeadPremap));
       headPremap.to(ExecutionConfig.Device, ExecutionConfig.DataType);
 
       // Head shared linear
@@ -247,7 +248,8 @@ namespace CeresTrain.Networks.Transformer
                                 true,
                                 ExecutionConfig.Device,
                                 ExecutionConfig.DataType);
-      headSharedLinear = LoRALinear.PossiblyLoRAWrappedModule(headSharedLinear, TransformerConfig.LoRARankDivisor, () => LoRAEnabled);
+      headSharedLinear = LoRALinear.PossiblyLoRAWrappedModule(headSharedLinear, TransformerConfig.LoRARankDivisor, 
+                                                              () => LoRAEnabled, EligibleForLoRA(0, LayerTypeEnum.HeadShared));
       headSharedLinear.to(ExecutionConfig.Device, ExecutionConfig.DataType);
 
       // Optional MLH head
@@ -388,6 +390,65 @@ namespace CeresTrain.Networks.Transformer
       if (TransformerConfig.LoRARankDivisor > 0)
       {
         PrepareForLoRATraining();
+      }
+    }
+
+
+    public enum LayerTypeEnum
+    {
+      QKV,
+      Q2,
+      K2,
+      V2,
+      Linear1,
+      Linear2,
+      HeadPremap,
+      HeadShared,
+      Head
+    }
+
+    /// <summary>
+    /// Returns if a layer of a specified type is eligible for LoRA adaptation.
+    /// </summary>
+    /// <param name="layerNum"></param>
+    /// <param name="layerType"></param>
+    /// <returns></returns>
+    /// <exception cref="NotImplementedException"></exception>
+    public bool EligibleForLoRA(int layerNum, LayerTypeEnum layerType)
+    {
+      return false;
+      //      if (layerNum > TransformerConfig.NumLayers / 2)
+      return !layerType.ToString().EndsWith("Head") &&
+              layerType != LayerTypeEnum.Q2 && layerType != LayerTypeEnum.K2 && layerType != LayerTypeEnum.V2;
+              
+
+      switch (layerType)
+      {
+        case LayerTypeEnum.QKV:
+          return layerNum % 2 == 1;// TransformerConfig.NumLayers / 2;
+
+        case LayerTypeEnum.Q2:
+        case LayerTypeEnum.K2:
+        case LayerTypeEnum.V2:
+          return false;
+
+        case LayerTypeEnum.Linear1:
+          return false;
+
+        case LayerTypeEnum.Linear2:
+          return false;
+
+        case LayerTypeEnum.HeadPremap:
+          return true;
+
+        case LayerTypeEnum.HeadShared:
+          return true;
+
+        case LayerTypeEnum.Head:
+          return true;
+
+        default:
+          throw new NotImplementedException("Unknown layer type");
       }
     }
 
