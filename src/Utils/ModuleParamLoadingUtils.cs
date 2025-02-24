@@ -21,6 +21,7 @@ using static TorchSharp.torch;
 using TorchSharp.Modules;
 using CeresTrain.Networks.MiscModules;
 using static TorchSharp.torch.nn;
+using Ceres.Base.Math;
 
 #endregion
 
@@ -59,7 +60,14 @@ namespace CeresTrain.Utils
     {
       Linear linear = linearModule as Linear;
       Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(linear.weight.dtype, linear.weight.device);
-      
+
+#if SHOW_WEIGHTS
+      float[] weightsFlat = weightsNew.to(ScalarType.Float32).cpu().data<float>().ToArray();
+      float min = (float)StatUtils.Min(weightsFlat);
+      float max = (float)StatUtils.Max(weightsFlat);
+      Console.WriteLine($"layer {weightsName}  min: {min,6:F2}  max: {max,6:F2}");
+#endif
+
       CheckSizesSame(weightsName, linear.weight, weightsNew);
       linear.weight.copy_(weightsNew);
 
