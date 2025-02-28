@@ -278,6 +278,8 @@ def Train():
     PRECONDITION_FREQUENCY = 30 # typically small batch sizes used suggest less frequent updating is required
     optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), \
                        precondition_frequency=PRECONDITION_FREQUENCY, shampoo_beta = -1, max_precond_dim = 99999, merge_dims= False)
+  elif config.Opt_Optimizer == 'Muon':
+    assert False, "Muon optimizer not yet implemented"
   elif config.Opt_Optimizer == 'AdEMAMix':
     optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdEMAMixShampoo':
