@@ -276,8 +276,8 @@ def Train():
     optimizer = optim.AdamW(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), fused=True)
   elif config.Opt_Optimizer == 'SOAP':
     PRECONDITION_FREQUENCY = 30 # typically small batch sizes used suggest less frequent updating is required
-    optimizer =  SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2), \
-                       precondition_frequency=PRECONDITION_FREQUENCY, shampoo_beta = -1, max_precond_dim = 99999, merge_dims= False)
+    optimizer = SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), \
+                     max_precond_size=999999, precondition_frequency=PRECONDITION_FREQUENCY)
   elif config.Opt_Optimizer == 'Muon':
     assert False, "Muon optimizer not yet implemented"
   elif config.Opt_Optimizer == 'AdEMAMix':
