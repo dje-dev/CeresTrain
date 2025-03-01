@@ -68,7 +68,13 @@ namespace CeresTrain.Trainer
     /// "SOAP: Improving and Stabilizing Shampoo using Adam" by Vyal et al. (https://arxiv.org/abs/2409.11321)
     /// Code from official implementation at https://github.com/nikhilvyas/SOAP/blob/main/soap.py
     /// </summary>
-    SOAP
+    SOAP,
+
+    /// <summary>
+    /// "Muon: An optimizer for the hidden layers of neural networks"
+    /// Code from the author's implementation at https://github.com/KellerJordan/Muon.
+    /// </summary>
+    Muon
   }
 
 

@@ -26,6 +26,7 @@ class EncoderLayer(torch.nn.Module):
   def __init__(self, trunk_type : str, 
                num_tokens_q : int, num_tokens_kv : int,
                num_layers: int, hidden_size: int, ffn_hidden_size: int, 
+               use_qkv : bool,
                 num_attention_heads: int,  ffn_activation_type : str, norm_type : str, layernorm_eps : float = 1e-5,
                 use_global : bool = False,
                 smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
@@ -53,6 +54,7 @@ class EncoderLayer(torch.nn.Module):
     self.alpha = alpha
     self.num_attention_heads = num_attention_heads
     self.dim_per_head = hidden_size // num_attention_heads
+    self.use_qkv = use_qkv
     self.attention_multiplier = attention_multiplier
     self.dropout_rate = dropout_rate
     self.dual_attention_mode = dual_attention_mode
@@ -60,7 +62,7 @@ class EncoderLayer(torch.nn.Module):
     
     self.ln1 = torch.nn.LayerNorm(hidden_size, eps=layernorm_eps) if norm_type == 'LayerNorm' else RMSNorm(hidden_size, eps=layernorm_eps)
     self.attention = DotProductAttention(num_tokens_q, num_tokens_kv,  num_attention_heads, self.dim_per_head, norm_type, layernorm_eps, 
-                                         attention_multiplier, 
+                                         use_qkv, attention_multiplier, 
                                          smolgen_per_square_dim, smolgen_intermediate_dim, smolgen_head_divisor, smolgenPrepLayer, smolgen_activation_type, 
                                          use_rpe, use_rpe_v, rpe_factor_shared, use_rel_bias, use_nonlinear_attention, test)
     if self.ffn_hidden_size > 0:

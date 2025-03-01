@@ -185,6 +185,7 @@ class CeresNet(pl.LightningModule):
        *[EncoderLayer('T', num_tokens_q, num_tokens_kv,
                       self.NUM_LAYERS, self.EMBEDDING_DIM,
                       self.FFN_MULT*self.EMBEDDING_DIM, 
+                      config.NetDef_UseQKV,
                       self.NUM_HEADS,
                       ffn_activation_type = config.NetDef_FFNActivationType, 
                       norm_type = config.NetDef_NormType, layernorm_eps=EPS, 

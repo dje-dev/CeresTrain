@@ -55,7 +55,9 @@ class DotProductAttention(torch.nn.Module):
   """
   def __init__(self, num_tokens_q : int, num_tokens_kv : int,
                num_attention_heads: int, kv_channels: int, norm_type : str, 
-               layernorm_eps : float, attention_multiplier : int = 1,
+               layernorm_eps : float, 
+               use_qkv : bool = True,
+               attention_multiplier : int = 1,
                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
                smolgen_activation_type : str = 'None', 
@@ -77,6 +79,7 @@ class DotProductAttention(torch.nn.Module):
     self.softmax = torch.nn.Softmax(-1)
     self.smolgen_head_divisor = smolgen_head_divisor
     self.test = test    
+    self.use_qkv = use_qkv
     self.use_smolgen = smolgenPrepLayer is not None    
     self.use_rpe = use_rpe
     self.use_rpe_v = use_rpe_v

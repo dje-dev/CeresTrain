@@ -218,6 +218,10 @@ namespace CeresTrain.Networks.Transformer
     /// </summary>
     public readonly int LoRARankDivisor { get; init; } = 0;
 
+    /// <summary>
+    /// If traditional dot product attention should be used.
+    /// </summary>
+    public bool UseQKV { get; init; } = true;
 
     /// <summary>
     /// Type of dual attention (if any).

@@ -124,6 +124,7 @@ class Configuration:
     self.NetDef_ModelDim = config_net_def.get('ModelDim', 256)
     self.NetDef_NumLayers = config_net_def.get('NumLayers', 8)
     self.NetDef_NumHeads = config_net_def.get('NumHeads', 8)
+    self.NetDef_UseQKV = config_net_def.get('UseQKV', True)
     self.NetDef_DualAttentionMode = config_net_def.get('DualAttentionMode', 'None')
     self.NetDef_PreNorm = config_net_def.get('PreNorm', False)
     self.NetDef_NormType = config_net_def.get('NormType', 'LayerNorm')
