@@ -106,8 +106,13 @@ class DotProductAttention(torch.nn.Module):
     # Implementations often but not always use no bias
     USE_BIAS = False
 
+    if not self.use_qkv:
+      assert self.use_smolgen, "smolgen must be used when not use_qkv"
+      assert not self.use_nonlinear_attention, "nonlinear_attention not allowed when not use_qkv"
+
     # Fused Q, K, and V linear projection for improved efficiency.
-    self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model * self.attention_multiplier, bias = True if self.use_nonlinear_attention else USE_BIAS)
+    self.qkv_multiplier = 3 if self.use_qkv else 1 # only contains V if not using QKV
+    self.qkv = torch.nn.Linear(self.d_model, self.qkv_multiplier * self.d_model * self.attention_multiplier, bias = True if self.use_nonlinear_attention else USE_BIAS)
     self.W_h = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_output)
 
     if self.use_nonlinear_attention:
@@ -123,6 +128,7 @@ class DotProductAttention(torch.nn.Module):
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
     if self.use_rpe:
+      assert self.use_qkv, "rpe requires use_qkv"
       self.wrapped_rpe_factor_shared = ParameterWrapper(rpe_factor_shared) # wrap so shared layer is not re-registered
       self.rpe_q = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
       self.rpe_k = torch.nn.Parameter(torch.zeros(self.d_k * self.attention_multiplier * self.num_heads, RPE_INNER_DIM * RPE_INNER_DIM))
@@ -171,7 +177,9 @@ class DotProductAttention(torch.nn.Module):
     #scaleDivisor = 1 # math.pow(self.d_k, 0.25) # apply sqrt twice since we are dividing twice
     #Q = Q / scaleDivisor
     #K = K / scaleDivisor
-    scores = torch.matmul(Q, K.transpose(2, 3))
+
+    if self.use_qkv:
+      scores = torch.matmul(Q, K.transpose(2, 3))
 
     if self.use_rpe:
       rpe_q = self.rpe_q @ self.rpeFactorShared
@@ -184,14 +192,17 @@ class DotProductAttention(torch.nn.Module):
       scores = scores + einsum(K, rpe_k, "b h k d, d h q k->b h q k")
       # consider using scaling below as (3 * self.d_k) due to extra terms
        
-    scores = scores / math.sqrt(self.d_k)
+    if self.use_qkv:
+      scores = scores / math.sqrt(self.d_k)
 
     if self.use_rel_bias:
       scores = scores + torch.reshape(self.rel_bias @ self.rpe_factor, [-1, 64, 64])
 
-    if self.use_smolgen:
+    if not self.use_qkv:
+      scores = smolgen / math.sqrt(self.d_k)
+    elif self.use_smolgen:
       assert self.num_tokens_q == self.num_tokens_kv, "use_smolgen requires equal number of tokens for Q and K"
-      smolgen_logits_repeated = smolgen.reshape(smolgen.shape[0], self.num_heads, self.num_tokens_q, self.num_tokens_q)
+      smolgen_logits_repeated = smolgen
       scores = scores + smolgen_logits_repeated
      
     # softcap logits for enhanced training stability
@@ -239,7 +250,12 @@ class DotProductAttention(torch.nn.Module):
     # Linear projections (Q, K, V jointly).
     qkv = self.qkv(qkv_x)
 
-    if not self.use_nonlinear_attention:
+    if not self.use_qkv:
+      Q = None
+      K = None
+      V = qkv.reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier)
+      V = V.permute(0, 2, 1, 3)
+    elif not self.use_nonlinear_attention:
       # Split apart Q, K, V (with heads on the left)
       qkv = qkv.reshape(batch_size, -1, self.num_heads, 3*self.d_k * self.attention_multiplier)
       qkv = qkv.permute(0, 2, 1, 3)
