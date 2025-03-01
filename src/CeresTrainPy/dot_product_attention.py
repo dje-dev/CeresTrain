@@ -209,6 +209,25 @@ class DotProductAttention(torch.nn.Module):
     return H, A
   
 
+  def calc_smolgen(self, x:torch.Tensor) -> torch.Tensor:
+    smolgen = self.sm1(x)
+    smolgen = smolgen.reshape(-1, self.num_tokens_q * self.smolgen_per_square_dim)
+
+    smolgen = self.sm2(smolgen)
+    smolgen = self.smolgen_activation_fn(smolgen)
+    smolgen = self.ln1(smolgen)
+
+    smolgen = self.sm3(smolgen)
+    smolgen = self.smolgen_activation_fn(smolgen)
+    smolgen = self.ln2(smolgen)
+
+    smolgen = smolgen.reshape(-1, self.num_heads, self.smolgen_intermediate_dim // self.smolgen_head_divisor)
+    smolgen = self.smolgenPrepLayer(smolgen)
+
+    smolgen = smolgen.reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+    return smolgen
+
+
   def forward(self, x:torch.Tensor, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
     batch_size = query.size(0)
 
@@ -239,17 +258,7 @@ class DotProductAttention(torch.nn.Module):
       V = self.v2(v).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)  
 
     if self.use_smolgen:
-      smolgen = self.sm1(x)
-      smolgen = smolgen.reshape(- 1, self.num_tokens_q * self.smolgen_per_square_dim)
-      smolgen = self.sm2(smolgen)
-      smolgen = self.smolgen_activation_fn(smolgen)
-      smolgen = self.ln1(smolgen)
-      smolgen = self.sm3(smolgen)
-      smolgen = self.smolgen_activation_fn(smolgen)
-      smolgen = self.ln2(smolgen)
-      smolgen = smolgen.reshape(-1, self.num_heads, self.smolgen_intermediate_dim // self.smolgen_head_divisor)
-      smolgen = self.smolgenPrepLayer(smolgen) # shared
-      smolgen = smolgen.reshape(-1, self.num_heads, self.num_tokens_q, self.num_tokens_q)
+      smolgen = self.calc_smolgen(x)
       H_cat, A = self.sdp_and_smol_or_rpe(Q, K, V, smolgen)
     else:
       if self.use_rpe:
