@@ -47,6 +47,7 @@ from lightning.pytorch.utilities import grad_norm
 from AdEMAMix import AdEMAMix
 from AdEMAMixShampoo import AdEMAMixDistributedShampoo
 from soap import SOAP
+from muon import Muon
 
 print(torch.__version__)
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -279,7 +280,9 @@ def Train():
     optimizer = SOAP(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), \
                      max_precond_size=999999, precondition_frequency=PRECONDITION_FREQUENCY)
   elif config.Opt_Optimizer == 'Muon':
-    assert False, "Muon optimizer not yet implemented"
+    muon_params = [p for n, p in model.named_parameters() if p.ndim >= 2 and "embedding" not in n and "transformer_layer" in n and p.requires_grad] # 2D parameters can use Muon
+    adamw_params =[p for n, p in model.named_parameters() if (p.ndim < 2 or "embedding" in n or not "transformer_layer" in n) and p.requires_grad] # non-2D should not use Muon
+    optimizer = Muon(lr=LR, wd=WEIGHT_DECAY, momentum=config.Opt_Beta1, adamw_betas=(config.Opt_Beta1, config.Opt_Beta2), muon_params=muon_params, adamw_params=adamw_params)
   elif config.Opt_Optimizer == 'AdEMAMix':
     optimizer = AdEMAMix(optim_groups, lr=LR, weight_decay=WEIGHT_DECAY, betas=(config.Opt_Beta1, config.Opt_Beta2, config.Opt_Beta3), alpha=config.Opt_Alpha, T_alpha_beta3= STEPS_AdEMAMix_WARMUP)
   elif config.Opt_Optimizer == 'AdEMAMixShampoo':
@@ -304,7 +307,7 @@ def Train():
     # After warmup phase, the LR is held constant until some fraction of training is complete
     # and thereafter ramps down using a truncated consine decay, terminating around 0.10
     FRAC_START_DECAY = config.Opt_LRBeginDecayAtFractionComplete
-    MIN_LR = 0.20
+    MIN_LR = 0.05
     WARMUP_POS = num_warmup_positions()
 
     if num_pos < WARMUP_POS:
