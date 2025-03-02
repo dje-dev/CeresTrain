@@ -157,7 +157,7 @@ namespace CeresTrain.Trainer
     /// Maximum learning rate to be used during optimization.
     /// Learning rate typically needs to be lower for small batch sizes and/or larger networks.
     /// </summary>
-    public readonly float LearningRateBase { get; init; } = 2.5E-4f;
+    public readonly float LearningRateBase { get; init; } = 6E-4f;
 
     /// <summary>
     /// Fraction complete (between 0 and 1) at which scaling down of the LearningRateBase begins 
@@ -175,12 +175,12 @@ namespace CeresTrain.Trainer
     /// <summary>
     /// Beta 1 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
     /// </summary>
-    public readonly float Beta1 { get; init; } = 0.90f;
+    public readonly float Beta1 { get; init; } = 0.95f;
 
     /// <summary>
     /// Beta 2 coefficient used with optimizers such as Adam, AdamW, or NAdamW.
     /// </summary>
-    public readonly float Beta2 { get; init; } = 0.98f;
+    public readonly float Beta2 { get; init; } = 0.95f;
 
     /// <summary>
     /// Beta 3 coefficient used with AdEMAMix optimizers.
@@ -217,12 +217,12 @@ namespace CeresTrain.Trainer
     /// Scaling multiplier to be applied to secondary value loss term.
     /// Typically a lower coefficient is used here because it is very noisy.
     /// </summary>
-    public readonly float LossValue2Multiplier { get; init; } = 0.1f;
+    public readonly float LossValue2Multiplier { get; init; } = 0.04f;
 
     /// <summary>
     /// Scaling multiplier to be applied to policy loss term.
     /// </summary>
-    public readonly float LossPolicyMultiplier { get; init; } = 1.0f;
+    public readonly float LossPolicyMultiplier { get; init; } = 1.5f;
 
     /// <summary>
     /// Scaling multiplier to be applied to MLH loss term.
@@ -233,7 +233,7 @@ namespace CeresTrain.Trainer
     /// Scaling multiplier to be applied to value head uncertainty loss term.
     /// Coefficient typically small due to low importance in gameplay and relatively high noise.
     /// </summary>
-    public readonly float LossUNCMultiplier { get; init; } = 0.01f;
+    public readonly float LossUNCMultiplier { get; init; } = 0.005f;
 
     /// <summary>
     /// Scaling multiplier to be applied to estimates of lower and upper deviation bounds of forward Q.

@@ -678,7 +678,7 @@ namespace CeresTrain.Trainer
         InitialLearningRate = TrainingConfig.OptConfig.LearningRateBase * TrainingConfig.OptConfig.LRWarmupPhaseMultiplier,
         weight_decay = wd,
         beta1 = TrainingConfig.OptConfig.Beta1,
-        beta2 = TrainingConfig.OptConfig.Beta2
+        beta2 = TrainingConfig.OptConfig.Beta2        
       };
     }
 
