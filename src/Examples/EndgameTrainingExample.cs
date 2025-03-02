@@ -41,7 +41,7 @@ namespace CeresTrain.Examples
   public partial class EndgameTrainingExample
   {
     /// Define set of supported endgame pieces and associated random position generator.
-    static string PIECES_STRING = "KNNkpp,KPPknn";
+    static string PIECES_STRING = "KNNkpp";
     public static PositionGenerator randPosGenerator => configData.PositionGenerator;
 
     const int GPU_ID = 0;

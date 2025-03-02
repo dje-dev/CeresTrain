@@ -44,16 +44,16 @@ namespace CeresTrain.Examples
   public static class LaunchDistributedTraining
   {
     // The following two constants must definitely be changed to match your environment.
-    static string HOSTNAME { get => Environment.MachineName; } // name of (possibly remote) host on which execution will take place
-    const string TPG_SOURCE_DIR = @"/mnt/f/TPG1_Aug2024_dedup"; // source directory containing TPGs
+    static string HOSTNAME { get => "wsl";/*Environment.MachineName;*/ } // name of (possibly remote) host on which execution will take place
+    const string TPG_SOURCE_DIR = @"/mnt/i/tpgnew"; // source directory containing TPGs
 
-    const string RUN_ID_BASE = "256_10_8_4"; // identification string for training run
-    const long NUM_TRAINING_POS = 200_000_000; // number of training positions
+    const string RUN_ID_BASE = "512_6_16_2_pures_fix"; // identification string for training run
+    const long NUM_TRAINING_POS = 20 * 5_000_000; // number of training positions
 
-    const int EMBEDDING_DIM = 256;
-    const int NUM_LAYERS = 10;
-    const int NUM_HEADS = 8;
-    const int FFN_DIM = 4;
+    const int EMBEDDING_DIM = 512;
+    const int NUM_LAYERS = 6;
+    const int NUM_HEADS = 16;
+    const int FFN_DIM = 2;
 
 
     /// <summary>
@@ -67,8 +67,23 @@ namespace CeresTrain.Examples
       [
         // Baseline run on GPU 0.
         MakeSessionSpec(RUN_ID_BASE + "_BASE", HOSTNAME, [0], TPG_SOURCE_DIR, NUM_TRAINING_POS,
-          netDef => netDef with {  },
-          optDef => optDef with { },
+          netDef => netDef with { 
+//                                  SmolgenDimPerSquare=32, 
+//                                  SmolgenToHeadDivisor = 1
+//                                  SmolgenDim = 512,
+//                                  NonLinearAttention = false,
+//                                  UseQKV = true
+          },
+          optDef => optDef with { 
+                                  Optimizer=OptimizerType.Muon,
+                                  LearningRateBase = 0.001f, // was 0.005
+
+                                  LRBeginDecayAtFractionComplete = 0.7f,
+//                                  Beta1=0.95f, Beta2=0.98f, Beta3=0.99f,
+                                  BatchSizeBackwardPass = 1024 * 4,
+                                  BatchSizeForwardPass = 1024 * 2,
+
+          },
           execDef => execDef with { },
           dataDef => dataDef with { }
           ),
@@ -158,7 +173,7 @@ namespace CeresTrain.Examples
           NumTrainingPositions = numTrainingPositions,
           CheckpointFrequencyNumPositions = 100_000_000,
 
-          Optimizer = OptimizerType.SOAP,
+          Optimizer = OptimizerType.AdamW,
           Beta1 = 0.95f,
           Beta2 = 0.99f, // large B2 helpful (0.99, 0.999, 0.9995) for long-duration training "How Does Critical Batch Size Scale..."
 
