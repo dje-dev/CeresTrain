@@ -303,6 +303,51 @@ namespace CeresTrain.Utils
       }
     }
 
+    /// <summary>
+    /// Clips the input tensor values to the specified ranges (eliminates subnormals or excessively large values).
+    /// Positive values are clamped to [minPositiveVal, maxFiniteVal] and 
+    /// negative values to [-maxFiniteVal, -minPositiveVal].
+    /// 
+    /// This logic is similar to the ONNXRuntime clipping logic used for robustness with reduced precision.
+    /// see: https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py.
+    /// </summary>
+    /// <param name="input">The input tensor.</param>
+    /// <param name="minPositiveVal">Minimum allowed positive value (values below will be raised to this value).</param>
+    /// <param name="maxFiniteVal">Maximum allowed finite value (values above will be lowered to this value).</param>
+    /// <param name="dumpStats">If true, outputs the count of elements truncated high and low.</param>
+    /// <returns>The clipped tensor.</returns>
+    public static Tensor ClippedSubnormalOrLarge(Tensor input, double minPositiveVal = 1e-7, double maxFiniteVal = 1e4, bool dumpStats = false)
+    {
+      Tensor result = input.clone();
+      Tensor positiveClipped = torch.clamp(result, min: minPositiveVal, max: maxFiniteVal);
+      Tensor negativeClipped = torch.clamp(result, min: -maxFiniteVal, max: -minPositiveVal);
+      Tensor clipped = torch.where(result.gt(0), positiveClipped, torch.where(result.lt(0), negativeClipped, result));
+
+      if (dumpStats)
+      {
+        Tensor positiveHighMask = result.gt(maxFiniteVal);
+        Tensor positiveLowMask = result.gt(0).bitwise_and(result.lt(minPositiveVal));
+        Tensor negativeLowMask = result.lt(-maxFiniteVal);
+        Tensor negativeHighMask = result.lt(0).bitwise_and(result.gt(-minPositiveVal));
+
+        long positiveHighCount = positiveHighMask.sum().item<long>();
+        long positiveLowCount = positiveLowMask.sum().item<long>();
+        long negativeLowCount = negativeLowMask.sum().item<long>();
+        long negativeHighCount = negativeHighMask.sum().item<long>();
+
+        long truncatedHigh = positiveHighCount + negativeHighCount;
+        long truncatedLow = positiveLowCount + negativeLowCount;
+        if (truncatedHigh + truncatedLow > 0)
+        {
+          Console.Write("min: " + input.min().item<float>() + ", max: " + input.max().item<float>() + "  ");
+          Console.WriteLine("truncated High: " + truncatedHigh + ", truncated Low: " + truncatedLow);
+        }
+      }
+
+      return clipped;
+    }
+
+
 
 
     #region Copying parameters
