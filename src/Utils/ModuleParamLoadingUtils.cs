@@ -22,6 +22,7 @@ using TorchSharp.Modules;
 using CeresTrain.Networks.MiscModules;
 using static TorchSharp.torch.nn;
 using Ceres.Base.Math;
+using TorchSharp;
 
 #endregion
 
@@ -56,15 +57,14 @@ namespace CeresTrain.Utils
     /// <param name="linear"></param>
     /// <param name="weightsName"></param>
     /// <param name="biasesName"></param>
-    public static void LinearLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, Module<Tensor,Tensor> linearModule, string weightsName, string biasesName)
+    public static void LinearLoad(Dictionary<string, Tensor> paramsSource, HashSet<string> paramsLoaded, Module<Tensor, Tensor> linearModule, string weightsName, string biasesName)
     {
       Linear linear = linearModule as Linear;
       Tensor weightsNew = GetParams(paramsSource, paramsLoaded, weightsName).to(linear.weight.dtype, linear.weight.device);
 
 #if SHOW_WEIGHTS
-      float[] weightsFlat = weightsNew.to(ScalarType.Float32).cpu().data<float>().ToArray();
-      float min = (float)StatUtils.Min(weightsFlat);
-      float max = (float)StatUtils.Max(weightsFlat);
+      float min = weightsNew.max().item<float>();
+      float max = weightsNew.min().item<float>();
       Console.WriteLine($"layer {weightsName}  min: {min,6:F2}  max: {max,6:F2}");
 #endif
 
@@ -159,3 +159,4 @@ namespace CeresTrain.Utils
   }
 
 }
+

@@ -181,18 +181,56 @@ namespace CeresTrain.Utils
     }
 
 
-    #region Extracting parameters for Modules
+    #region Hooks
 
     /// <summary>
-    /// Extracts weights and biases from all Linear layers in the module.
-    /// 
-    /// NOTE: it is assumed that the provided layers are of the same number and 
-    ///       in the same order as an enumeration of the module will provide.
+    /// Registers a forward hook on all modules in the specified root module.
     /// </summary>
-    /// <param name="module"></param>
-    /// <param name="linearLayers"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="rootModule"></param>
+    /// <param name="hookFunc"></param>
+    /// <exception cref="Exception"></exception>
+    public static void RegisterHooks(Module rootModule, Func<string, Module, Tensor, Tensor, Tensor, Tensor> hookFunc)
+    {
+      foreach ((string name, Module module) node in rootModule.named_modules())
+      {
+        // Explicitly handle the two common cases of one input tensor and one or two output tensors.
+        if (node.module is Module<Tensor, Tensor> module)
+        {
+          (node.module as Module<Tensor, Tensor>).register_forward_hook((mod, input, output) =>
+          {
+            return hookFunc(node.name, mod, input, output, default);
+          });
+        }
+        else if (node.module is Module<Tensor, Tensor, Tensor> module1)
+        {
+          (node.module as Module<Tensor, Tensor, Tensor>).register_forward_hook((mod, input, output1, output2) =>
+          {
+            return hookFunc(node.name, mod, input, output1, output1);
+          });
+        }
+        else
+        {
+          // Ignore, possibly just an activation layer 
+          Console.WriteLine("Layer " + node.name + " not hooked, not supported.");  
+        }
+      }
+    }
+
+    #endregion
+
+
+    #region Extracting parameters for Modules
+
+      /// <summary>
+      /// Extracts weights and biases from all Linear layers in the module.
+      /// 
+      /// NOTE: it is assumed that the provided layers are of the same number and 
+      ///       in the same order as an enumeration of the module will provide.
+      /// </summary>
+      /// <param name="module"></param>
+      /// <param name="linearLayers"></param>
+      /// <returns></returns>
+      /// <exception cref="ArgumentException"></exception>
     public static Dictionary<string, (float[] weights, float[] bias)>
   ExtractWeightsFromLinearLayers(Module<Tensor, Tensor> module, params (string name, bool transpose)[] linearLayers)
     {
