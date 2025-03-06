@@ -133,8 +133,54 @@ def get_most_extreme_weight_value(model):
         extreme_value = param_min
   return extreme_value
 
+# Storage for previous parameters for calc_weight_update_ratio
+previous_params = {}
+
+def calc_weight_update_ratio(model, logger):
+  global previous_params
+
+  total_update_norm = 0
+  total_weight_norm = 0
+
+  with torch.no_grad():
+    for name, param in model.named_parameters():
+      if param.requires_grad:
+        if name in previous_params:
+          delta = param - previous_params[name]
+          update_norm = torch.norm(delta).item()
+          weight_norm = torch.norm(param).item()
+
+          total_update_norm += update_norm
+          total_weight_norm += weight_norm
+
+        previous_params[name] = param.clone().detach()
+
+  if total_weight_norm > 0:
+    return total_update_norm / total_weight_norm
+  else:
+    return 0
+
+
+last_logged_pos_num = 0
 
 def on_before_optimizer_step(fabric, model, optimizer, pos_num):      
+    global last_logged_pos_num
+
+    step = pos_num // BATCH_SIZE
+    
+    # Log only periodically, and only on rank 0
+    LOG_EVERY_N_POSITIONS = 100000
+    positions_since_logged = pos_num - last_logged_pos_num
+    if (not fabric.is_global_zero) or (positions_since_logged < LOG_EVERY_N_POSITIONS):
+      return  
+    else:
+      last_logged_pos_num = pos_num
+
+    # log ratio of average absolute weight update to average absolute weight
+    # note that this does retain an extra copy of the model parameters and increase GPU memory usage
+    weight_ratio = calc_weight_update_ratio(model, fabric.logger)
+    fabric.logger.log_metrics({"update_weight_ratio": weight_ratio}, step=pos_num)
+
     norms = grad_norm(model, norm_type=2)
     
     # update_magnitude is an approximate measure of effective magnitude of weight updates which 
@@ -591,9 +637,9 @@ def Train():
         fabric.clip_gradients(model, optimizer, max_norm=config.Opt_GradientClipLevel)
       scheduler.step()
 
-      GRAD_NORM_LOG_FREQUENCY = 200
-      if (num_pos // BATCH_SIZE) % GRAD_NORM_LOG_FREQUENCY == GRAD_NORM_LOG_FREQUENCY - 1:
-        on_before_optimizer_step(fabric, model, optimizer, num_pos)
+#      GRAD_NORM_LOG_FREQUENCY = 200
+#      if (num_pos // BATCH_SIZE) % GRAD_NORM_LOG_FREQUENCY == GRAD_NORM_LOG_FREQUENCY - 1:
+      on_before_optimizer_step(fabric, model, optimizer, num_pos)
       
       optimizer.step()
       optimizer.zero_grad()
