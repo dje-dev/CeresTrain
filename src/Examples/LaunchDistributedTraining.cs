@@ -43,16 +43,18 @@ namespace CeresTrain.Examples
   /// </summary>
   public static class LaunchDistributedTraining
   {
+    const bool WSL = false;
+
     // The following two constants must definitely be changed to match your environment.
-    static string HOSTNAME { get => "wsl";/*Environment.MachineName;*/ } // name of (possibly remote) host on which execution will take place
-    const string TPG_SOURCE_DIR = @"/mnt/i/tpgnew"; // source directory containing TPGs
+    static string HOSTNAME { get => WSL ? "wsl" : null; /*Environment.MachineName; */} // name of (possibly remote) host on which execution will take place
+    const string TPG_SOURCE_DIR = WSL ? @"/mnt/i/tpgnew" : @"e:\tar_mid2024"; // source directory containing TPGs
 
-    const string RUN_ID_BASE = "512_6_16_2_pures_fix"; // identification string for training run
-    const long NUM_TRAINING_POS = 20 * 5_000_000; // number of training positions
+    const string RUN_ID_BASE = "384_8_FFN2_12H"; // identification string for training run
+    const long NUM_TRAINING_POS = 14 * 5_000_000; // number of training positions
 
-    const int EMBEDDING_DIM = 512;
-    const int NUM_LAYERS = 6;
-    const int NUM_HEADS = 16;
+    const int EMBEDDING_DIM = 384;
+    const int NUM_LAYERS = 2;
+    const int NUM_HEADS = 12;
     const int FFN_DIM = 2;
 
 
@@ -65,37 +67,50 @@ namespace CeresTrain.Examples
     {
       List<TrainingSessionSpecification> trainingRuns =
       [
+#if NOT
         // Baseline run on GPU 0.
-        MakeSessionSpec(RUN_ID_BASE + "_BASE", HOSTNAME, [0], TPG_SOURCE_DIR, NUM_TRAINING_POS,
+        MakeSessionSpec(RUN_ID_BASE + "_FFN2_BASE" /*"_FUSE_FFN_QKV"*/, HOSTNAME, [0], TPG_SOURCE_DIR, NUM_TRAINING_POS,
           netDef => netDef with { 
 //                                  SmolgenDimPerSquare=32, 
 //                                  SmolgenToHeadDivisor = 1
-//                                  SmolgenDim = 512,
-//                                  NonLinearAttention = false,
+                                  SmolgenDim = 256,
+                                  NonLinearAttention = false,
 //                                  UseQKV = true
           },
-          optDef => optDef with { 
-                                  Optimizer=OptimizerType.Muon,
-                                  LearningRateBase = 0.001f, // was 0.005
+          optDef => optDef with {
+                                  Optimizer=OptimizerType.AdamW,
+                                  LearningRateBase = 2E-4f,//0.001f, // was 0.005
 
                                   LRBeginDecayAtFractionComplete = 0.7f,
 //                                  Beta1=0.95f, Beta2=0.98f, Beta3=0.99f,
-                                  BatchSizeBackwardPass = 1024 * 4,
-                                  BatchSizeForwardPass = 1024 * 2,
 
           },
-          execDef => execDef with { },
-          dataDef => dataDef with { }
-          ),
-#if NOT
-        // Modified run on GPU 1 (turn off the Smolgen feature).
-        MakeSessionSpec(RUN_ID_BASE + "_NO_SMOLGEN", HOSTNAME, [1], TPG_SOURCE_DIR, NUM_TRAINING_POS,
-          netDef => netDef with { SmolgenDim = 0 }, 
-          optDef => optDef with {  },
-          execDef => execDef with { },
+          execDef => execDef with {TestFlag=false },
           dataDef => dataDef with { }
           ),
 #endif
+        MakeSessionSpec(RUN_ID_BASE + "_FFN2_MLA2x" /*"_FUSE_FFN_QKV"*/, HOSTNAME, [0], TPG_SOURCE_DIR, NUM_TRAINING_POS,
+          netDef => netDef with { 
+//                                  SmolgenDimPerSquare=32, 
+//                                  SmolgenToHeadDivisor = 1
+
+            NumLayers = 2, // <------------ TEMP
+                                  SmolgenDim = 256,
+                                  NonLinearAttention = false,
+//                                  UseQKV = true
+          },
+          optDef => optDef with {
+                                  Optimizer=OptimizerType.Muon,
+                                  LearningRateBase = 2E-4f,//0.001f, // was 0.005
+
+                                  LRBeginDecayAtFractionComplete = 0.7f,
+//                                  Beta1=0.95f, Beta2=0.98f, Beta3=0.99f,
+WeightDecay = 0.05f,
+          },
+          execDef => execDef with {TestFlag=false },
+          dataDef => dataDef with { }
+          ),
+
       ];
 
 
@@ -209,8 +224,11 @@ namespace CeresTrain.Examples
         MonitoringConfig = new ConfigMonitoring() with { },
       };
       
-
-      if (CeresTrainHostConfig.RegisteredConfigs.TryGetValue(hostID, out CeresTrainHostConfig hostConfig))
+      if (hostID == null)
+      {
+        return new TrainingSessionSpecification(id, default, hostGPUs, config);
+      }
+      else if (CeresTrainHostConfig.RegisteredConfigs.TryGetValue(hostID, out CeresTrainHostConfig hostConfig))
       {
         return new TrainingSessionSpecification(id, hostConfig, hostGPUs, config);
       }
