@@ -249,7 +249,6 @@ namespace CeresTrain.NNIntrospection
     /// <param name="layerName"></param>
     void RegisterHook()
     {
-      Console.WriteLine("Registering hook for layer: " + LayerName);
       RegisterHook(ParentModule, LayerName, (layer, input, output) =>
       {
         ParentSet?.ChildCallback(this);

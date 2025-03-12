@@ -203,29 +203,3 @@ class Muon(torch.optim.Optimizer):
                 p.data.add_(g, alpha=-lr / scale)
 
         return loss
-
-'''
-+from muon import Muon
-
-
-+world_size = len(devices)
-+rank = 0 if world_size == 1 else dist.get_rank()
-
-
-+  # Find all parameters which are 2D or higher -- these should be optimized by Muon
-+  muon_params = [p for p in model.parameters() if p.ndim >= 2 and p.requires_grad]
-+  # Find everything else -- these should be optimized by AdamW
-+  adamw_params = [p for p in model.parameters() if p.ndim < 2 and p.requires_grad]
-+  # Create the optimizer
-+  #optimizers = [Muon(muon_params, lr=0.02, momentum=0.95),
-+  #              torch.optim.AdamW(adamw_params, lr=3e-4, betas=(0.90, 0.95), weight_decay=0.01)]
-+
-+  elif config.Opt_Optimizer == 'Muon':
-+    optimizer = Muon(muon_params, lr=LR, weight_decay=WEIGHT_DECAY, momentum=config.Opt_Beta1, nesterov=True, ns_steps=5, rank=rank, world_size=world_size)
-+# RECOMMENDED:   params, lr=0.02, weight_decay=0.01, momentum=0.95, nesterov=True, ns_steps=5, rank=0, world_size=1):
-+
-
--+world_size = len(devices)
--rank = 0 if world_size == 1 else dist.get_rank()
-
-'''
