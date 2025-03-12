@@ -141,7 +141,7 @@ class TPGDataset(Dataset):
     BYTES_PER_BLOCK = POS_PER_BLOCK * BYTES_PER_POS
 
     # Reduce files to be only the files that this worker is responsible for.
-    assert self.num_workers == 0 or self.worker_id >= 0, "Worker ID expected to have been be set before calling item_generator" 
+#    assert self.num_workers == 0 or self.worker_id >= 0, "Worker ID expected to have been be set before calling item_generator" 
     self.files = [file for index, file in enumerate(self.files) if self.num_workers == 0 or (index % self.num_workers == self.worker_id)]
 
     wdl_smoothing_transform = np.array([
@@ -305,23 +305,37 @@ def worker_init_fn(worker_id):
 
 
 
+
 if __name__ == "__main__": 
   import time
+  import sys
+
   print('Beginning performance test of tpg_dataset.py.')
-  TPG_TRAIN_DIR = "/mnt/e/scratch6" #"./test_data"
+  TPG_TRAIN_DIR = "/mnt/i/tpg_16man" #"./test_data"
   devices = [0]
   BATCH_SIZE = 1024 * 4
+  
 
+  def worker_init_fn(worker_id):
+    dataset.set_worker_id(worker_id)
+
+  # Use two concurrent dataset workers (if more than one training data file is available)
+  count_zst_files = len(fnmatch.filter(os.listdir(TPG_TRAIN_DIR), '*.zst'))
+  NUM_DATASET_WORKERS = 8 if not sys.platform.startswith("win") else 0 # Not available on Windows. 1 meansone parallel worker always processing in advance (change with caution).
+  PREFETCH_FACTOR = None if NUM_DATASET_WORKERS == 0 else 2 # to keep GPU busy
+ 
   world_size = len(devices)
   rank = 0 if world_size == 1 else dist.get_rank()
-  NUM_WORKERS = 2
-  dataset = TPGDataset(TPG_TRAIN_DIR, BATCH_SIZE // len(devices), rank, world_size, NUM_WORKERS)
-  tpg = DataLoader(dataset, batch_size=None, pin_memory=True, num_workers=NUM_WORKERS, worker_init_fn=worker_init_fn, shuffle=False)
+  dataset = TPGDataset(TPG_TRAIN_DIR, BATCH_SIZE // world_size, False, 
+                       rank, world_size, NUM_DATASET_WORKERS, 
+                       1, 0, False)
+  dataloader = DataLoader(dataset, batch_size=None, pin_memory=False, num_workers=NUM_DATASET_WORKERS, worker_init_fn=worker_init_fn, prefetch_factor=PREFETCH_FACTOR)
+
 
   BATCH_COUNT_PER_INTERVAL = 100
   start = time.time_ns()
   i = 0
-  for batch_idx, (batch) in enumerate(tpg):
+  for batch_idx, (batch) in enumerate(dataloader):
     if i % BATCH_COUNT_PER_INTERVAL == BATCH_COUNT_PER_INTERVAL - 1:
       end = time.time_ns()
       time_sec = (end-start)*0.001*0.001*0.001
