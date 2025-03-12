@@ -61,6 +61,11 @@ namespace CeresTrain.Networks.Transformer
 
     public ParameterStats ParameterStats => new(this);
 
+    /// <summary>
+    /// Set of monitors for tracking activations and gradients.
+    /// </summary>
+    public readonly NNLayerMonitorSet LayerMonitor;
+
 
     /// <summary>
     /// Debug comparison network against which the output of the DebugCompareLayerName will be compared.
@@ -372,18 +377,18 @@ namespace CeresTrain.Networks.Transformer
 
       const int MONITOR_TO_DUMP_RATIO = 20;
       int monitorSkipCount = Math.Max(1, ExecutionConfig.ActivationMonitorDumpSkipCount / MONITOR_TO_DUMP_RATIO);
-      NNLayerMonitorSet monitor = ExecutionConfig.ActivationMonitorDumpSkipCount > 0
-                                      ? new NNLayerMonitorSet(this, monitorSkipCount,
-                                                              ExecutionConfig.ActivationMonitorDumpSkipCount,
-                                                              layerName => true)
-                                      : null;
+      LayerMonitor = ExecutionConfig.ActivationMonitorDumpSkipCount > 0
+                                    ? new NNLayerMonitorSet(this, monitorSkipCount,
+                                                            ExecutionConfig.ActivationMonitorDumpSkipCount,
+                                                            layerName => true)
+                                    : null;
 
       if (ExecutionConfig.SupplementaryStat != NNLayerMonitor.SupplementaryStatType.None)
       {
         // e.g. set up supplemental stats for each encoder
         for (int i = 0; i < TransformerConfig.NumLayers; i++)
         {
-          monitor?.SetSupplementalLayerStat($"encoder_layer_{i}", ExecutionConfig.SupplementaryStat);
+          LayerMonitor?.SetSupplementalLayerStat($"encoder_layer_{i}", ExecutionConfig.SupplementaryStat);
         }
       }
 
