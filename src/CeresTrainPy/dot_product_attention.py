@@ -57,6 +57,8 @@ class DotProductAttention(torch.nn.Module):
                num_attention_heads: int, kv_channels: int, norm_type : str, 
                layernorm_eps : float, 
                use_qkv : bool = True,
+               softcap_cutoff : float = 0, 
+               use_qk_norm : bool = False,
                attention_multiplier : int = 1,
                smolgen_per_square_dim : int = 0, smolgen_intermediate_dim : int = 0, 
                smolgen_head_divisor : int = 1, smolgenPrepLayer = None,
@@ -85,6 +87,8 @@ class DotProductAttention(torch.nn.Module):
     self.use_rpe_v = use_rpe_v
     self.use_rel_bias = use_rel_bias
     self.use_nonlinear_attention = use_nonlinear_attention  
+    self.use_qk_norm = use_qk_norm
+    self.softcap_cutoff = softcap_cutoff
 
     assert self.use_smolgen + self.use_rpe + self.use_rel_bias <= 1, "only one of smolgen, rpe, and rel bias can be enabled"
     
@@ -121,9 +125,10 @@ class DotProductAttention(torch.nn.Module):
       self.k2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
       self.v2 = torch.nn.Linear(self.d_model * self.attention_multiplier, self.d_model * self.attention_multiplier, bias=USE_BIAS)
 
+    if self.use_qk_norm:
       # extra layernorm for enahnced training stability
-#      self.qLN = torch.nn.LayerNorm(self.d_model * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_model * self.attention_multiplier)
-#      self.kLN = torch.nn.LayerNorm(self.d_model * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_model * self.attention_multiplier)
+      self.qLN = torch.nn.LayerNorm(self.d_k * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_k * self.attention_multiplier)
+      self.kLN = torch.nn.LayerNorm(self.d_k * self.attention_multiplier) if norm_type == 'LayerNorm' else RMSNorm(self.d_k * self.attention_multiplier)
 
     RPE_INNER_DIM = 16 # rounded up to power of 2 (there are only 15 possible values of a -  b where a and b are 0...7)
 
@@ -204,10 +209,10 @@ class DotProductAttention(torch.nn.Module):
       assert self.num_tokens_q == self.num_tokens_kv, "use_smolgen requires equal number of tokens for Q and K"
       smolgen_logits_repeated = smolgen
       scores = scores + smolgen_logits_repeated
-     
-    # softcap logits for enhanced training stability
-    SOFTCAP = 100
-    scores = self.soft_cap(scores, SOFTCAP)
+
+    if self.softcap_cutoff > 0:
+      #softcap logits for enhanced training stability
+      scores = self.soft_cap(scores, self.softcap_cutoff)
 
     A = self.softmax(scores)
 
@@ -269,12 +274,13 @@ class DotProductAttention(torch.nn.Module):
       qkv = torch.nn.functional.mish(qkv)
       q, k, v = torch.unbind(qkv, dim=-2)
 
-#      q = self.qLN(q)
-#      k = self.kLN(k)
-
       Q = self.q2(q).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
       K = self.k2(k).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
       V = self.v2(v).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)  
+
+      if self.use_qk_norm:
+        Q = self.qLN(Q)
+        K = self.kLN(K)
 
     if self.use_smolgen:
       smolgen = self.calc_smolgen(x)

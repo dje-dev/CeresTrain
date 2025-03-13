@@ -186,6 +186,8 @@ class CeresNet(pl.LightningModule):
                       self.NUM_LAYERS, self.EMBEDDING_DIM,
                       self.FFN_MULT*self.EMBEDDING_DIM, 
                       config.NetDef_UseQKV,
+                      config.NetDef_SoftCapCutoff,
+                      config.NetDef_UseQKNorm,
                       self.NUM_HEADS,
                       ffn_activation_type = config.NetDef_FFNActivationType, 
                       norm_type = config.NetDef_NormType, layernorm_eps=EPS, 
