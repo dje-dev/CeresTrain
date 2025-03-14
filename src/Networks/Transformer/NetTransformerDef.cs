@@ -289,7 +289,13 @@ namespace CeresTrain.Networks.Transformer
     ///   - this feature only used starting with introduction of NLA (found necessary for stability).
     ///   - at inference time, often "nc" (no capping) versions of the ONNX are created with this turned off (0).
     /// </summary>
-    public readonly int SoftCapThreshold { get; init; } = 100;
+    public readonly int SoftCapCutoff { get; init; } = 100;
+
+    /// <summary>
+    /// If normalization could be applied to Q and K matrices in attention layer.
+    /// </summary>
+    public readonly bool UseQKNorm { get; init; } = false;  
+
 
     /// <summary>
     /// If true, use deep normalization (with scaling of residual connection).

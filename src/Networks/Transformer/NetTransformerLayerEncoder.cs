@@ -14,8 +14,8 @@
 #region Using directives
 
 using System;
-using System.Diagnostics;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 using TorchSharp;
 using TorchSharp.Modules;
@@ -24,12 +24,12 @@ using static TorchSharp.torch.nn;
 
 using Ceres.Base.Math;
 
-using CeresTrain.NNIntrospection;
-using CeresTrain.Networks.SoftMoE;
 using CeresTrain.Networks.MiscModules;
-using static CeresTrain.Utils.ModuleParamLoadingUtils;
+using CeresTrain.Networks.SoftMoE;
+using CeresTrain.NNIntrospection;
 using CeresTrain.Utils;
 using static CeresTrain.Networks.Transformer.NetTransformer;
+using static CeresTrain.Utils.ModuleParamLoadingUtils;
 
 #endregion
 
@@ -167,6 +167,8 @@ namespace CeresTrain.Networks.Transformer
 
 
     public readonly float SoftCapCutoff;
+    public readonly bool UseQKNorm;
+
     public readonly bool MonitorMoEActivationStats;
 
     Module<Tensor, Tensor> attentionQKV;
@@ -174,6 +176,9 @@ namespace CeresTrain.Networks.Transformer
 
     Module<Tensor, Tensor> qkvLN;
     Module<Tensor, Tensor> q2, k2, v2;
+
+    Module<Tensor, Tensor> qNorm;
+    Module<Tensor, Tensor> kNorm;
 
     Linear attentionQKVDual;
     Linear attentionOutputDual;
@@ -247,7 +252,8 @@ namespace CeresTrain.Networks.Transformer
                                       NetTransformerDef.DualAttentionModeType dualAttentionMode,
                                       bool nonlinearAttention,
                                       int ffnMult, NetTransformerDef.ActivationType ffnActivation,
-                                      float alpha, float dropoutRate, bool dropoutDuringInference, float softCapCutoff,
+                                      float alpha, float dropoutRate, bool dropoutDuringInference, 
+                                      float softCapCutoff, bool useQKNorm,
                                       bool monitorCosineSimilarity,
                                       int smolgenPerSquareDim, int smolgenIntermediateDim, 
                                       int smolgenToHeadDivisor, NetTransformerDef.ActivationType smolgenActivation,  
@@ -281,6 +287,7 @@ namespace CeresTrain.Networks.Transformer
       DropoutRate = dropoutRate;
       DropoutDuringInference = dropoutDuringInference;
       SoftCapCutoff = softCapCutoff;
+      UseQKNorm = useQKNorm;
       MonitorCosineSimilarity = monitorCosineSimilarity;
       SoftMoEParams = softMoEParams;
       SmolgenPerSquareDim = smolgenPerSquareDim;
@@ -295,6 +302,12 @@ namespace CeresTrain.Networks.Transformer
       attentionQKV = Linear(dim, dim * attentionMultiplier * 3, hasBias: true);
       attentionQKV = LoRALinear.PossiblyLoRAWrappedModule(attentionQKV, loraRankDivisor, () => LoRAEnabledFunc(),
                                                           Parent[0].EligibleForLoRA(LayerNum, LayerTypeEnum.QKV));
+
+      if (useQKNorm)
+      {
+        qNorm = MakeNormalizationLayer(DimPerHead);
+        kNorm = MakeNormalizationLayer(DimPerHead);
+      }
 
       if (NonLinearAttention)
       {
@@ -527,6 +540,7 @@ namespace CeresTrain.Networks.Transformer
         }
 
         Tensor A = functional.softmax(scores, dim: -1);
+//Console.WriteLine("softmax dump " + StatUtils.Max(scores.clone().cpu().FloatArray()));
 
         Tensor H = matmul(A, V);
         return H.MoveToOuterDisposeScope();
@@ -702,7 +716,7 @@ namespace CeresTrain.Networks.Transformer
       Tensor attentionQ;
       Tensor attentionK;
       Tensor attentionV;
-
+//Console.WriteLine("kqvmax dump " + StatUtils.Max(qkv.clone().cpu().FloatArray()));
       if (!NonLinearAttention)
       {
         // Split apart Q, K, V (with heads on the left)
@@ -726,6 +740,11 @@ namespace CeresTrain.Networks.Transformer
         attentionV = v2.call(attentionV).reshape(batch_size, -1, NumHeads, DimPerHead * AttentionMultiplier).permute(0, 2, 1, 3);
       }
 
+      if (UseQKNorm)
+      {
+        attentionQ = qNorm.call(attentionQ);
+        attentionK = kNorm.call(attentionK);
+      }
 
       bool monitorThisTime = MonitorCosineSimilarity && MonitoringCurrentInvocation;
 
