@@ -278,9 +278,9 @@ class DotProductAttention(torch.nn.Module):
       K = self.k2(k).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)
       V = self.v2(v).reshape(batch_size, -1, self.num_heads, self.d_k * self.attention_multiplier).permute(0, 2, 1, 3)  
 
-      if self.use_qk_norm:
-        Q = self.qLN(Q)
-        K = self.kLN(K)
+    if self.use_qk_norm:
+      Q = self.qLN(Q)
+      K = self.kLN(K)
 
     if self.use_smolgen:
       smolgen = self.calc_smolgen(x)
