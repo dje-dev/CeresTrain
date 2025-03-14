@@ -7,6 +7,8 @@ References:
 
 # Includes adaptations from this pull request:
 #   https://github.com/nikhilvyas/SOAP/pull/20
+# which points to this version of Francois Rozet:
+#   https://gist.github.com/francois-rozet/b735179003c9d4eea2a942f096ceae09
 
 import torch
 
