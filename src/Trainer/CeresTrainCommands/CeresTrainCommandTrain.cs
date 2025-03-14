@@ -51,6 +51,7 @@ using CeresTrain.Networks.SoftMoE;
 
 using CeresTrain.TrainCommands;
 using CeresTrain.Networks.Transformer;
+using CeresTrain.Optimizers;
 
 #endregion
 
@@ -719,6 +720,40 @@ namespace CeresTrain.Trainer
       {
         AdamW.ParamGroup[] adamWOptGroups = GetOptimizerAdamWGroups(model);
         optimizer = AdamW(adamWOptGroups);
+      }
+      else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.Muon)
+      {
+        AdamW.ParamGroup[] adamWOptGroups = GetOptimizerAdamWGroups(model);
+
+        List<Parameter> muonParams = model.named_parameters().Where(kv => kv.parameter.requires_grad && kv.parameter.ndim >= 2 && !kv.name.Contains("embedding")/* && kv.name.Contains("transformer_layer")*/).Select(kv => kv.parameter).ToList();
+        List<Parameter> adamwParams = model.named_parameters().Where(kv => kv.parameter.requires_grad && (kv.parameter.ndim < 2 || kv.name.Contains("embedding")/* || !kv.name.Contains("transformer_layer")*/)).Select(kv => kv.parameter).ToList();
+
+        optimizer = MuonOptimizerHelper.MuonOptimizer(muonParams,
+                                                     adamwParams,
+                                                     TrainingConfig.OptConfig.LearningRateBase,
+                                                     TrainingConfig.OptConfig.WeightDecay,
+                                                     TrainingConfig.OptConfig.Beta1,
+                                                     true, 5,
+                                                     TrainingConfig.OptConfig.Beta1,
+                                                     TrainingConfig.OptConfig.Beta2,
+                                                     1E-8f);
+#if NOT
+    public static MuonOptimizer MuonOptimizer(IEnumerable<Parameter> muonParams, IEnumerable<Parameter> adamwParams = null,  
+                                              double lr = 1e-3, double wd = 0.1, double momentum = 0.95, 
+                                              bool nesterov = true, int nsSteps = 5,
+                                              double adamwBeta1 = 0.95, double adamwBeta2 = 0.95, double adamwEps = 1e-8)
+
+        optimizer = new MuonOptimizer(TrainingConfig.OptConfig.LearningRateBase, 
+                                      TrainingConfig.OptConfig.WeightDecay,
+                                      muonParams,
+                                      momentum: TrainingConfig.OptConfig.Beta1,
+                                      nesterov: true, 
+                                      nsSteps: 5,
+                                      adamwParams,
+                                      (TrainingConfig.OptConfig.Beta1, TrainingConfig.OptConfig.Beta2), 
+                                      1E-8f);
+#endif
+        //optimizer = MuonOptimizer(adamWOptGroups);
       }
       else if (TrainingConfig.OptConfig.Optimizer == OptimizerType.NAdamW)
       {
