@@ -210,6 +210,7 @@ namespace CeresTrain.Examples
       TablebaseTPGBatchGenerator tpgGenerator = new(generator.ID, generator.GeneratePosition, succeedIfIncompleteDTZInformation, batchSize);
 
       string outFN = Path.Combine(outputDirectory, @$"{FileUtils.FileNameSanitized(generator.ID)}_{filenameIndex}.dat.zst");
+      string outFN = Path.Combine(outputDirectory, @$"{FileUtils.FileNameSanitized(generator.ID)}_{Random.Shared.Next()}_{filenameIndex}.dat.zst");
 
       const int COMPRESSION_LEVEL = 10;
       using FileStream fs = new FileStream(outFN, FileMode.Create, FileAccess.Write);
