@@ -37,9 +37,9 @@ namespace CeresTrain.TrainCommands
     private static void CheckPrerequisites()
     {
       string tbPath = CeresUserSettingsManager.Settings.SyzygyPath;
-      if (tbPath == null || !Path.Exists(tbPath))
+      if (tbPath == null)
       {
-        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Ceres.json must contain SyzygyPath entry referencing a valid directory, got: " + tbPath);
+        ConsoleUtils.WriteLineColored(ConsoleColor.Red, "Ceres.json must contain SyzygyPath entry");
       }
     }
 
