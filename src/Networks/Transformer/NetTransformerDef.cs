@@ -81,6 +81,11 @@ namespace CeresTrain.Networks.Transformer
       Mish,
 
       /// <summary>
+      /// APTx activtion ("APTx: Better Activation Function than MISH, SWISH, and ReLU's Variants used in Deep Learning") by Ravin Kumar
+      /// </summary>
+      APTx,
+
+      /// <summary>
       /// Identity activation.
       /// </summary>
       Identity
