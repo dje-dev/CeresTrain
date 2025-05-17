@@ -62,6 +62,7 @@ using BenchmarkDotNet.Attributes;
 using Ceres.Base.DataTypes;
 using Ceres.MCTS.Evaluators;
 using static TorchSharp.torch;
+using Ceres.Chess.MoveGen;
 
 #endregion 
 
@@ -622,7 +623,8 @@ namespace CeresTrain.Examples
 
         for (int i = 0; i < numThisBatch; i++)
         {
-          bool policyCorrect = tbEvaluator.MoveIsInOptimalCategoryForPosition(in batchPositions[i], nnResults[i].Policy.TopMove(in batchPositions[i]), true);
+          MGMove topMove = nnResults[i].Policy.TopMove(in batchPositions[i]);
+          bool policyCorrect = !topMove.IsNull && tbEvaluator.MoveIsInOptimalCategoryForPosition(in batchPositions[i], topMove, true);
           if (policyCorrect)
           {
             numCorrectPolicy++;
