@@ -58,7 +58,7 @@ namespace CeresTrain.Trainer
       NumParameters = numParameters;
       TrainingTime = trainingTime;
       NumTrainingPositions = numTrainingPositions;
-      LossSummary = lossSummary.ReplaceNaNWithMinus999();
+      LossSummary = lossSummary;
       TrainingLogFileName = trainingLogFileName;
       TorchscriptFileName = finalTorchscriptFileName;
       ONNXFileName = finalONNXFileName;
@@ -166,7 +166,7 @@ namespace CeresTrain.Trainer
       JsonSerializerOptions options = new JsonSerializerOptions
       {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
+        Converters = { new JsonStringEnumConverter() },
       };
 
       File.WriteAllText(outFN, JsonSerializer.Serialize(this, options));

@@ -14,73 +14,104 @@
 #region Using directives
 
 using System;
+using System.Text.Json.Serialization;
 using TorchSharp.Modules;
 
 #endregion
 
 namespace CeresTrain.Trainer
 {
-  /// <summary>
-  /// Summary of loss values/statistics during training.
-  /// </summary>
-  /// <param name="TotalLoss"></param>
-  /// <param name="ValueLoss"></param>
-  /// <param name="ValueAccuracy"></param>
-  /// <param name="PolicyLoss"></param>
-  /// <param name="PolicyAccuracy"></param>
-  /// <param name="MLHLoss"></param>
-  /// <param name="UNCLoss"></param>
-  /// <param name="Value2Loss"></param>
-  /// <param name="QDeviationLowerLoss"></param>
-  /// <param name="QDeviationUpperLoss"></param>
-  /// <param name="PolicyUncertaintyLoss"></param>
-  /// <param name="ValueDLoss"></param>
-  /// <param name="Value2DLoss"></param>
-  /// <param name="ActionLoss"></param>
-  /// <param name="ActionUncertaintyLoss"></param>
-  /// <param name="AvgFineTuneAnchorError"></param>
-  /// <param name="AvgFineTuneNonAnchorError"></param>
-  [Serializable]
-  public readonly record struct TrainingLossSummary(float TotalLoss,
-                                                    float ValueLoss, float ValueAccuracy,
-                                                    float PolicyLoss, float PolicyAccuracy,
-                                                    float MLHLoss, float UNCLoss,
-                                                    float Value2Loss,
-                                                    float QDeviationLowerLoss, float QDeviationUpperLoss,
-                                                    float PolicyUncertaintyLoss,
-                                                    float ValueDLoss, float Value2DLoss,
-                                                    float ActionLoss, float ActionUncertaintyLoss,
-                                                    int NumFineTuneAnchorPositions, int NumFineTuneNonAnchorPositions,
-                                                    float AvgFineTuneAnchorError, float AvgFineTuneNonAnchorError)
+  public readonly record struct TrainingLossSummary
   {
-    /// <summary>
-    /// Returns a sanitized version of the loss summary where NaN values are replaced with -999
-    /// (because writing JSON with NaN values is not allowed).  
-    /// </summary>
-    /// <returns></returns>
-    public TrainingLossSummary ReplaceNaNWithMinus999()
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float TotalLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float ValueLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float ValueAccuracy { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float PolicyLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float PolicyAccuracy { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float MLHLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float UNCLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float Value2Loss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float QDeviationLowerLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float QDeviationUpperLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float PolicyUncertaintyLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float ValueDLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float Value2DLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float ActionLoss { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float ActionUncertaintyLoss { get; init; }
+
+    public int NumFineTuneAnchorPositions { get; init; }
+
+    public int NumFineTuneNonAnchorPositions { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float AvgFineTuneAnchorError { get; init; }
+
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+    public float AvgFineTuneNonAnchorError { get; init; }
+
+
+    public TrainingLossSummary(float totalLoss,
+                               float valueLoss, float valueAccuracy,
+                               float policyLoss, float policyAccuracy,
+                               float mlhLoss, float uncLoss,
+                               float value2Loss,
+                               float qDeviationLowerLoss, float qDeviationUpperLoss,
+                               float policyUncertaintyLoss,
+                               float valueDLoss, float value2DLoss,
+                               float actionLoss, float actionUncertaintyLoss,
+                               int numFineTuneAnchorPositions, int numFineTuneNonAnchorPositions,
+                               float avgFineTuneAnchorError, float avgFineTuneNonAnchorError)
     {
-      return this with
-      {
-        TotalLoss = float.IsNaN(TotalLoss) ? -999 : TotalLoss,
-        ValueLoss = float.IsNaN(ValueLoss) ? -999 : ValueLoss,
-        ValueAccuracy = float.IsNaN(ValueAccuracy) ? -999 : ValueAccuracy,
-        PolicyLoss = float.IsNaN(PolicyLoss) ? -999 : PolicyLoss,
-        PolicyAccuracy = float.IsNaN(PolicyAccuracy) ? -999 : PolicyAccuracy,
-        MLHLoss = float.IsNaN(MLHLoss) ? -999 : MLHLoss,
-        UNCLoss = float.IsNaN(UNCLoss) ? -999 : UNCLoss,
-        Value2Loss = float.IsNaN(Value2Loss) ? -999 : Value2Loss,
-        QDeviationLowerLoss = float.IsNaN(QDeviationLowerLoss) ? -999 : QDeviationLowerLoss,
-        QDeviationUpperLoss = float.IsNaN(QDeviationUpperLoss) ? -999 : QDeviationUpperLoss,
-        PolicyUncertaintyLoss = float.IsNaN(PolicyUncertaintyLoss) ? -999 : PolicyUncertaintyLoss,
-        ValueDLoss = float.IsNaN(ValueDLoss) ? -999 : ValueDLoss,
-        Value2DLoss = float.IsNaN(Value2DLoss) ? -999 : Value2DLoss,
-        ActionLoss = float.IsNaN(ActionLoss) ? -999 : ActionLoss,
-        ActionUncertaintyLoss = float.IsNaN(ActionUncertaintyLoss) ? -999 : ActionUncertaintyLoss,
-      };
+      TotalLoss = totalLoss;
+      ValueLoss = valueLoss;
+      ValueAccuracy = valueAccuracy;
+      PolicyLoss = policyLoss;
+      PolicyAccuracy = policyAccuracy;
+      MLHLoss = mlhLoss;
+      UNCLoss = uncLoss;
+      Value2Loss = value2Loss;
+      QDeviationLowerLoss = qDeviationLowerLoss;
+      QDeviationUpperLoss = qDeviationUpperLoss;
+      PolicyUncertaintyLoss = policyUncertaintyLoss;
+      ValueDLoss = valueDLoss;
+      Value2DLoss = value2DLoss;
+      ActionLoss = actionLoss;
+      ActionUncertaintyLoss = actionUncertaintyLoss;
+      NumFineTuneAnchorPositions = numFineTuneAnchorPositions;
+      NumFineTuneNonAnchorPositions = numFineTuneNonAnchorPositions;
+      AvgFineTuneAnchorError = avgFineTuneAnchorError;
+      AvgFineTuneNonAnchorError = avgFineTuneNonAnchorError;
     }
-
-
+ 
 
     /// <summary>
     /// Returns a string summarizing the loss values.
