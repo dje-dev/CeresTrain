@@ -163,7 +163,7 @@ namespace CeresTrain.Examples
       }
 
       // Construct a PieceList from the pieces string (verifies validity).
-      PieceList pieceList = new(piecesString);
+      //PieceList pieceList = new(piecesString); TODO: not yet updated for multi syntax like [KRPkrp,0.2]
 
       int NUM_THREADS = 4 + (int)MathF.Min(16, Environment.ProcessorCount / 2);
       const int BATCH_SIZE = 1024;
@@ -207,7 +207,9 @@ namespace CeresTrain.Examples
                                                       int batchSize, 
                                                       long numBatches)
     {
-      PositionGeneratorRandomFromPieces generator = new PositionGeneratorRandomFromPieces(piecesString);
+      PositionGeneratorRandomFromPieces generator = 
+        piecesString.Contains("[") ? PositionGeneratorRandomFromPieces.CreateFromMultiPiecesStr(piecesString) // e.g. "[KQPkqp,0.2],[KRPkrp,0.8]"
+                                   : new PositionGeneratorRandomFromPieces(piecesString);
       TablebaseTPGBatchGenerator tpgGenerator = new(generator.ID, generator.GeneratePosition, succeedIfIncompleteDTZInformation, batchSize);
 
       string outFN = Path.Combine(outputDirectory, @$"{FileUtils.FileNameSanitized(generator.ID)}_{Random.Shared.Next()}_{filenameIndex}.dat.zst");
