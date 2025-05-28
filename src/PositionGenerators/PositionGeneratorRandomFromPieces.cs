@@ -13,10 +13,11 @@
 
 #region Using directives
 
-using Ceres.Chess;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
+using Ceres.Chess;
 
 #endregion
 
@@ -103,7 +104,57 @@ namespace CeresTrain.PositionGenerators
     /// <param name="pieces"></param>
     public PositionGeneratorRandomFromPieces(params string[] pieces) : this(string.Join(",", pieces))
     {
-    }   
+    }
+
+    /// Parses a string of (pieces, weight) pairs, normalizes the weights to sum to 1.0,
+    /// and returns a PositionGeneratorRandomFromPieces instance.
+    /// 
+    /// Each pair should be in the format: [PiecesString,Weight], with multiple pairs separated by commas.
+    /// Example: "[KQPkqp,0.2],[KRPkrp,0.8]"
+    /// 
+    /// Negative weights are not allowed. If no valid pairs are found, an exception is thrown.
+    public static PositionGeneratorRandomFromPieces CreateFromMultiPiecesStr(string piecesStr)
+    {
+      if (string.IsNullOrWhiteSpace(piecesStr))
+      {
+        throw new ArgumentException("Input cannot be null or empty.", nameof(piecesStr));
+      }
+
+      List<(string, float)> entries = new List<(string, float)>();
+
+      foreach (Match match in Regex.Matches(piecesStr, @"\[\s*([A-Za-z]+)\s*,\s*([0-9]*\.?[0-9]+)\s*\]"))
+      {
+        string pieceString = match.Groups[1].Value;
+        string weightStr = match.Groups[2].Value;
+
+        if (!float.TryParse(weightStr, out float weight) || weight < 0f)
+        {
+          throw new ArgumentException($"Invalid or negative weight: {weightStr}");
+        }
+
+        entries.Add((pieceString, weight));
+      }
+
+      if (entries.Count == 0)
+      {
+        throw new ArgumentException("No valid piece entries found.");
+      }
+
+      float total = 0f;
+      foreach ((string _, float weight) in entries)
+      {
+        total += weight;
+      }
+
+      if (total <= 0f)
+      {
+        throw new ArgumentException("Sum of weights must be positive.");
+      }
+
+      (string, float)[] normalized = entries.Select(entry => (entry.Item1, entry.Item2 / total)).ToArray();
+
+      return new PositionGeneratorRandomFromPieces(normalized);
+    }
 
 
     /// <summary>
